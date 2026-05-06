@@ -1629,13 +1629,24 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
     estMaterials.forEach(m => {
         const key = m.material_id || m.name;
         if(!key) return;
-        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, qty:0};
+        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, unit_price:m.unit_price||0, qty:0};
         sumMap[key].qty += Number(m.qty) || 0;
     });
     const sumList = Object.values(sumMap).filter(m => m.qty > 0);
 
     const removeByKey = key => setEstMaterials(p => p.filter(x => (x.material_id || x.name) !== key));
     const addBlank = () => setEstMaterials(p => [...p, {id:uid(), name:'', qty:1, unit_price:0, material_id:null}]);
+
+    // ★ 합산수량 직접 편집: 해당 자재의 모든 항목을 하나로 통합
+    const updateSumQty = (key, newQty) => {
+        setEstMaterials(prev => {
+            const sample = prev.find(x => (x.material_id || x.name) === key);
+            if(!sample) return prev;
+            const filtered = prev.filter(x => (x.material_id || x.name) !== key);
+            if(newQty > 0) filtered.push({id:uid(), name:sample.name, material_id:sample.material_id||null, unit_price:sample.unit_price||0, qty:newQty});
+            return filtered;
+        });
+    };
 
     return(
         <div className="card">
@@ -1682,8 +1693,12 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
                             {sumList.map((m, i) => (
                                 <tr key={i}>
                                     <td style={{fontWeight:700}}>{m.name || '(자재명 없음)'}</td>
-                                    <td className="tr" style={{fontWeight:900,fontSize:16,fontFamily:'Bebas Neue,sans-serif',color:'var(--navy)',letterSpacing:1}}>
-                                        {m.qty}
+                                    <td className="tr" style={{padding:'4px 8px'}}>
+                                        <input type="number" min="0" value={m.qty}
+                                            style={{width:70,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:15,fontWeight:900,fontFamily:'Bebas Neue,sans-serif',textAlign:'right',color:'var(--navy)',letterSpacing:1}}
+                                            onChange={e=>updateSumQty(m.material_id||m.name, Number(e.target.value)||0)}
+                                            onFocus={e=>e.target.style.borderColor='var(--blue)'}
+                                            onBlur={e=>e.target.style.borderColor='var(--border)'}/>
                                     </td>
                                     <td style={{textAlign:'center'}}>
                                         <button className="btn-icon" onClick={() => removeByKey(m.material_id || m.name)}>✕</button>
@@ -1807,7 +1822,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         setItems(updated);
         if(mode==='edit'){const t=updated.find(i=>i.id===id);await sb.from('est_items').update({name:t.name,specification:t.spec,quantity:t.qty,unit_price:t.unitPrice,labor_cost:t.laborCost,total_amount:t.total,image_url:t.imgUrl}).eq('id',id);}
     };
-    const delItem=async id=>{if(!confirm('삭제?'))return;setItems(p=>p.filter(i=>i.id!==id));if(mode==='edit')await sb.from('est_items').delete().eq('id',id);};
+    const delItem=async id=>{if(!confirm('삭제?'))return;setItems(p=>p.filter(i=>i.id!==id));setEstMaterials(p=>p.filter(m=>m.itemId!==id));if(mode==='edit')await sb.from('est_items').delete().eq('id',id);};
     const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
 
     // ★ 상태 날짜 수정 (edit mode)

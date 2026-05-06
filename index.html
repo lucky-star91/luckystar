@@ -61,7 +61,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .setup-block{background:var(--bg);border-radius:12px;padding:20px;margin-bottom:24px;}
 .setup-block-title{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;}
 /* ── 인앱브라우저 경고 ── */
-.inapp-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:30px;background:linear-gradient(135deg,#0f1923,#1a3050);text-align:center;gap:20px;}
+.inapp-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:env(safe-area-inset-top,30px) 24px 30px;background:linear-gradient(135deg,#0f1923,#1a3050);text-align:center;gap:20px;}
 .inapp-icon{font-size:64px;}
 .inapp-title{font-size:22px;font-weight:900;color:#fff;line-height:1.3;}
 .inapp-desc{font-size:14px;color:rgba(255,255,255,.65);line-height:1.8;max-width:320px;}
@@ -244,7 +244,7 @@ td{padding:9px 14px;vertical-align:middle;}
 .status-timeline-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;margin-bottom:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
 .status-timeline-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .status-timeline-title::after{content:'';flex:1;height:1px;background:var(--border);}
-.status-row{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
+.status-row{display:grid;grid-template-columns:36px 1fr auto auto;row-gap:4px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
 /* 완료 체크박스 */
 .status-check{width:18px;height:18px;cursor:pointer;accent-color:var(--green);flex-shrink:0;}
 .status-check-done .status-row-icon{background:var(--green)!important;box-shadow:0 2px 8px rgba(34,197,94,.3)!important;}
@@ -391,6 +391,121 @@ td{padding:9px 14px;vertical-align:middle;}
 .coming-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;}
 .coming-icon{font-size:56px;margin-bottom:8px;}.coming-title{font-size:22px;font-weight:900;color:var(--navy);}.coming-desc{font-size:13px;color:var(--muted);line-height:1.8;max-width:380px;}
 .coming-tags{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;}.coming-tag{background:var(--bg);border:1.5px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--muted);}
+
+/* ════════════════════════════════
+   모바일 헤더 & 사이드바 오버레이
+════════════════════════════════ */
+.mobile-header{
+    display:none;
+    position:fixed;top:0;left:0;right:0;
+    height:54px;background:var(--navy);
+    z-index:200;align-items:center;
+    padding:0 14px;gap:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.3);
+}
+.hamburger{background:none;border:none;color:rgba(255,255,255,.8);font-size:22px;cursor:pointer;padding:6px;line-height:1;}
+.hamburger:hover{color:#fff;}
+.mobile-logo{font-family:'Bebas Neue',sans-serif;font-size:18px;color:#fff;letter-spacing:2px;flex:1;}
+.mobile-logo span{color:var(--gold);}
+.sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99;}
+.sb-overlay.active{display:block;}
+.sidebar{transition:transform .28s ease;}
+
+/* ════════════════════════════════
+   반응형 — 모바일 (767px 이하)
+════════════════════════════════ */
+@media(max-width:767px){
+    /* 모바일 헤더 표시 */
+    .mobile-header{display:flex;}
+    /* 사이드바 숨김/슬라이드 */
+    .sidebar{transform:translateX(-240px);position:fixed;}
+    .sidebar.sb-open{transform:translateX(0);z-index:150;}
+    /* 메인 영역 */
+    .main{margin-left:0!important;padding:70px 14px 24px!important;}
+    /* 페이지 헤더 */
+    .page-header{flex-direction:column;gap:10px;margin-bottom:16px;}
+    .btn-row{width:100%;justify-content:flex-start;flex-wrap:wrap;gap:6px;}
+    .btn{font-size:12px;padding:8px 12px;}
+    .btn-sm{font-size:11px;padding:5px 10px;}
+    /* 카드 */
+    .card{padding:14px 16px;margin-bottom:14px;}
+    /* 정보 그리드 1열 */
+    .info-grid{grid-template-columns:1fr!important;}
+    /* 견적 배지 */
+    .est-badge{gap:10px;padding:10px 14px;flex-wrap:wrap;}
+    .est-badge-sep{display:none;}
+    /* 카테고리 헤더 */
+    .cat-header{flex-direction:column;align-items:flex-start;gap:8px;}
+    .cat-name-input{font-size:14px;}
+    /* 테이블 가로 스크롤 */
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    table{min-width:560px;}
+    /* 합계 카드 */
+    .grand-card{flex-direction:column;gap:14px;padding:18px 16px;}
+    .grand-val{font-size:28px;}
+    .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    /* 결제 그리드 1열 */
+    .pay-grid{grid-template-columns:1fr!important;}
+    /* 현장사진 그리드 */
+    .site-photos-grid{grid-template-columns:1fr 1fr!important;}
+    /* 상품 그리드 */
+    .prod-grid{grid-template-columns:1fr 1fr!important;}
+    .prod-cat-header{flex-direction:column;align-items:flex-start;gap:8px;}
+    /* 캘린더 */
+    .biweek-hd,.month-hd{font-size:10px;padding:6px 2px;}
+    .biweek-cell{min-height:60px;padding:4px 3px;}
+    .month-cell{min-height:70px;padding:4px 3px;}
+    .cal-event{font-size:9px;padding:2px 4px;}
+    .cal-header{gap:8px;}
+    .cal-title{font-size:14px;}
+    .cal-nav{padding:5px 10px;font-size:12px;}
+    /* 상태 타임라인 */
+    .status-row{grid-template-columns:32px 1fr;gap:8px;}
+    .status-row>div:nth-child(3),.status-row>div:nth-child(4){grid-column:2;display:flex;gap:8px;align-items:center;}
+    .status-dt-input{font-size:11px;padding:5px 8px;flex:1;}
+    /* 모달 */
+    .modal-overlay{align-items:flex-end;padding:0;}
+    .modal-box{width:100%!important;max-height:88vh;border-radius:16px 16px 0 0;padding:22px 18px;}
+    .modal-box.sm{width:100%!important;}
+    .modal-box.lg{width:100%!important;}
+    .modal-grid{grid-template-columns:1fr!important;}
+    .mf.full{grid-column:1!important;}
+    /* 자재등록 추가 행 */
+    .mat-add-row{grid-template-columns:1fr 1fr!important;}
+    .mat-add-row>div:last-child{grid-column:1/-1;}
+    /* 픽 모달 */
+    .pick-modal{flex-direction:column;height:auto;}
+    .pick-left{width:100%;border-radius:10px 10px 0 0;display:flex;overflow-x:auto;padding:8px 0;}
+    .pick-left-item{padding:8px 14px;white-space:nowrap;border-left:none;border-bottom:3px solid transparent;}
+    .pick-left-item.active{border-left:none;border-bottom-color:var(--gold);}
+    .pick-right{border-radius:0 0 10px 10px;border-left:1.5px solid var(--border);}
+    .pick-prod-grid{grid-template-columns:1fr 1fr!important;}
+    /* 필터 탭 */
+    .cat-filter{overflow-x:auto;flex-wrap:nowrap;padding-bottom:6px;}
+    .cat-tab{white-space:nowrap;flex-shrink:0;}
+    /* 로그인 화면 */
+    .login-wrap{flex-direction:column;}
+    .login-left{display:none;}
+    .login-right{width:100%;padding:40px 24px;min-height:100vh;}
+    .login-title{font-size:20px;}
+    .login-right::before{content:'LUCKY STAR';font-family:'Bebas Neue',sans-serif;display:block;font-size:36px;color:var(--gold);letter-spacing:3px;margin-bottom:4px;text-align:center;}
+    /* 상품 선택 카드 */
+    .prod-cat-count{display:none;}
+    /* 사이드바 내 사용자명 */
+    .sb-username{max-width:120px;}
+    /* 3단계 메뉴 */
+    .nav-sub.open{max-height:600px;}
+    .nav-sub-sub.open{max-height:400px;}
+}
+
+/* 태블릿 (768px ~ 1023px) */
+@media(min-width:768px)and(max-width:1023px){
+    .main{padding:24px 20px;}
+    .info-grid{grid-template-columns:1fr 1fr!important;}
+    .pay-grid{grid-template-columns:1fr 1fr!important;}
+    .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .modal-box.lg{width:96vw!important;}
+}
 @media print{.sidebar,.btn-row,.del-btn,.no-print{display:none!important;}.main{margin-left:0;padding:20px;}}
 </style>
 </head>
@@ -510,7 +625,7 @@ function LoginScreen({sb}){
     return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">🚐 럭키스타 로그인</div><div className="login-sub">구글 계정으로 로그인하면 모든 데이터가 실시간으로 클라우드에 저장됩니다.</div><button className="btn-google" onClick={login} disabled={loading}><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?'연결 중...':'Google 계정으로 로그인'}</button><div className="login-divider"><span>안내</span></div><div className="login-notice">허가된 구글 계정만 접속 가능합니다.<br/>문의: 럭키스타 캠핑카라반<br/><span style={{fontSize:10,color:'#94a3b8'}}>경기도 파주시 광탄면</span></div></div></div>);}
 
 /* ── 사이드바 ── */
-function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout}){
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
     const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate');
     const[openSub,setOpenSub]=useState({mat:true,prod:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
@@ -518,8 +633,8 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
     const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('sched')?'schedule':'estimate';
-    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});};
-    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});};
+    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});if(onClose)onClose();};
+    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});if(onClose)onClose();};
 
     // 2단계 아이템 (견적관리 등)
     const SI=({label,isActive,onNav})=>(
@@ -535,7 +650,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
         </div>
     );
 
-    return(<aside className="sidebar">
+    return(<aside className={`sidebar ${sbOpen?'sb-open':''}`} onClick={e=>e.stopPropagation()}>
         <div className="sb-header"><div className="sb-logo">LUCKY<span>STAR</span></div><div className="sb-sub">CARAVAN MANAGER v2.0</div></div>
         <div className="sb-user">
             <div className="sb-avatar">{avatar?<img src={avatar} alt=""/>:uname[0]?.toUpperCase()}</div>
@@ -1414,6 +1529,7 @@ function App(){
     });
     const[sb,setSb]=useState(null);const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
     const[page,setPage]=useState('est-list');
+    const[sbOpen,setSbOpen]=useState(false); // 모바일 사이드바
     const[editEstId,setEditEstId]=useState(null); // 수정할 견적 ID
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[matCats,setMatCats]=useState([]);const[prodCats,setProdCats]=useState([]);
@@ -1467,7 +1583,15 @@ function App(){
         <div id="__toast" className="toast" style={{display:'none'}}/>
         {addMatModal&&<AddNameModal title="📦 자재 분류 추가" placeholder="예: 목재, 철물, 가전, 단열재" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
         {addProdModal&&<AddNameModal title="🛍 상품 카테고리 추가" placeholder="예: 수납장, 싱크대, 신발장, 침대" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>navigate(p)} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>setAddMatModal(true)} onDelMatCat={delMatCat} onAddProdCat={()=>setAddProdModal(true)} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout}/>
+        {/* ★ 모바일 상단 바 */}
+        <div className="mobile-header">
+            <button className="hamburger" onClick={()=>setSbOpen(o=>!o)}>☰</button>
+            <div className="mobile-logo">LUCKY<span>STAR</span></div>
+            <button style={{background:'none',border:'none',color:'rgba(255,255,255,.5)',cursor:'pointer',fontSize:13,fontFamily:'Noto Sans KR,sans-serif'}} onClick={handleLogout}>⏻</button>
+        </div>
+        {/* ★ 사이드바 오버레이 (모바일) */}
+        <div className={`sb-overlay ${sbOpen?'active':''}`} onClick={()=>setSbOpen(false)}/>
+        <Sidebar user={user} page={page} setPage={p=>{navigate(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

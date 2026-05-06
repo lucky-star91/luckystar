@@ -94,7 +94,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .nav-plus{background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:16px;padding:10px 14px 10px 4px;line-height:1;transition:color .15s;flex-shrink:0;}
 .nav-plus:hover{color:var(--gold);}
 .nav-sub{overflow:hidden;max-height:0;transition:max-height .3s ease;}
-.nav-sub.open{max-height:500px;}
+.nav-sub.open{max-height:800px;}
 .nav-sub-item{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 50px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.38);transition:color .15s;}
 .nav-sub-item:hover{color:rgba(255,255,255,.72);}
 .nav-sub-item.active{color:var(--gold);font-weight:700;}
@@ -103,6 +103,25 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .nav-sub-del{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
 .nav-sub-item:hover .nav-sub-del{color:rgba(255,255,255,.3);}
 .nav-sub-del:hover{color:var(--red) !important;}
+
+/* ★ 3단계 서브그룹 */
+.nav-grp-hd{display:flex;align-items:center;gap:6px;padding:8px 12px 8px 36px;cursor:pointer;font-size:11px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.8px;text-transform:uppercase;transition:color .15s;user-select:none;}
+.nav-grp-hd:hover{color:rgba(255,255,255,.8);}
+.nav-grp-hd.open{color:rgba(255,255,255,.7);}
+.nav-grp-arrow{font-size:8px;margin-left:auto;transition:transform .2s;}
+.nav-grp-hd.open .nav-grp-arrow{transform:rotate(90deg);}
+.nav-sub-sub{overflow:hidden;max-height:0;transition:max-height .28s ease;}
+.nav-sub-sub.open{max-height:500px;}
+.ssi{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 62px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.32);transition:color .15s;}
+.ssi:hover{color:rgba(255,255,255,.68);}
+.ssi.active{color:var(--gold);font-weight:700;}
+.ssi-dot{width:3px;height:3px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.ssi-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ssi-del{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
+.ssi:hover .ssi-del{color:rgba(255,255,255,.25);}
+.ssi-del:hover{color:var(--red) !important;}
+.ssi-add{display:flex;align-items:center;gap:5px;padding:5px 12px 8px 62px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.25);transition:color .15s;}
+.ssi-add:hover{color:var(--gold);}
 .sb-footer{padding:14px 20px;border-top:1px solid rgba(255,255,255,.07);}
 .sb-total-label{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
 .sb-total-val{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);letter-spacing:1px;}
@@ -386,25 +405,99 @@ function LoginScreen({sb}){const[loading,setLoading]=useState(false);const login
 /* ── 사이드바 ── */
 function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout}){
     const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate');
+    const[openSub,setOpenSub]=useState({mat:true,prod:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
+    const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
     const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate';
     const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});};
     const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});};
-    const SI=({label,isActive,onNav,onDel})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span>{onDel&&<button className="nav-sub-del" onClick={e=>{e.stopPropagation();onDel();}}>✕</button>}</div>);
+
+    // 2단계 아이템 (견적관리 등)
+    const SI=({label,isActive,onNav})=>(
+        <div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}>
+            <span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span>
+        </div>
+    );
+    // 3단계 아이템 (자재분류·상품분류 하위)
+    const SSI=({label,isActive,onNav,onDel})=>(
+        <div className={`ssi ${isActive?'active':''}`} onClick={onNav}>
+            <span className="ssi-dot"/><span className="ssi-label">{label}</span>
+            {onDel&&<button className="ssi-del" onClick={e=>{e.stopPropagation();onDel();}}>✕</button>}
+        </div>
+    );
+
     return(<aside className="sidebar">
         <div className="sb-header"><div className="sb-logo">LUCKY<span>STAR</span></div><div className="sb-sub">CARAVAN MANAGER v2.0</div></div>
-        <div className="sb-user"><div className="sb-avatar">{avatar?<img src={avatar} alt=""/>:uname[0]?.toUpperCase()}</div><div className="sb-username">{uname}</div><button className="sb-logout" onClick={onLogout} title="로그아웃">⏻</button></div>
+        <div className="sb-user">
+            <div className="sb-avatar">{avatar?<img src={avatar} alt=""/>:uname[0]?.toUpperCase()}</div>
+            <div className="sb-username">{uname}</div>
+            <button className="sb-logout" onClick={onLogout} title="로그아웃">⏻</button>
+        </div>
         <nav className="sb-nav">
-            <div className={`nav-row ${activeGroup==='material'?'active':''} ${open==='material'?'open':''}`}><div className="nav-label" onClick={()=>toggle('material')}><span className="nav-icon">📦</span>자재관리<span className="nav-arrow">▶</span></div><button className="nav-plus" onClick={e=>{e.stopPropagation();onAddMatCat();}}>＋</button></div>
-            <div className={`nav-sub ${open==='material'?'open':''}`}><SI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>{matCats.map(c=><SI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onDel={()=>onDelMatCat(c.id)}/>)}<SI label="재고 현황" isActive={page==='mat-stock'} onNav={()=>setPage('mat-stock')}/></div>
-            <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}><div className="nav-label" onClick={()=>toggle('product')}><span className="nav-icon">🛍</span>상품관리<span className="nav-arrow">▶</span></div><button className="nav-plus" onClick={e=>{e.stopPropagation();onAddProdCat();}}>＋</button></div>
-            <div className={`nav-sub ${open==='product'?'open':''}`}><SI label="전체 상품" isActive={page==='prod-list'&&activeCatId?.prod===null} onNav={()=>goProd(null)}/>{prodCats.map(c=><SI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onDel={()=>onDelProdCat(c.id)}/>)}</div>
-            <div className={`nav-row ${activeGroup==='estimate'?'active':''} ${open==='estimate'?'open':''}`}><div className="nav-label" onClick={()=>toggle('estimate')}><span className="nav-icon">📋</span>견적관리<span className="nav-arrow">▶</span></div></div>
-            <div className={`nav-sub ${open==='estimate'?'open':''}`}><SI label="새 견적서" isActive={page==='est-new'} onNav={()=>setPage('est-new')}/><SI label="견적 목록" isActive={page==='est-list'} onNav={()=>setPage('est-list')}/></div>
+
+            {/* ── 자재관리 ── */}
+            <div className={`nav-row ${activeGroup==='material'?'active':''} ${open==='material'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('material')}>
+                    <span className="nav-icon">📦</span>자재관리<span className="nav-arrow">▶</span>
+                </div>
+            </div>
+            <div className={`nav-sub ${open==='material'?'open':''}`}>
+                {/* 자재분류 서브그룹 */}
+                <div className={`nav-grp-hd ${openSub.mat?'open':''}`} onClick={()=>toggleSub('mat')}>
+                    <span>📁 자재분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}}
+                        onClick={e=>{e.stopPropagation();onAddMatCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
+                    <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
+                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onDel={()=>onDelMatCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
+                </div>
+                {/* 재고 현황 */}
+                <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>setPage('mat-stock')}/>
+            </div>
+
+            {/* ── 상품관리 ── */}
+            <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('product')}>
+                    <span className="nav-icon">🛍</span>상품관리<span className="nav-arrow">▶</span>
+                </div>
+            </div>
+            <div className={`nav-sub ${open==='product'?'open':''}`}>
+                {/* 상품분류 서브그룹 */}
+                <div className={`nav-grp-hd ${openSub.prod?'open':''}`} onClick={()=>toggleSub('prod')}>
+                    <span>📁 상품분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}}
+                        onClick={e=>{e.stopPropagation();onAddProdCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.prod?'open':''}`}>
+                    <SSI label="전체 상품" isActive={page==='prod-list'&&activeCatId?.prod===null} onNav={()=>goProd(null)}/>
+                    {prodCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onDel={()=>onDelProdCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddProdCat}>＋ 카테고리 추가</div>
+                </div>
+            </div>
+
+            {/* ── 견적관리 ── */}
+            <div className={`nav-row ${activeGroup==='estimate'?'active':''} ${open==='estimate'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('estimate')}>
+                    <span className="nav-icon">📋</span>견적관리<span className="nav-arrow">▶</span>
+                </div>
+            </div>
+            <div className={`nav-sub ${open==='estimate'?'open':''}`}>
+                <SI label="새 견적서" isActive={page==='est-new'} onNav={()=>setPage('est-new')}/>
+                <SI label="견적 목록" isActive={page==='est-list'} onNav={()=>setPage('est-list')}/>
+            </div>
+
         </nav>
-        <div className="sb-footer"><div className="sb-total-label">총 견적 (VAT포함)</div><div className="sb-total-val">{fmt(grandWithVat)}원</div><div className="sb-status"><span className="dot-green"/>클라우드 연결됨</div></div>
+        <div className="sb-footer">
+            <div className="sb-total-label">총 견적 (VAT포함)</div>
+            <div className="sb-total-val">{fmt(grandWithVat)}원</div>
+            <div className="sb-status"><span className="dot-green"/>클라우드 연결됨</div>
+        </div>
     </aside>);
 }
 

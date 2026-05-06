@@ -388,6 +388,36 @@ td{padding:9px 14px;vertical-align:middle;}
 .pay-check{width:16px;height:16px;cursor:pointer;accent-color:var(--green);}
 .pay-check-lbl{font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;}
 .pay-check-lbl.on{color:var(--green);}
+/* ══ 공급사 관리 ══ */
+.supplier-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+.supplier-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:18px;cursor:pointer;transition:all .2s;box-shadow:0 2px 6px rgba(0,0,0,.04);}
+.supplier-card:hover,.supplier-card.active{border-color:var(--blue);box-shadow:0 4px 16px rgba(30,111,217,.12);}
+.supplier-card.active{background:#f0f6ff;}
+.supplier-name{font-size:16px;font-weight:900;color:var(--navy);margin-bottom:8px;}
+.supplier-info-row{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:4px;}
+.supplier-info-label{font-weight:700;min-width:70px;color:var(--text);}
+/* 발주서 */
+.order-section{border:1.5px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:18px;}
+.order-section-header{background:var(--navy);color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.order-supplier-name{font-size:15px;font-weight:800;letter-spacing:.5px;}
+.order-supplier-meta{font-size:11px;color:rgba(255,255,255,.6);margin-top:2px;}
+.order-table{width:100%;border-collapse:collapse;}
+.order-table th{background:var(--bg);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;padding:8px 10px;text-align:left;border-bottom:1.5px solid var(--border);}
+.order-table td{padding:9px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;}
+.order-table tr:last-child td{border-bottom:none;}
+.order-table .qty-input{width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:'Noto Sans KR',sans-serif;text-align:right;}
+.order-table .qty-input:focus{outline:none;border-color:var(--blue);}
+.order-footer{padding:12px 18px;background:var(--bg);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.order-total{font-size:16px;font-weight:900;color:var(--navy);}
+.order-total span{color:var(--gold);}
+.cart-badge{position:relative;}
+.cart-count{position:absolute;top:-8px;right:-8px;background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+@media(max-width:767px){
+    .supplier-grid{grid-template-columns:1fr;}
+    .order-table{font-size:12px;}
+    .order-table th,.order-table td{padding:6px 8px;}
+}
+
 /* ══ 견적목록 대시보드 카드 ══ */
 .dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
 .dash-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:14px 16px;cursor:pointer;transition:all .2s;text-align:center;}
@@ -690,7 +720,119 @@ function LoginScreen({sb}){
 /* ═══════════════════════════════════════
    ★ 자재 관리
 ═══════════════════════════════════════ */
-function MaterialModal({sb,matCats,initial,onClose,onSave}){
+/* ═══════════════════════════════════════
+   ★ 공급사 관리
+═══════════════════════════════════════ */
+function SupplierModal({initial,onClose,onSave}){
+    const blank={name:'',business_no:'',contact_person:'',phone:'',address:'',order_to:''};
+    const[form,setForm]=useState(initial?{...initial}:blank);
+    const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+    const ok=()=>{if(!form.name.trim()){alert('업체명을 입력하세요');return;}onSave(form);};
+    return(<div className="modal-overlay" onClick={onClose}>
+        <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+                <div className="modal-title">{initial?'공급사 수정':'공급사 등록'}</div>
+                <button className="modal-close" onClick={onClose}>✕</button>
+            </div>
+            <div className="modal-grid">
+                <div className="mf"><label className="ml">업체명 *</label><input className="mi" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="(주)OOO"/></div>
+                <div className="mf"><label className="ml">사업자등록번호</label><input className="mi" value={form.business_no||''} onChange={e=>set('business_no',e.target.value)} placeholder="000-00-00000"/></div>
+                <div className="mf"><label className="ml">담당자명</label><input className="mi" value={form.contact_person||''} onChange={e=>set('contact_person',e.target.value)} placeholder="담당자 이름"/></div>
+                <div className="mf"><label className="ml">연락처</label><input className="mi" value={form.phone||''} onChange={e=>set('phone',e.target.value)} placeholder="010-0000-0000"/></div>
+                <div className="mf full"><label className="ml">주소</label><input className="mi" value={form.address||''} onChange={e=>set('address',e.target.value)} placeholder="업체 주소"/></div>
+                <div className="mf full"><label className="ml">발주서 보낼 곳</label><input className="mi" value={form.order_to||''} onChange={e=>set('order_to',e.target.value)} placeholder="이메일, 팩스번호, 카카오 등"/></div>
+            </div>
+            <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
+        </div>
+    </div>);
+}
+
+function SupplierList({sb,suppliers,setSuppliers}){
+    const[materials,setMaterials]=useState([]);
+    useEffect(()=>{if(!sb)return;sb.from('materials').select('id,name,specification,thickness,unit_price,stock_qty,supplier').order('name').then(({data})=>{if(data)setMaterials(data);});},[sb]);
+    const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
+    const[activeSup,setActiveSup]=useState(null);
+
+    const save=async form=>{
+        setShowModal(false);setEditing(null);
+        if(editing){
+            const{data}=await sb.from('suppliers').update(form).eq('id',editing.id).select();
+            if(data)setSuppliers(p=>p.map(s=>s.id===editing.id?data[0]:s));toast('✅ 수정됨');
+        }else{
+            const{data}=await sb.from('suppliers').insert([form]).select();
+            if(data)setSuppliers(p=>[...p,data[0]]);toast('✅ 공급사 등록됨');
+        }
+    };
+    const del=async id=>{
+        if(!confirm('삭제하시겠습니까?'))return;
+        await sb.from('suppliers').delete().eq('id',id);
+        setSuppliers(p=>p.filter(s=>s.id!==id));
+        if(activeSup?.id===id)setActiveSup(null);
+        toast('🗑 삭제됨');
+    };
+
+    // 선택된 공급사의 자재만 필터
+    const supMaterials=activeSup?materials.filter(m=>m.supplier===activeSup.name):[];
+
+    return(<div>
+        {showModal&&<SupplierModal initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>🏢 공급사 관리</h1><p>거래 공급업체 정보 · 자재별 공급사 현황</p></div>
+            <div className="btn-row"><button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공급사 등록</button></div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20,alignItems:'start'}}>
+            {/* 공급사 카드 목록 */}
+            <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({suppliers.length})</div>
+                {suppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">등록된 공급사가 없습니다.</div></div>
+                :<div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {suppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>(
+                        <div key={s.id} className={`supplier-card ${activeSup?.id===s.id?'active':''}`} onClick={()=>setActiveSup(p=>p?.id===s.id?null:s)}>
+                            <div className="supplier-name">🏢 {s.name}</div>
+                            {s.business_no&&<div className="supplier-info-row"><span className="supplier-info-label">사업자번호</span><span>{s.business_no}</span></div>}
+                            {s.contact_person&&<div className="supplier-info-row"><span className="supplier-info-label">담당자</span><span>{s.contact_person}</span></div>}
+                            {s.phone&&<div className="supplier-info-row"><span className="supplier-info-label">연락처</span><span>{s.phone}</span></div>}
+                            {s.order_to&&<div className="supplier-info-row"><span className="supplier-info-label">발주처</span><span style={{color:'var(--blue)'}}>{s.order_to}</span></div>}
+                            <div style={{display:'flex',gap:6,marginTop:10}}>
+                                <button className="btn btn-outline btn-sm" onClick={e=>{e.stopPropagation();setEditing(s);setShowModal(true);}}>✏️ 수정</button>
+                                <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={e=>{e.stopPropagation();del(s.id);}}>🗑</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>}
+            </div>
+
+            {/* 선택된 공급사의 자재 목록 */}
+            {activeSup&&<div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>
+                    {activeSup.name} 자재 ({supMaterials.length}개)
+                </div>
+                {supMaterials.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">📦</div><div className="empty-text">등록된 자재가 없습니다.</div></div>
+                :<div className="table-wrap"><table style={{minWidth:400}}>
+                    <thead><tr>
+                        <th style={{textAlign:'left'}}>품명</th>
+                        <th style={{textAlign:'left'}}>규격/재질</th>
+                        <th style={{textAlign:'left'}}>두께</th>
+                        <th className="tr">단가(원)</th>
+                        <th className="tr">재고</th>
+                    </tr></thead>
+                    <tbody>{supMaterials.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(m=>(
+                        <tr key={m.id}>
+                            <td style={{fontWeight:700}}>{m.name}</td>
+                            <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
+                            <td style={{fontSize:12,color:'var(--muted)'}}>{m.thickness||'-'}</td>
+                            <td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price||0)}</td>
+                            <td className="tr" style={{color:(m.stock_qty||0)<=0?'var(--red)':'inherit',fontWeight:700}}>{m.stock_qty||0}</td>
+                        </tr>
+                    ))}</tbody>
+                </table></div>}
+            </div>}
+        </div>
+    </div>);
+}
+
+function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
     const blank={category_id:'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -709,7 +851,14 @@ function MaterialModal({sb,matCats,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">가공비(원)</label><input className="mi" type="number" value={form.processing_cost||0} onChange={e=>set('processing_cost',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">재고수량</label><input className="mi" type="number" value={form.stock_qty||0} onChange={e=>set('stock_qty',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">제조사</label><input className="mi" value={form.manufacturer||''} onChange={e=>set('manufacturer',e.target.value)} placeholder="제조사명"/></div>
-                <div className="mf"><label className="ml">공급업체</label><input className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)} placeholder="업체명"/></div>
+                <div className="mf"><label className="ml">공급업체</label>
+                    <select className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)}>
+                        <option value="">공급업체 선택</option>
+                        {(suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+                        <option value="__direct__">직접 입력...</option>
+                    </select>
+                    {form.supplier==='__direct__'&&<input className="mi" style={{marginTop:6}} placeholder="업체명 직접 입력" onChange={e=>set('supplier',e.target.value)}/>}
+                </div>
                 <div className="mf"><label className="ml">구매링크</label><input className="mi" value={form.purchase_link||''} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div>
                 <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
             </div>
@@ -718,11 +867,15 @@ function MaterialModal({sb,matCats,initial,onClose,onSave}){
     </div>);
 }
 
-function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
+function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     const[materials,setMaterials]=useState([]);const[loading,setLoading]=useState(true);
     const[activeCat,setActiveCat]=useState(initialCatId||null);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');const[importing,setImporting]=useState(false);
+    const[orderCart,setOrderCart]=useState([]); // 발주서 카트
+    const[showOrderQty,setShowOrderQty]=useState(null); // 수량입력 팝업
+    const[orderQtyVal,setOrderQtyVal]=useState(1);
+    const[showOrderForm,setShowOrderForm]=useState(false); // 발주서 양식
 
     useEffect(()=>{
         if(!sb)return;
@@ -814,9 +967,67 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
             (m.specification||'').toLowerCase().includes(search.toLowerCase())||
             (m.supplier||'').toLowerCase().includes(search.toLowerCase()));
 
+    // ★ 발주서 출력
+    const printOrder=(supName,items)=>{
+        const sup=suppliers.find(s=>s.name===supName)||{};
+        const rows=items.map(it=>`<tr>
+            <td>${it.mat.name}</td><td>${it.mat.specification||''}</td><td>${it.mat.thickness||''}</td>
+            <td align="right">${it.qty}</td>
+            <td align="right">${(it.mat.unit_price||0).toLocaleString('ko-KR')}</td>
+            <td align="right">${(it.mat.processing_cost||0).toLocaleString('ko-KR')}</td>
+            <td align="right"><b>${((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty).toLocaleString('ko-KR')}</b></td>
+        </tr>`).join('');
+        const total=items.reduce((s,it)=>s+((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty,0);
+        const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서-${supName}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans KR',sans-serif;padding:30px;color:#1e293b;font-size:13px;}
+        h1{font-size:22px;font-weight:900;margin-bottom:4px;}
+        .sub{font-size:12px;color:#64748b;margin-bottom:18px;}
+        .info{background:#f4f6fa;border-radius:8px;padding:14px 18px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+        .info-row{font-size:12px;}.info-label{font-weight:700;color:#64748b;margin-right:8px;}
+        table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+        thead{background:#0f1923;}th{color:rgba(255,255,255,.8);padding:8px 10px;font-size:11px;letter-spacing:.5px;text-align:left;}
+        td{padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;}
+        .total{text-align:right;font-size:16px;font-weight:900;color:#0f1923;padding:12px 0;}
+        .total span{color:#f0a500;font-size:20px;}
+        .footer{text-align:center;font-size:11px;color:#94a3b8;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;}
+        @media print{body{padding:15px;}}</style></head><body>
+        <h1>발주서 (PURCHASE ORDER)</h1>
+        <div class="sub">발주일: ${new Date().toLocaleDateString('ko-KR')} &nbsp;|&nbsp; 럭키스타 캠핑카라반</div>
+        <div class="info">
+            <div class="info-row"><span class="info-label">공급업체</span>${supName}</div>
+            <div class="info-row"><span class="info-label">사업자번호</span>${sup.business_no||'-'}</div>
+            <div class="info-row"><span class="info-label">담당자</span>${sup.contact_person||'-'}</div>
+            <div class="info-row"><span class="info-label">연락처</span>${sup.phone||'-'}</div>
+            <div class="info-row"><span class="info-label">주소</span>${sup.address||'-'}</div>
+            <div class="info-row"><span class="info-label">발주처</span>${sup.order_to||'-'}</div>
+        </div>
+        <table><thead><tr><th>품명</th><th>규격/재질</th><th>두께</th><th>발주수량</th><th>단가(원)</th><th>가공비(원)</th><th>금액(원)</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <div class="total">총 발주금액: <span>${total.toLocaleString('ko-KR')}원</span></div>
+        <div class="footer">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면</div>
+        <script>window.onload=()=>{window.print();}<\/script></body></html>`;
+        const w=window.open('','_blank','width=900,height=700');
+        if(w){w.document.write(html);w.document.close();}
+    };
+
+    // ★ 발주 완료 처리
+    const completeOrder=async(supName)=>{
+        if(!confirm(`[${supName}] 발주 완료 처리하시겠습니까?
+재고 수량이 발주 수량만큼 증가합니다.`))return;
+        const items=orderCart.filter(it=>it.mat.supplier===supName);
+        for(const it of items){
+            const newQty=(it.mat.stock_qty||0)+it.qty;
+            await sb.from('materials').update({stock_qty:newQty}).eq('id',it.mat.id);
+            setMaterials(p=>p.map(m=>m.id===it.mat.id?{...m,stock_qty:newQty}:m));
+        }
+        setOrderCart(p=>p.filter(it=>it.mat.supplier!==supName));
+        toast('✅ 발주 완료 — 재고 반영됨');
+    };
+
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
-        {showModal&&<MaterialModal sb={sb} matCats={matCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📦 자재 관리</h1><p>자재 등록 · 단가 · 재고 · 이름순 정렬</p></div>
             <div className="btn-row">
@@ -827,6 +1038,10 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
                     <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={importExcel} disabled={importing}/>
                 </label>
                 <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 자재 등록</button>
+                {orderCart.length>0&&<div className="cart-badge">
+                    <button className="btn btn-gold" onClick={()=>setShowOrderForm(true)}>📋 발주서 ({orderCart.length})</button>
+                    <span className="cart-count">{orderCart.length}</span>
+                </div>}
             </div>
         </div>
         {/* 카테고리 필터 */}
@@ -840,6 +1055,99 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
                 style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
+        {/* ★ 수량입력 팝업 */}
+        {showOrderQty&&(<div className="modal-overlay" onClick={()=>setShowOrderQty(null)}>
+            <div className="modal-box sm" style={{maxWidth:320}} onClick={e=>e.stopPropagation()}>
+                <div className="modal-header"><div className="modal-title">📋 발주서에 담기</div><button className="modal-close" onClick={()=>setShowOrderQty(null)}>✕</button></div>
+                <div style={{padding:'8px 0 16px'}}>
+                    <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>{showOrderQty.name}</div>
+                    <div className="mf"><label className="ml">발주 수량</label>
+                        <input type="number" className="mi" value={orderQtyVal} min="1" autoFocus
+                            onChange={e=>setOrderQtyVal(Number(e.target.value)||1)}/>
+                    </div>
+                    <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
+                        단가: {fmt(showOrderQty.unit_price||0)}원 + 가공비: {fmt(showOrderQty.processing_cost||0)}원
+                    </div>
+                </div>
+                <div className="modal-btns">
+                    <button className="modal-cancel" onClick={()=>setShowOrderQty(null)}>취소</button>
+                    <button className="modal-ok" onClick={()=>{
+                        const exists=orderCart.find(x=>x.mat.id===showOrderQty.id);
+                        if(exists){setOrderCart(p=>p.map(x=>x.mat.id===showOrderQty.id?{...x,qty:x.qty+orderQtyVal}:x));}
+                        else{setOrderCart(p=>[...p,{mat:showOrderQty,qty:orderQtyVal}]);}
+                        setShowOrderQty(null);toast('📋 발주서에 담겼습니다');
+                    }}>담기</button>
+                </div>
+            </div>
+        </div>)}
+
+        {/* ★ 발주서 양식 */}
+        {showOrderForm&&(<div className="modal-overlay" onClick={()=>setShowOrderForm(false)}>
+            <div className="modal-box lg" style={{maxWidth:900,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+                <div className="modal-header">
+                    <div className="modal-title">📋 발주서</div>
+                    <button className="modal-close" onClick={()=>setShowOrderForm(false)}>✕</button>
+                </div>
+                {orderCart.length===0?<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>발주서에 담긴 자재가 없습니다.</div>
+                :(()=>{
+                    // 업체별 그룹핑
+                    const groups={};
+                    orderCart.forEach(it=>{const k=it.mat.supplier||'공급업체 미지정';if(!groups[k])groups[k]=[];groups[k].push(it);});
+                    return Object.entries(groups).map(([supName,items])=>{
+                        const total=items.reduce((s,it)=>s+((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty,0);
+                        const sup=suppliers.find(s=>s.name===supName);
+                        return(<div key={supName} className="order-section">
+                            <div className="order-section-header">
+                                <div>
+                                    <div className="order-supplier-name">🏢 {supName}</div>
+                                    {sup&&<div className="order-supplier-meta">{sup.contact_person&&sup.contact_person+' '}{sup.phone&&'| '+sup.phone}{sup.order_to&&' | '+sup.order_to}</div>}
+                                </div>
+                                <div style={{display:'flex',gap:8}}>
+                                    <button className="btn btn-outline btn-sm" style={{color:'#fff',borderColor:'rgba(255,255,255,.4)'}} onClick={()=>printOrder(supName,items)}>🖨 인쇄</button>
+                                    <button className="btn btn-sm" style={{background:'var(--green)',color:'#fff',border:'none'}} onClick={()=>completeOrder(supName)}>✅ 발주 완료</button>
+                                </div>
+                            </div>
+                            <div style={{overflowX:'auto'}}>
+                            <table className="order-table" style={{minWidth:600}}>
+                                <thead><tr>
+                                    <th>품명</th><th>규격/재질</th><th>두께</th>
+                                    <th className="tr">발주수량</th>
+                                    <th className="tr">단가(원)</th><th className="tr">가공비(원)</th>
+                                    <th className="tr">금액(원)</th><th style={{width:40}}></th>
+                                </tr></thead>
+                                <tbody>{items.map((it,i)=>(
+                                    <tr key={i}>
+                                        <td style={{fontWeight:700}}>{it.mat.name}</td>
+                                        <td style={{fontSize:12,color:'var(--muted)'}}>{it.mat.specification||'-'}</td>
+                                        <td style={{fontSize:12,color:'var(--muted)'}}>{it.mat.thickness||'-'}</td>
+                                        <td className="tr">
+                                            <input type="number" className="qty-input order-table" min="1" value={it.qty}
+                                                onChange={e=>setOrderCart(p=>p.map((x,j)=>x.mat.id===it.mat.id?{...x,qty:Number(e.target.value)||1}:x))}/>
+                                        </td>
+                                        <td className="tr">{fmt(it.mat.unit_price||0)}</td>
+                                        <td className="tr" style={{color:'var(--orange)'}}>{fmt(it.mat.processing_cost||0)}</td>
+                                        <td className="tr" style={{fontWeight:700}}>{fmt(((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty)}</td>
+                                        <td style={{textAlign:'center'}}>
+                                            <button className="btn-icon" onClick={()=>setOrderCart(p=>p.filter(x=>x.mat.id!==it.mat.id))}>✕</button>
+                                        </td>
+                                    </tr>
+                                ))}</tbody>
+                            </table>
+                            </div>
+                            <div className="order-footer">
+                                <span style={{fontSize:12,color:'var(--muted)'}}>{items.length}개 품목</span>
+                                <div className="order-total">발주 합계: <span>{fmt(total)}원</span></div>
+                            </div>
+                        </div>);
+                    });
+                })()}
+                <div className="modal-btns">
+                    <button className="modal-cancel" onClick={()=>setOrderCart([])}>🗑 전체 비우기</button>
+                    <button className="modal-ok" onClick={()=>setShowOrderForm(false)}>닫기</button>
+                </div>
+            </div>
+        </div>)}
+
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">{search?'검색 결과가 없습니다.':'자재가 없습니다.'}</div></div>
         :<div className="table-wrap"><table style={{minWidth:900}}>
             <thead><tr>
@@ -875,7 +1183,9 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
                             <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>🔗 열기</button>
                         </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
                     </td>
-                    <td style={{textAlign:'center'}}>
+                    <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
+                        <button className="btn btn-outline btn-xs" style={{marginBottom:3}} onClick={()=>{setShowOrderQty(m);setOrderQtyVal(1);}}>📋담기</button>
+                        <br/>
                         <button className="btn-icon" onClick={()=>{setEditing(m);setShowModal(true);}}>✏️</button>
                         <button className="btn-icon" onClick={()=>del(m.id)}>🗑</button>
                     </td>
@@ -2070,6 +2380,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
                     <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
                 </div>
                 <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
+                <SI label="🏢 공급사 관리" isActive={page==='supplier-list'} onNav={()=>go('supplier-list')}/>
             </div>
 
             <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
@@ -2141,6 +2452,7 @@ function App(){
     const[addProdModal,setAddProdModal]=useState(false);
     const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
+    const[suppliers,setSuppliers]=useState([]); // 공급사 목록
 
     useEffect(()=>{
         if(!config)return setAuthLoading(false);
@@ -2153,6 +2465,7 @@ function App(){
     useEffect(()=>{
         if(!sb||!user)return;
         sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
+        sb.from('suppliers').select('*').order('name').then(({data})=>{if(data)setSuppliers(data);});
         sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
     },[sb,user]);
 
@@ -2182,7 +2495,8 @@ function App(){
 
     const renderPage=()=>{
         switch(page){
-            case 'mat-list':return<MaterialList sb={sb} matCats={matCats} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat}/>;
+            case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat}/>;
+            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;

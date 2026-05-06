@@ -1354,21 +1354,30 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
 
     useEffect(()=>{
         if(!sb)return;
-        // category_id 포함해서 로드
-        sb.from('materials').select('id,name,specification,unit_price,category_id').order('name')
-          .then(({data})=>{if(data)setAllMaterials(data);});
-        if(!initial?.id)return;
-        sb.from('product_materials').select('*').eq('product_id',initial.id)
-          .then(({data})=>{
-              if(data)setMats(data.map(m=>({
-                  _catId:m.category_id||'', // 로드시 분류 복원
-                  material_id:m.material_id||'',
-                  material_name:m.material_name||'',
-                  unit_price:m.unit_price||0,
-                  quantity:m.quantity||1,
-                  total:m.total||0,
-              })));
-          });
+        // ★ 순서 보장: 자재목록 먼저 로드 후 상품자재 로드 (분류 매칭)
+        (async()=>{
+            const{data:allMatsData}=await sb.from('materials')
+                .select('id,name,specification,unit_price,category_id').order('name');
+            if(allMatsData) setAllMaterials(allMatsData);
+
+            if(!initial?.id) return;
+            const{data:pmData}=await sb.from('product_materials')
+                .select('*').eq('product_id',initial.id);
+            if(pmData){
+                setMats(pmData.map(m=>{
+                    // material_id로 자재 분류 복원
+                    const found=(allMatsData||[]).find(x=>x.id===m.material_id);
+                    return{
+                        _catId:found?.category_id||'',
+                        material_id:m.material_id||'',
+                        material_name:m.material_name||'',
+                        unit_price:Number(m.unit_price)||0,
+                        quantity:Number(m.quantity)||1,
+                        total:Number(m.total)||0,
+                    };
+                }));
+            }
+        })();
     },[sb,initial?.id]);
 
     const addMat=()=>setMats(p=>[...p,{_catId:'',material_id:'',material_name:'',unit_price:0,quantity:1,total:0}]);
@@ -1419,16 +1428,18 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                             <option value="">── 분류 선택 ──</option>
                             {matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
-                        {/* 2. 자재 품명 (분류 선택 후 필터링) */}
+                        {/* 2. 자재 품명 (분류 선택 후 필터링 / 기존값 표시) */}
                         <select className="mi" style={{fontSize:12}} value={m.material_id||''}
-                            disabled={!m._catId}
                             onChange={e=>{
                                 const mat=allMaterials.find(x=>x.id===e.target.value);
-                                if(mat)updMat(i,'__batch__',{material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
+                                if(mat)updMat(i,'__batch__',{_catId:mat.category_id||'',material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
                                 else updMat(i,'material_id','');
                             }}>
                             <option value="">{m._catId?'── 품명 선택 ──':'← 분류 먼저 선택'}</option>
-                            {allMaterials.filter(mat=>mat.category_id===m._catId).map(mat=>(
+                            {/* 저장된 값이 현재 목록에 없을 때도 표시 */}
+                            {m.material_id&&!allMaterials.filter(x=>x.category_id===m._catId).find(x=>x.id===m.material_id)&&
+                                <option value={m.material_id}>{m.material_name} (저장됨)</option>}
+                            {allMaterials.filter(mat=>!m._catId||mat.category_id===m._catId).map(mat=>(
                                 <option key={mat.id} value={mat.id}>{mat.name}{mat.specification?' ('+mat.specification+')':''}</option>
                             ))}
                         </select>

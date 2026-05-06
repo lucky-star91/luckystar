@@ -403,10 +403,10 @@ const uid = () => Math.random().toString(36).substr(2,9);
 let _tt; const toast = msg=>{const el=document.getElementById('__toast');if(!el)return;el.textContent=msg;el.style.display='block';clearTimeout(_tt);_tt=setTimeout(()=>el.style.display='none',2800);};
 
 // ★ 상태 목록
-const STATUS_LIST = ['가견적발송','방문상담 및 실측','견적완료','제작중','설치완료'];
-const STATUS_COLOR = {'가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','견적완료':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a'};
-const STATUS_BG    = {'가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','견적완료':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7'};
-const STATUS_ICON  = {'가견적발송':'📤','방문상담 및 실측':'🏠','견적완료':'✅','제작중':'🔧','설치완료':'🎉'};
+const STATUS_LIST = ['가견적발송','방문상담 및 실측','견적예정','제작중','설치완료'];
+const STATUS_COLOR = {'가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','견적예정':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a'};
+const STATUS_BG    = {'가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','견적예정':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7'};
+const STATUS_ICON  = {'가견적발송':'📤','방문상담 및 실측':'🏠','견적예정':'✅','제작중':'🔧','설치완료':'🎉'};
 
 const StatusBadge = ({status}) => (
     <span className="status-badge" style={{background:STATUS_BG[status]||'#f1f5f9',color:STATUS_COLOR[status]||'#64748b'}}>
@@ -459,13 +459,20 @@ function SetupScreen({onDone}){const[url,setUrl]=useState('');const[key,setKey]=
 function LoginScreen({sb}){
     const[loading,setLoading]=useState(false);
 
-    // ★ 인앱 브라우저 감지 (카카오톡, 네이버, 인스타그램 등)
+    // ★ 인앱 브라우저 감지 (카카오톡·네이버 등 앱 내 브라우저만 차단, Chrome/Safari는 허용)
     const isInApp=(()=>{
-        const ua=window.navigator.userAgent||'';
-        const isAndroidWV=/wv/.test(ua)&&/Android/.test(ua);
-        const isIOSInApp=/iPhone|iPad/.test(ua)&&!/Safari\//.test(ua)&&/AppleWebKit/.test(ua)&&!/CriOS/.test(ua);
-        const isKnownApp=/KAKAOTALK|kakaotalk|NAVER|naver|Line\/|Instagram|FB_IAB|FBAN|Twitter|Snapchat|Whale/i.test(ua);
-        return isAndroidWV||isIOSInApp||isKnownApp;
+        try{
+            const ua=window.navigator?.userAgent||'';
+            // Android 정식 WebView (wv 포함, Chrome은 미포함)
+            if(/Android/.test(ua)&&/wv/.test(ua)) return true;
+            // 명백히 알려진 인앱 브라우저
+            if(/KAKAOTALK|kakaotalk/i.test(ua)) return true;
+            if(/NAVER|NaverSearch/i.test(ua)) return true;
+            if(/Line\/[0-9]/i.test(ua)) return true;
+            if(/Instagram\/[0-9]|FB_IAB|FBAN/i.test(ua)) return true;
+            if(/Snapchat\/[0-9]/i.test(ua)) return true;
+            return false;
+        }catch(e){return false;}
     })();
 
     const copyUrl=()=>{
@@ -1214,7 +1221,7 @@ function EstimateList({sb,onEdit,onNew}){
 ═══════════════════════════════════════ */
 const SCHED_MAP = {
     '방문상담 및 실측': {label:'방문상담',  color:'#c2410c', bg:'#ffedd5'},
-    '견적완료':         {label:'견적완료',  color:'#6d28d9', bg:'#ede9fe'},
+    '견적예정':         {label:'견적예정',  color:'#6d28d9', bg:'#ede9fe'},
     '제작중':           {label:'설치예정',  color:'#92400e', bg:'#fef9c3'},
 };
 

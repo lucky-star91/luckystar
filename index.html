@@ -231,7 +231,50 @@ td{padding:9px 14px;vertical-align:middle;}
 .status-timeline-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;margin-bottom:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
 .status-timeline-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .status-timeline-title::after{content:'';flex:1;height:1px;background:var(--border);}
-.status-row{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
+.status-row{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
+/* 완료 체크박스 */
+.status-check{width:18px;height:18px;cursor:pointer;accent-color:var(--green);flex-shrink:0;}
+.status-check-done .status-row-icon{background:var(--green)!important;box-shadow:0 2px 8px rgba(34,197,94,.3)!important;}
+/* 길안내 버튼 */
+.nav-btn{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;transition:background .15s;flex-shrink:0;}
+.nav-btn:hover{background:#1558b0;}
+/* 일정표 캘린더 */
+.cal-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.cal-title{font-size:18px;font-weight:800;color:var(--navy);flex:1;text-align:center;}
+.cal-nav{background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 14px;font-size:14px;cursor:pointer;transition:all .15s;}
+.cal-nav:hover{border-color:var(--blue);color:var(--blue);}
+.cal-today{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
+.cal-legend{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.cal-legend-item{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;}
+/* 2주간 */
+.biweek-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.biweek-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+.biweek-hd{padding:8px 4px;text-align:center;font-size:11px;font-weight:700;color:var(--muted);background:var(--navy);color:rgba(255,255,255,.6);letter-spacing:.5px;}
+.biweek-hd.weekend{color:rgba(255,100,100,.8);}
+.biweek-cell{min-height:90px;padding:6px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;position:relative;}
+.biweek-cell:nth-child(7n){border-right:none;}
+.biweek-cell.today{background:#f0f6ff;}
+.biweek-cell.weekend{background:#fafafa;}
+.biweek-date{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;}
+.biweek-cell.today .biweek-date{background:var(--blue);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;}
+/* 월간 */
+.month-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+.month-hd{padding:10px 4px;text-align:center;font-size:11px;font-weight:700;background:var(--navy);color:rgba(255,255,255,.6);letter-spacing:.5px;}
+.month-hd.weekend{color:rgba(255,100,100,.8);}
+.month-cell{min-height:110px;padding:6px 5px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;}
+.month-cell:nth-child(7n){border-right:none;}
+.month-cell.today{background:#f0f6ff;}
+.month-cell.weekend{background:#fafafa;}
+.month-cell.other-month{opacity:.4;}
+.month-date{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:3px;}
+.month-cell.today .month-date{background:var(--blue);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;}
+/* 일정 이벤트 */
+.cal-event{padding:3px 6px;border-radius:5px;margin-bottom:3px;cursor:pointer;font-size:10px;line-height:1.4;transition:opacity .15s;}
+.cal-event:hover{opacity:.8;}
+.cal-event-time{font-weight:700;display:block;}
+.cal-event-label{font-weight:600;display:block;}
+.cal-event-client{display:block;opacity:.85;}
 .status-row:last-child{border-bottom:none;}
 .status-row-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .2s;}
 .status-row-icon.done{background:var(--green);box-shadow:0 2px 8px rgba(34,197,94,.3);}
@@ -410,7 +453,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
-    const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate';
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('sched')?'schedule':'estimate';
     const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});};
     const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});};
 
@@ -490,6 +533,17 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
             <div className={`nav-sub ${open==='estimate'?'open':''}`}>
                 <SI label="새 견적서" isActive={page==='est-new'} onNav={()=>setPage('est-new')}/>
                 <SI label="견적 목록" isActive={page==='est-list'} onNav={()=>setPage('est-list')}/>
+            </div>
+
+            {/* ── 일정표 ── */}
+            <div className={`nav-row ${page.startsWith('sched')?'active':''} ${open==='schedule'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('schedule')}>
+                    <span className="nav-icon">📅</span>일정표<span className="nav-arrow">▶</span>
+                </div>
+            </div>
+            <div className={`nav-sub ${open==='schedule'?'open':''}`}>
+                <SI label="2주간 일정" isActive={page==='sched-biweek'} onNav={()=>setPage('sched-biweek')}/>
+                <SI label="월간 일정" isActive={page==='sched-month'} onNav={()=>setPage('sched-month')}/>
             </div>
 
         </nav>
@@ -581,6 +635,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
     const[depositAmount,setDepositAmount]=useState('');
     const[midAmount,setMidAmount]=useState('');
     const[balancePaid,setBalancePaid]=useState(false);
+    const[statusChecked,setStatusChecked]=useState({}); // 진행상태 완료체크
 
     // ★ edit: DB 로드
     useEffect(()=>{
@@ -598,7 +653,9 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 setPaymentStatus(est.payment_status||'입금전');
                 setDepositAmount(est.deposit_amount||'');
                 setMidAmount(est.mid_amount||'');
-                setBalancePaid(!!est.balance_paid);}
+                setBalancePaid(!!est.balance_paid);
+                let sc={};try{sc=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch(e){}
+                setStatusChecked(sc);}
             const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
             const mc=(cd||[]).map(c=>({id:c.id,name:c.name,order:c.display_order}));setCats(mc);
             if(mc.length>0){const{data:id_}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');setItems((id_||[]).map(i=>({id:i.id,catId:i.cat_id,name:i.name,spec:i.specification||'',qty:i.quantity||1,unitPrice:i.unit_price||0,laborCost:i.labor_cost||0,total:i.total_amount||0,imgUrl:i.image_url||''})));}
@@ -654,6 +711,13 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(mode==='edit')await sb.from('estimates').update({status_dates:JSON.stringify(nd),status:latestStatus}).eq('id',estimateId);
     };
 
+    // ★ 진행상태 완료 체크
+    const updStatusChecked=async(status,checked)=>{
+        const nc={...statusChecked,[status]:checked};
+        setStatusChecked(nc);
+        if(mode==='edit')await sb.from('estimates').update({status_checked:JSON.stringify(nc)}).eq('id',estimateId);
+    };
+
     // ★ 상품 선택 → 견적 추가
     const addProductToEst=async(prod,prodCatName,targetCatId)=>{
         let estCat;
@@ -668,6 +732,55 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(mode==='new'){setItems(p=>[...p,ni]);}
         else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
         toast('✅ '+prod.name+' 추가됨');
+    };
+
+    // ★ 인쇄 팝업
+    const printEstimate=()=>{
+        const rows=cats.map(cat=>items.filter(i=>i.catId===cat.id).map(item=>`
+            <tr><td>${cat.name}</td><td>${item.name}</td><td>${item.spec||''}</td>
+            <td style="text-align:right">${item.qty}</td>
+            <td style="text-align:right">${fmt(item.unitPrice)}</td>
+            <td style="text-align:right">${fmt(item.laborCost)}</td>
+            <td style="text-align:right;font-weight:700">${fmt(item.total)}</td></tr>`).join('')).join('');
+        const pStatus=STATUS_LIST.map(s=>{const d=statusDates[s];const chk=statusChecked[s];if(!d&&!chk)return'';return`<tr><td>${STATUS_ICON[s]} ${s}</td><td>${d?new Date(d).toLocaleString('ko-KR'):'-'}</td><td>${chk?'✅':''}</td></tr>`;}).join('');
+        const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>럭키스타 견적서</title>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
+        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans KR',sans-serif;padding:28px;color:#1e293b;font-size:13px;}
+        .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;border-bottom:2px solid #0f1923;padding-bottom:12px;}
+        h1{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:2px;color:#0f1923;}
+        .sub{font-size:11px;color:#64748b;margin-top:2px;}
+        .ci{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#f4f6fa;border-radius:8px;padding:12px;margin-bottom:16px;}
+        .ci label{font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:2px;}
+        .ci span{font-size:13px;font-weight:600;}
+        table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
+        thead{background:#0f1923;}th{color:rgba(255,255,255,.8);padding:7px 9px;text-align:left;font-size:10px;letter-spacing:1px;}
+        td{padding:7px 9px;border-bottom:1px solid #e2e8f0;}
+        .tot{background:linear-gradient(135deg,#0f1923,#1a3a5c);color:#fff;border-radius:10px;padding:16px 20px;margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;}
+        .tot-val{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f0a500;letter-spacing:1px;}
+        .tot-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;}
+        .tot-bd{display:flex;gap:18px;flex-wrap:wrap;}
+        .bd{text-align:right;}.bd-l{font-size:10px;color:rgba(255,255,255,.4);}.bd-v{font-size:14px;font-weight:700;color:rgba(255,255,255,.8);}
+        .st-section{margin:14px 0;}.st-section h3{font-size:11px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+        .ft{text-align:center;margin-top:16px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px;}
+        @media print{body{padding:15px;}}</style></head><body>
+        <div class="hd"><div><h1>LUCKYSTAR CARAVAN</h1><div class="sub">견적서 · ${mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase()}</div></div>
+        <div style="text-align:right"><div style="font-size:11px;color:#64748b">작성일</div><div style="font-weight:700">${new Date().toLocaleDateString('ko-KR')}</div><div style="font-size:11px;color:#64748b;margin-top:4px">유효기간 30일</div></div></div>
+        <div class="ci">
+        <div><label>고객명</label><span>${client.name||'-'}</span></div>
+        <div><label>연락처</label><span>${client.phone||'-'}</span></div>
+        <div><label>주소</label><span>${client.address||'-'}</span></div>
+        <div><label>차량 모델</label><span>${client.model||'-'}</span></div>
+        <div><label>카라반 유형</label><span>${client.caravan||'-'}</span></div>
+        <div><label>담당자</label><span>${client.manager||'-'}</span></div></div>
+        <table><thead><tr><th>카테고리</th><th>품목명</th><th>규격/재질</th><th style="text-align:right">수량</th><th style="text-align:right">단가</th><th style="text-align:right">노무비</th><th style="text-align:right">합계</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <div class="tot"><div><div style="font-size:10px;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">최종 견적금액 (VAT 포함)</div><div class="tot-val">${fmt(grandVat)}원</div><div class="tot-sub">공급가액 ${fmt(grand)}원 + VAT ${fmt(vat)}원</div></div>
+        <div class="tot-bd"><div class="bd"><div class="bd-l">자재비</div><div class="bd-v">${fmt(totalMat)}원</div></div><div class="bd"><div class="bd-l">노무비</div><div class="bd-v">${fmt(totalLab)}원</div></div><div class="bd"><div class="bd-l">공급가액</div><div class="bd-v">${fmt(grand)}원</div></div><div class="bd"><div class="bd-l">VAT 10%</div><div class="bd-v" style="color:#f0a500">${fmt(vat)}원</div></div></div></div>
+        ${pStatus?`<div class="st-section"><h3>진행 상태</h3><table><thead><tr><th>상태</th><th>일시</th><th>완료</th></tr></thead><tbody>${pStatus}</tbody></table></div>`:''}
+        <div class="ft">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | ${new Date().toLocaleDateString('ko-KR')} 기준</div>
+        <script>window.onload=()=>{window.print();}<\/script></body></html>`;
+        const w=window.open('','_blank','width=920,height=720');
+        if(w){w.document.write(html);w.document.close();}
     };
 
     // ★ DB 안내 팝업
@@ -721,7 +834,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     deposit_amount:depositNum,
                     mid_amount:midNum,
                     balance_amount:balanceAmount,
-                    balance_paid:balancePaid
+                    balance_paid:balancePaid,
+                    status_checked:JSON.stringify(statusChecked)
                 }]).select();
                 if(e1) throw new Error('[estimates] '+e1.message+(e1.code?' ('+e1.code+')':''));
                 if(!ed||!ed[0]) throw new Error('견적 데이터가 반환되지 않았습니다');
@@ -766,6 +880,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     mid_amount:midNum,
                     balance_amount:balanceAmount,
                     balance_paid:balancePaid,
+                    status_checked:JSON.stringify(statusChecked),
                     updated_at:now
                 }).eq('id',estimateId);
                 if(e4) throw new Error('[estimates update] '+e4.message);
@@ -799,7 +914,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
                 <button className="btn btn-green" onClick={()=>setShowPick(true)}>🛍 상품 선택</button>
                 <button className="btn btn-gold" onClick={exportExcel}>📊 엑셀</button>
-                <button className="btn btn-outline" onClick={()=>window.print()}>🖨 인쇄</button>
+                <button className="btn btn-outline" onClick={printEstimate}>🖨 인쇄</button>
                 <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
                 <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'저장 중...':'💾 저장'}</button>
             </div>
@@ -816,21 +931,34 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 <div className="status-timeline-title" style={{color:'var(--navy)'}}>📊 진행 상태 관리</div>
                 {STATUS_LIST.map(s=>{
                     const hasDate=!!statusDates[s];
+                    const isChecked=!!statusChecked[s];
                     const isCurrent=currentStatus===s;
-                    const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate;
-                    const cls=isCurrent?'current':isDone?'done':'pending';
+                    const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate||isChecked;
+                    const cls=isChecked?'done':isCurrent?'current':isDone?'done':'pending';
                     return(
-                        <div key={s} className="status-row">
+                        <div key={s} className={`status-row ${isChecked?'status-check-done':''}`}>
                             <div className={`status-row-icon ${cls}`}>{STATUS_ICON[s]}</div>
                             <div className="status-row-info">
-                                <div className={`status-row-label ${cls}`}>{s}{isCurrent&&<span style={{fontSize:10,marginLeft:6,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 8px',borderRadius:10}}>현재</span>}</div>
+                                <div className={`status-row-label ${cls}`}>{s}
+                                    {isCurrent&&!isChecked&&<span style={{fontSize:10,marginLeft:6,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 8px',borderRadius:10}}>현재</span>}
+                                    {isChecked&&<span style={{fontSize:10,marginLeft:6,background:'#dcfce7',color:'#16a34a',padding:'1px 8px',borderRadius:10}}>완료</span>}
+                                </div>
                                 {statusDates[s]&&<div className="status-row-time">{new Date(statusDates[s]).toLocaleString('ko-KR')}</div>}
                             </div>
+                            {/* 날짜/시간 입력 */}
                             <div>
                                 <input type="datetime-local" className={`status-dt-input ${statusDates[s]?'has-value':''}`}
                                     value={statusDates[s]?statusDates[s].slice(0,16):''}
                                     onChange={e=>updStatusDate(s,e.target.value)}
                                     title={s+' 날짜/시간'}/>
+                            </div>
+                            {/* 완료 체크박스 */}
+                            <div style={{display:'flex',alignItems:'center',gap:5}}>
+                                <input type="checkbox" className="status-check"
+                                    checked={isChecked}
+                                    onChange={e=>updStatusChecked(s,e.target.checked)}
+                                    title="완료"/>
+                                <span style={{fontSize:10,color:'var(--muted)',whiteSpace:'nowrap'}}>완료</span>
                             </div>
                         </div>
                     );
@@ -840,7 +968,22 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
 
         {/* 고객 정보 */}
         <div className="card"><div className="card-title">고객 정보</div>
-            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['model','차량 모델','카니발, 스타리아'],['caravan','카라반 유형','팝업, 에어스트림'],['manager','담당자','담당자명']].map(([k,l,p])=><div className="info-field" key={k}><label>{l}</label><input value={client[k]||''} onChange={e=>updClient(k,e.target.value)} placeholder={p}/></div>)}</div>
+            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['model','차량 모델','카니발, 스타리아'],['caravan','카라반 유형','팝업, 에어스트림'],['manager','담당자','담당자명']].map(([k,l,p])=>(
+                    <div className="info-field" key={k}>
+                        <label>{l}</label>
+                        <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                            <input style={{flex:1}} value={client[k]||''} onChange={e=>updClient(k,e.target.value)} placeholder={p}/>
+                            {k==='address'&&client.address&&(
+                                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                                    <button className="nav-btn" title="T맵으로 길안내"
+                                        onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://tmap.life/${a}`,'_blank');}}>🗺T맵</button>
+                                    <button className="nav-btn" style={{background:'var(--green)'}} title="카카오맵으로 길안내"
+                                        onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://map.kakao.com/?q=${a}`,'_blank');}}>🗺카카오</button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+            ))}</div>
         </div>
 
         {/* 카테고리 버튼 */}
@@ -1007,6 +1150,190 @@ function EstimateList({sb,onEdit,onNew}){
     </div>);
 }
 
+/* ═══════════════════════════════════════
+   ★ 일정표
+═══════════════════════════════════════ */
+const SCHED_MAP = {
+    '방문상담 및 실측': {label:'방문상담',  color:'#c2410c', bg:'#ffedd5'},
+    '견적완료':         {label:'견적완료',  color:'#6d28d9', bg:'#ede9fe'},
+    '제작중':           {label:'설치예정',  color:'#92400e', bg:'#fef9c3'},
+};
+
+function Schedule({sb, onEditEst}){
+    const[view,setView]=useState('biweek');
+    const[base,setBase]=useState(new Date());
+    const[estimates,setEstimates]=useState([]);
+    const[loading,setLoading]=useState(true);
+    const[popup,setPopup]=useState(null);
+
+    useEffect(()=>{
+        if(!sb)return;
+        (async()=>{
+            setLoading(true);
+            const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});
+            if(data)setEstimates(data);
+            setLoading(false);
+        })();
+    },[sb]);
+
+    const getEvents=()=>{
+        const evts=[];
+        estimates.forEach(est=>{
+            let dates={};
+            try{dates=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch{}
+            Object.entries(SCHED_MAP).forEach(([status,info])=>{
+                const ds=dates[status];
+                if(ds){
+                    const d=new Date(ds);
+                    if(!isNaN(d)){
+                        evts.push({
+                            date:d,label:info.label,color:info.color,bg:info.bg,
+                            clientName:est.client_name||'고객',
+                            time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
+                            est
+                        });
+                    }
+                }
+            });
+        });
+        return evts;
+    };
+
+    const events=getEvents();
+    const forDay=d=>events.filter(e=>
+        e.date.getFullYear()===d.getFullYear()&&
+        e.date.getMonth()===d.getMonth()&&
+        e.date.getDate()===d.getDate()
+    ).sort((a,b)=>a.date-b.date);
+
+    const EventChip=({ev})=>(
+        <div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>setPopup(ev.est)}>
+            <span className="cal-event-time">{ev.time}</span>
+            <span className="cal-event-label">{ev.label}</span>
+            <span className="cal-event-client">{ev.clientName}</span>
+        </div>
+    );
+
+    const DAY_NAMES=['월','화','수','목','금','토','일'];
+
+    const renderBiweek=()=>{
+        const today=new Date(base);
+        const dow=today.getDay();
+        const mon=new Date(today);
+        mon.setDate(today.getDate()-(dow===0?6:dow-1));
+        const days=Array.from({length:14},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;});
+        return(
+            <div className="biweek-wrap">
+                <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
+                    {DAY_NAMES.map((d,i)=><div key={i} className={`biweek-hd ${i>=5?'weekend':''}`}>{d}</div>)}
+                    {DAY_NAMES.map((d,i)=><div key={i+7} className={`biweek-hd ${i>=5?'weekend':''}`}>{d}</div>)}
+                </div>
+                <div className="biweek-grid">
+                    {days.map((day,i)=>{
+                        const isToday=day.toDateString()===new Date().toDateString();
+                        const evts=forDay(day);
+                        return(
+                            <div key={i} className={`biweek-cell ${isToday?'today':''} ${i%7>=5?'weekend':''}`}>
+                                <div className="biweek-date">{day.getDate()}</div>
+                                {evts.map((ev,j)=><EventChip key={j} ev={ev}/>)}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    const renderMonth=()=>{
+        const y=base.getFullYear(),m=base.getMonth();
+        const first=new Date(y,m,1),last=new Date(y,m+1,0);
+        const start=new Date(first);
+        const fd=first.getDay();
+        start.setDate(first.getDate()-(fd===0?6:fd-1));
+        const days=[];const d=new Date(start);
+        while(d<=last||days.length%7!==0){days.push(new Date(d));d.setDate(d.getDate()+1);if(days.length>42)break;}
+        return(
+            <div className="month-wrap">
+                <div className="month-grid">
+                    {DAY_NAMES.map((d,i)=><div key={i} className={`month-hd ${i>=5?'weekend':''}`}>{d}</div>)}
+                    {days.map((day,i)=>{
+                        const isToday=day.toDateString()===new Date().toDateString();
+                        const other=day.getMonth()!==m;
+                        const evts=forDay(day);
+                        return(
+                            <div key={i} className={`month-cell ${isToday?'today':''} ${other?'other-month':''} ${i%7>=5?'weekend':''}`}>
+                                <div className="month-date">{day.getDate()}</div>
+                                {evts.map((ev,j)=><EventChip key={j} ev={ev}/>)}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+
+    return(
+        <div>
+            {/* 이벤트 팝업 */}
+            {popup&&(
+                <div className="modal-overlay" onClick={()=>setPopup(null)}>
+                    <div className="modal-box sm" onClick={e=>e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div className="modal-title">📋 {popup.client_name||'고객'} 견적서</div>
+                            <button className="modal-close" onClick={()=>setPopup(null)}>✕</button>
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px'}}>
+                            {[['견적번호',popup.est_no],['연락처',popup.client_phone||'-'],['주소',popup.client_address||'-'],['차량',popup.client_model||'-'],['공급가액',fmt(popup.total_supply||0)+'원'],['결제상태',popup.payment_status||'-']].map(([l,v])=>(
+                                <div key={l} style={{display:'flex',gap:12,fontSize:13}}>
+                                    <span style={{color:'var(--muted)',fontWeight:700,minWidth:70,fontSize:11,letterSpacing:.5,textTransform:'uppercase'}}>{l}</span>
+                                    <span style={{fontWeight:600,color:'var(--navy)'}}>{v}</span>
+                                </div>
+                            ))}
+                            <div style={{marginTop:4}}><StatusBadge status={popup.status||'가견적발송'}/></div>
+                        </div>
+                        <div className="modal-btns">
+                            <button className="modal-cancel" onClick={()=>setPopup(null)}>닫기</button>
+                            <button className="modal-ok" onClick={()=>{setPopup(null);onEditEst(popup.id);}}>✏️ 견적서 수정</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="page-header">
+                <div className="page-title-wrap"><h1>📅 일정표</h1><p>견적 진행 일정 · 이벤트 클릭 시 견적서 열기</p></div>
+                <div className="btn-row">
+                    <button className={`btn ${view==='biweek'?'btn-primary':'btn-outline'}`} onClick={()=>setView('biweek')}>2주간</button>
+                    <button className={`btn ${view==='month'?'btn-primary':'btn-outline'}`} onClick={()=>setView('month')}>월간</button>
+                    <button className="btn btn-outline" onClick={()=>setBase(new Date())}>오늘</button>
+                </div>
+            </div>
+
+            {/* 범례 */}
+            <div className="cal-legend" style={{marginBottom:12}}>
+                {Object.values(SCHED_MAP).map(info=>(
+                    <span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>
+                ))}
+                <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 가견적발송·설치완료는 일정에서 제외</span>
+            </div>
+
+            {/* 이전/다음 네비 */}
+            <div className="cal-header" style={{marginBottom:14}}>
+                <button className="cal-nav" onClick={()=>{const d=new Date(base);view==='biweek'?d.setDate(d.getDate()-14):d.setMonth(d.getMonth()-1);setBase(d);}}>◀ 이전</button>
+                <span className="cal-title">
+                    {view==='biweek'
+                        ?(()=>{const d=new Date(base);const dow=d.getDay();d.setDate(d.getDate()-(dow===0?6:dow-1));const e=new Date(d);e.setDate(d.getDate()+13);return `${d.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})} ~ ${e.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})}`;})()
+                        :`${base.getFullYear()}년 ${base.getMonth()+1}월`}
+                </span>
+                <button className="cal-nav" onClick={()=>{const d=new Date(base);view==='biweek'?d.setDate(d.getDate()+14):d.setMonth(d.getMonth()+1);setBase(d);}}>다음 ▶</button>
+            </div>
+
+            {view==='biweek'?renderBiweek():renderMonth()}
+        </div>
+    );
+}
+
 function ComingSoon({icon,title,desc,tags=[]}){return<div className="coming-wrap"><div className="coming-icon">{icon}</div><div className="coming-title">{title}</div><div className="coming-desc">{desc}</div><div className="coming-tags">{tags.map(t=><span key={t} className="coming-tag">{t}</span>)}</div></div>;}
 
 /* ═══════════════════════════════════════
@@ -1066,6 +1393,8 @@ function App(){
             case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')}/>;
             // ★ 견적 수정
             case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat}/>;
+            case 'sched-biweek':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>;
+            case 'sched-month':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>;
             default:return null;
         }
     };

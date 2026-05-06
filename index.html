@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>럭키스타 캠핑카라반 - 관리 시스템</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0f1923;--navy2:#1a2637;--blue:#1e6fd9;--gold:#f0a500;--text:#1e293b;--muted:#64748b;--border:#e2e8f0;--bg:#f4f6fa;--red:#ef4444;--green:#22c55e;--purple:#7c3aed;--orange:#f97316;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+#root{display:flex;width:100%;min-height:100vh;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--blue);color:#fff;}.btn-primary:hover{background:#1558b0;}
+.btn-gold{background:var(--gold);color:var(--navy);}.btn-gold:hover{background:#d4900a;}
+.btn-outline{background:#fff;color:var(--text);border:1.5px solid var(--border);}.btn-outline:hover{border-color:var(--blue);color:var(--blue);}
+.btn-green{background:var(--green);color:#fff;}.btn-green:hover{background:#16a34a;}
+.btn-red{background:var(--red);color:#fff;}.btn-red:hover{background:#dc2626;}
+.btn-sm{padding:6px 12px;font-size:12px;}.btn-xs{padding:4px 8px;font-size:11px;}
+.btn-icon{background:none;border:none;cursor:pointer;font-size:15px;padding:3px 5px;line-height:1;transition:opacity .15s;}.btn-icon:hover{opacity:.6;}
+.card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:22px 26px;margin-bottom:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.card-title{font-size:11px;font-weight:700;color:var(--blue);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border);}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:26px;gap:16px;flex-wrap:wrap;}
+.page-title-wrap h1{font-size:24px;font-weight:900;color:var(--navy);}
+.page-title-wrap p{font-size:12px;color:var(--muted);margin-top:3px;}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+.badge-blue{background:#dbeafe;color:var(--blue);}
+.badge-green{background:#dcfce7;color:#16a34a;}
+.badge-gray{background:var(--bg);color:var(--muted);}
+.loading-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100vh;gap:16px;}
+.loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9999;animation:slideUp .3s ease;}
+@keyframes slideUp{from{transform:translateY(16px);opacity:0;}to{transform:none;opacity:1;}}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:12px;text-align:center;}
+.empty-icon{font-size:40px;opacity:.35;}.empty-text{font-size:14px;color:var(--muted);}
+
+/* 로그인 */
+.login-wrap{display:flex;width:100%;min-height:100vh;}
+.login-left{flex:1;background:linear-gradient(135deg,#0f1923,#1a3050);display:flex;flex-direction:column;justify-content:center;padding:60px;}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:48px;color:#fff;letter-spacing:3px;line-height:1;margin-bottom:8px;}
+.login-logo span{color:var(--gold);}
+.login-tagline{font-size:13px;color:rgba(255,255,255,.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:48px;}
+.lf-item{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+.lf-icon{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.lf-text strong{display:block;font-size:13px;color:#fff;font-weight:700;}
+.lf-text span{font-size:11px;color:rgba(255,255,255,.4);}
+.login-right{width:460px;background:#fff;display:flex;flex-direction:column;justify-content:center;padding:60px 50px;flex-shrink:0;}
+.login-title{font-size:24px;font-weight:900;color:var(--navy);margin-bottom:6px;}
+.login-sub{font-size:13px;color:var(--muted);margin-bottom:36px;line-height:1.7;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.field input{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .15s,background .15s;}
+.field input:focus{border-color:var(--blue);background:#f0f6ff;}
+.setup-block{background:var(--bg);border-radius:12px;padding:20px;margin-bottom:24px;}
+.setup-block-title{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;}
+.btn-google{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;background:#fff;border:2px solid var(--border);border-radius:10px;padding:14px 20px;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;color:var(--text);cursor:pointer;transition:all .15s;}
+.btn-google:hover{border-color:var(--blue);background:#f0f6ff;color:var(--blue);}
+.btn-google:disabled{opacity:.5;cursor:not-allowed;}
+.login-divider{display:flex;align-items:center;gap:12px;margin:20px 0;}
+.login-divider::before,.login-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.login-divider span{font-size:11px;color:var(--muted);}
+.login-notice{font-size:11px;color:var(--muted);text-align:center;line-height:1.8;}
+
+/* 사이드바 */
+.sidebar{width:240px;background:var(--navy);position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:100;}
+.sb-header{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,.07);}
+.sb-logo{font-family:'Bebas Neue',sans-serif;font-size:20px;color:#fff;letter-spacing:2px;}
+.sb-logo span{color:var(--gold);}
+.sb-sub{font-size:10px;color:rgba(255,255,255,.28);letter-spacing:1px;margin-top:2px;}
+.sb-user{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);}
+.sb-avatar{width:32px;height:32px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden;}
+.sb-avatar img{width:100%;height:100%;object-fit:cover;}
+.sb-username{font-size:12px;font-weight:600;color:rgba(255,255,255,.75);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sb-logout{background:none;border:none;color:rgba(255,255,255,.28);cursor:pointer;font-size:18px;transition:color .15s;padding:4px;flex-shrink:0;line-height:1;}
+.sb-logout:hover{color:var(--red);}
+.sb-nav{flex:1;overflow-y:auto;padding:8px 0;}
+.sb-nav::-webkit-scrollbar{width:3px;}
+.sb-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);}
+.nav-row{display:flex;align-items:center;border-left:3px solid transparent;transition:all .15s;}
+.nav-row:hover{background:rgba(255,255,255,.04);}
+.nav-row.active{background:rgba(255,255,255,.07);border-left-color:var(--gold);}
+.nav-label{display:flex;align-items:center;gap:10px;flex:1;padding:10px 0 10px 20px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.5);user-select:none;transition:color .15s;}
+.nav-row:hover .nav-label,.nav-row.active .nav-label{color:rgba(255,255,255,.9);}
+.nav-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0;}
+.nav-arrow{font-size:9px;transition:transform .2s;margin-left:4px;}
+.nav-row.open .nav-arrow{transform:rotate(90deg);}
+.nav-plus{background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:16px;padding:10px 14px 10px 4px;line-height:1;transition:color .15s;flex-shrink:0;}
+.nav-plus:hover{color:var(--gold);}
+.nav-sub{overflow:hidden;max-height:0;transition:max-height .3s ease;}
+.nav-sub.open{max-height:500px;}
+.nav-sub-item{display:flex;align-items:center;gap:8px;padding:7px 12px 7px 50px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.38);transition:color .15s;}
+.nav-sub-item:hover{color:rgba(255,255,255,.72);}
+.nav-sub-item.active{color:var(--gold);font-weight:700;}
+.nav-sub-dot{width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.nav-sub-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nav-sub-del{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
+.nav-sub-item:hover .nav-sub-del{color:rgba(255,255,255,.3);}
+.nav-sub-del:hover{color:var(--red) !important;}
+.sb-footer{padding:14px 20px;border-top:1px solid rgba(255,255,255,.07);}
+.sb-total-label{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
+.sb-total-val{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);letter-spacing:1px;}
+.sb-status{font-size:10px;color:rgba(255,255,255,.22);margin-top:5px;display:flex;align-items:center;gap:5px;}
+.dot-green{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.main{margin-left:240px;flex:1;padding:32px 36px;min-height:100vh;}
+
+/* 모달 */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;}
+.modal-box{background:#fff;border-radius:16px;padding:30px;width:640px;max-width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.modal-box.sm{width:420px;}.modal-box.lg{width:880px;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+.modal-title{font-size:18px;font-weight:800;color:var(--navy);}
+.modal-close{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;}
+.modal-close:hover{color:var(--text);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.mf{margin-bottom:14px;}.mf.full{grid-column:1/-1;}
+.ml{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block;}
+.mi,.ms{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .15s,background .15s;background:#fff;color:var(--text);}
+.mi:focus,.ms:focus{border-color:var(--blue);background:#f0f6ff;}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:24px;padding-top:20px;border-top:1px solid var(--border);}
+.modal-cancel{background:var(--bg);color:var(--muted);border:none;border-radius:8px;padding:10px 20px;font-family:'Noto Sans KR',sans-serif;font-weight:700;cursor:pointer;}
+.modal-ok{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 26px;font-family:'Noto Sans KR',sans-serif;font-weight:700;cursor:pointer;}
+.img-area{border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+.img-area:hover{border-color:var(--blue);background:#f0f6ff;}
+.img-placeholder{color:var(--muted);font-size:13px;}
+.img-placeholder span{font-size:26px;display:block;margin-bottom:4px;}
+
+/* 자재 필요자재 섹션 */
+.mat-req-section{background:var(--bg);border-radius:10px;padding:16px;margin-top:16px;}
+.mat-req-title{font-size:11px;font-weight:700;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.mat-req-title::after{content:'';flex:1;height:1px;background:rgba(124,58,237,.2);}
+.mat-add-row{display:grid;grid-template-columns:1fr 1fr 80px auto;gap:8px;align-items:end;margin-bottom:12px;}
+.mat-add-btn{background:var(--purple);color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;white-space:nowrap;}
+.mat-add-btn:hover{background:#6d28d9;}
+.mat-list{border:1.5px solid var(--border);border-radius:8px;overflow:hidden;background:#fff;}
+.mat-list-head{display:grid;grid-template-columns:1fr 1fr 80px 90px 36px;background:var(--navy);}
+.mat-list-head span{padding:8px 12px;font-size:10px;font-weight:700;color:rgba(255,255,255,.55);letter-spacing:1px;text-transform:uppercase;}
+.mat-list-row{display:grid;grid-template-columns:1fr 1fr 80px 90px 36px;border-top:1px solid #f1f5f9;align-items:center;}
+.mat-list-row:hover{background:#f8faff;}
+.mat-list-row span{padding:8px 12px;font-size:13px;}
+.mat-list-del{background:none;border:none;color:#cbd5e1;cursor:pointer;font-size:14px;padding:8px 10px;}
+.mat-list-del:hover{color:var(--red);}
+.mat-list-empty{padding:20px;text-align:center;color:var(--muted);font-size:12px;}
+.mat-total-row{display:flex;justify-content:flex-end;padding:8px 12px;border-top:2px solid var(--border);background:#f8faff;}
+
+/* 필터 탭 */
+.cat-filter{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;}
+.cat-tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.cat-tab:hover{border-color:var(--blue);color:var(--blue);}
+.cat-tab.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.cat-tab .cnt{font-size:10px;background:rgba(0,0,0,.08);padding:1px 6px;border-radius:10px;}
+.cat-tab.active .cnt{background:rgba(255,255,255,.25);}
+.cat-add-tab{padding:7px 14px;border-radius:20px;border:1.5px dashed var(--border);font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s;background:transparent;}
+.cat-add-tab:hover{border-color:var(--blue);color:var(--blue);}
+
+/* 자재 테이블 */
+.table-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead{background:var(--navy);}
+thead th{padding:10px 14px;font-size:10px;font-weight:700;color:rgba(255,255,255,.55);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;}
+tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:#f8faff;}
+td{padding:9px 14px;vertical-align:middle;}
+.tc{text-align:center;}.tr{text-align:right;}
+.mat-thumb{width:44px;height:34px;object-fit:cover;border-radius:6px;border:1.5px solid var(--border);}
+.mat-thumb-ph{width:44px;height:34px;border:1.5px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#94a3b8;}
+.link-btn{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--blue);text-decoration:none;background:#dbeafe;padding:3px 8px;border-radius:6px;font-weight:600;}
+.link-btn:hover{background:var(--blue);color:#fff;}
+
+/* 상품 */
+.prod-cat-section{margin-bottom:28px;}
+.prod-cat-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.prod-cat-name{font-size:17px;font-weight:800;color:var(--navy);display:flex;align-items:center;gap:8px;}
+.prod-cat-bar{width:4px;height:20px;background:var(--blue);border-radius:2px;}
+.prod-cat-count{font-size:12px;color:var(--muted);background:var(--bg);padding:3px 10px;border-radius:20px;}
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;}
+.prod-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .2s;}
+.prod-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px);}
+.prod-card-img{width:100%;height:130px;object-fit:cover;background:var(--bg);}
+.prod-card-img-ph{width:100%;height:130px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;font-size:32px;color:#94a3b8;}
+.prod-card-body{padding:12px;}
+.prod-card-cat{font-size:10px;font-weight:700;color:var(--blue);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
+.prod-card-name{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:3px;}
+.prod-card-price{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--text);}
+.prod-card-mat-count{font-size:10px;color:var(--purple);margin-top:3px;}
+.prod-card-desc{font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.prod-card-actions{display:flex;gap:6px;margin-top:8px;}
+
+/* ★ 상태 뱃지 */
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;}
+.status-select{border:1.5px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;outline:none;transition:border-color .15s;background:#fff;}
+.status-select:focus{border-color:var(--blue);}
+
+/* ★ 견적 목록 테이블 */
+.est-list-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.est-list-wrap table{font-size:13px;}
+.est-list-wrap thead th{padding:11px 14px;}
+.est-list-wrap tbody td{padding:12px 14px;}
+.est-no{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.5px;color:var(--navy);}
+.est-client{font-weight:700;color:var(--navy);}
+.est-amount{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.5px;}
+
+/* ★ 진행 상태 타임라인 (수정 페이지) */
+.status-timeline-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;margin-bottom:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.status-timeline-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.status-timeline-title::after{content:'';flex:1;height:1px;background:var(--border);}
+.status-row{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
+.status-row:last-child{border-bottom:none;}
+.status-row-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .2s;}
+.status-row-icon.done{background:var(--green);box-shadow:0 2px 8px rgba(34,197,94,.3);}
+.status-row-icon.current{background:var(--blue);box-shadow:0 2px 8px rgba(30,111,217,.3);}
+.status-row-icon.pending{background:var(--bg);color:var(--muted);}
+.status-row-info{flex:1;}
+.status-row-label{font-size:13px;font-weight:700;color:var(--navy);}
+.status-row-label.current{color:var(--blue);}
+.status-row-label.done{color:var(--green);}
+.status-row-label.pending{color:var(--muted);}
+.status-row-time{font-size:11px;color:var(--muted);margin-top:2px;}
+.status-dt-input{border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .15s;color:var(--text);background:#fff;}
+.status-dt-input:focus{border-color:var(--blue);background:#f0f6ff;}
+.status-dt-input.has-value{border-color:var(--green);background:#f0fdf4;}
+
+/* 견적서 폼 */
+.est-badge{display:inline-flex;align-items:center;gap:16px;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:10px;padding:12px 22px;margin-bottom:22px;flex-wrap:wrap;}
+.est-badge-num{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--gold);}
+.est-badge-label{font-size:10px;color:rgba(255,255,255,.4);margin-bottom:2px;}
+.est-badge-sep{width:1px;height:30px;background:rgba(255,255,255,.1);}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
+.info-field label{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;}
+.info-field input{width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;font-family:'Noto Sans KR',sans-serif;color:var(--text);outline:none;transition:border-color .15s;}
+.info-field input:focus{border-color:var(--blue);background:#f0f6ff;}
+.cat-section{margin-bottom:28px;}
+.cat-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cat-header-left{display:flex;align-items:center;gap:10px;}
+.cat-bar{width:4px;height:20px;background:var(--blue);border-radius:2px;}
+.cat-name-input{font-size:16px;font-weight:800;color:var(--navy);background:transparent;border:none;border-bottom:2px solid transparent;outline:none;transition:border-color .15s;padding:2px 4px;font-family:'Noto Sans KR',sans-serif;}
+.cat-name-input:hover{border-color:var(--border);}
+.cat-name-input:focus{border-color:var(--blue);}
+.cat-subtotal{font-size:12px;font-weight:700;color:var(--muted);background:var(--bg);padding:3px 10px;border-radius:20px;}
+.cell-input{width:100%;background:transparent;border:none;border-bottom:1.5px solid transparent;outline:none;font-size:13px;font-family:'Noto Sans KR',sans-serif;color:var(--text);padding:2px 0;transition:border-color .15s,background .15s;}
+.cell-input:hover{border-color:var(--border);}
+.cell-input:focus{border-color:var(--blue);background:#eef4ff;border-radius:4px 4px 0 0;padding:2px 6px;}
+.cell-input.r{text-align:right;}.cell-input.m{color:var(--muted);}
+.img-lbl{cursor:pointer;display:block;}.img-prev{width:44px;height:33px;object-fit:cover;border-radius:6px;border:1.5px solid var(--border);}
+.img-ph{width:44px;height:33px;border:1.5px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#94a3b8;}
+.img-lbl:hover .img-ph{border-color:var(--blue);color:var(--blue);}
+.del-btn{background:none;border:none;color:#cbd5e1;cursor:pointer;font-size:15px;transition:color .15s;padding:2px 6px;}
+.del-btn:hover{color:var(--red);}
+.subtotal-row td{background:#f8faff;border-top:2px solid var(--border);}
+.subtotal-lbl{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.subtotal-val{font-weight:800;color:var(--blue);font-size:14px;}
+.grand-card{background:linear-gradient(135deg,var(--navy),#1a3a5c);border-radius:14px;padding:24px 28px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:16px;}
+.grand-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;}
+.grand-val{font-family:'Bebas Neue',sans-serif;font-size:38px;color:var(--gold);letter-spacing:2px;}
+.grand-vat{font-size:12px;color:rgba(255,255,255,.35);margin-top:4px;}
+.grand-breakdown{display:flex;gap:22px;flex-wrap:wrap;}
+.bd-item{text-align:right;}.bd-label{font-size:10px;color:rgba(255,255,255,.35);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}.bd-val{font-size:15px;font-weight:700;color:rgba(255,255,255,.8);}
+.pick-modal{display:flex;gap:0;height:520px;overflow:hidden;}
+.pick-left{width:180px;background:var(--navy);border-radius:10px 0 0 10px;overflow-y:auto;flex-shrink:0;}
+.pick-left-item{padding:12px 16px;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.45);border-left:3px solid transparent;transition:all .15s;}
+.pick-left-item:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.05);}
+.pick-left-item.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:var(--gold);}
+.pick-right{flex:1;overflow-y:auto;padding:16px;background:#fff;border-radius:0 10px 10px 0;border:1.5px solid var(--border);border-left:none;}
+.pick-prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+.pick-prod-card{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:all .15s;background:#fff;}
+.pick-prod-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(30,111,217,.15);transform:translateY(-1px);}
+.pick-prod-img{width:100%;height:90px;object-fit:cover;background:var(--bg);}
+.pick-prod-img-ph{width:100%;height:90px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;font-size:26px;color:#94a3b8;}
+.pick-prod-info{padding:10px;}
+.pick-prod-name{font-size:12px;font-weight:700;color:var(--navy);margin-bottom:2px;}
+.pick-prod-price{font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--blue);}
+.pick-prod-add{display:flex;align-items:center;justify-content:center;background:var(--blue);color:#fff;font-size:12px;font-weight:700;padding:7px;cursor:pointer;transition:background .15s;font-family:'Noto Sans KR',sans-serif;border:none;width:100%;}
+.pick-prod-add:hover{background:#1558b0;}
+.pick-cat-bar{background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.pick-cat-bar label{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;white-space:nowrap;}
+.pick-cat-bar select{flex:1;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;}
+
+/* ★ 현장사진 */
+.site-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:4px;}
+.site-photo-item{position:relative;border-radius:10px;overflow:hidden;border:1.5px solid var(--border);aspect-ratio:4/3;background:var(--bg);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.site-photo-img{width:100%;height:100%;object-fit:cover;}
+.site-photo-del{position:absolute;top:5px;right:5px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;}
+.site-photo-del:hover{background:var(--red);}
+.site-photo-add{border:2px dashed var(--border)!important;background:transparent;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--muted);transition:all .15s;cursor:pointer;}
+.site-photo-add:hover{border-color:var(--blue)!important;color:var(--blue);background:#f0f6ff!important;}
+.site-photo-add-icon{font-size:26px;}
+
+/* ★ 결제 정보 */
+.pay-status-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+.pay-status-btn{padding:9px 22px;border-radius:20px;border:2px solid var(--border);font-size:13px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:all .15s;background:#fff;color:var(--muted);}
+.pay-status-btn:hover{border-color:var(--blue);color:var(--blue);}
+.pay-status-btn.ps-입금전{background:#fee2e2;color:#b91c1c;border-color:#fca5a5;}
+.pay-status-btn.ps-계약{background:#fef9c3;color:#854d0e;border-color:#fde047;}
+.pay-status-btn.ps-완료{background:#dcfce7;color:#166534;border-color:#86efac;}
+.pay-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+@media(max-width:700px){.pay-grid{grid-template-columns:1fr;}}
+.pay-field{background:var(--bg);border-radius:10px;padding:14px 16px;}
+.pay-label{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+.pay-input{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .15s;background:#fff;text-align:right;}
+.pay-input:focus{border-color:var(--blue);background:#f0f6ff;}
+.pay-input.auto{background:transparent;border-color:transparent;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;cursor:default;color:var(--navy);}
+.pay-input.auto.zero{color:var(--green);}
+.pay-sub{font-size:11px;color:var(--muted);margin-top:4px;text-align:right;}
+.pay-check-row{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.pay-check{width:16px;height:16px;cursor:pointer;accent-color:var(--green);}
+.pay-check-lbl{font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;}
+.pay-check-lbl.on{color:var(--green);}
+.coming-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;}
+.coming-icon{font-size:56px;margin-bottom:8px;}.coming-title{font-size:22px;font-weight:900;color:var(--navy);}.coming-desc{font-size:13px;color:var(--muted);line-height:1.8;max-width:380px;}
+.coming-tags{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;}.coming-tag{background:var(--bg);border:1.5px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--muted);}
+@media print{.sidebar,.btn-row,.del-btn,.no-print{display:none!important;}.main{margin-left:0;padding:20px;}}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const fmt = n => (Number(n)||0).toLocaleString('ko-KR');
+const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
+const uid = () => Math.random().toString(36).substr(2,9);
+let _tt; const toast = msg=>{const el=document.getElementById('__toast');if(!el)return;el.textContent=msg;el.style.display='block';clearTimeout(_tt);_tt=setTimeout(()=>el.style.display='none',2800);};
+
+// ★ 상태 목록
+const STATUS_LIST = ['가견적발송','방문상담 및 실측','견적완료','제작중','설치완료'];
+const STATUS_COLOR = {'가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','견적완료':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a'};
+const STATUS_BG    = {'가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','견적완료':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7'};
+const STATUS_ICON  = {'가견적발송':'📤','방문상담 및 실측':'🏠','견적완료':'✅','제작중':'🔧','설치완료':'🎉'};
+
+const StatusBadge = ({status}) => (
+    <span className="status-badge" style={{background:STATUS_BG[status]||'#f1f5f9',color:STATUS_COLOR[status]||'#64748b'}}>
+        {STATUS_ICON[status]||'•'} {status}
+    </span>
+);
+
+const FEATURES=[['📦','자재관리','분류별 자재·단가·공급업체'],['🛍','상품관리','카테고리별 상품+필요자재'],['📋','견적관리','저장·목록·진행상태 관리'],['📊','엑셀/인쇄','원클릭 견적서 저장']];
+
+/* ★ Supabase Storage 업로드 유틸 (base64 폴백 포함) */
+const BUCKET = 'lucky-star';
+const uploadImg = async (sb, file, folder='uploads') => {
+    if(sb){
+        try{
+            const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+            const path=`${folder}/${Date.now()}_${Math.random().toString(36).substr(2,8)}.${ext}`;
+            const{error}=await sb.storage.from(BUCKET).upload(path,file,{upsert:true,contentType:file.type});
+            if(!error){
+                const{data:{publicUrl}}=sb.storage.from(BUCKET).getPublicUrl(path);
+                return publicUrl;
+            }
+            console.warn('Storage upload error:',error.message,'→ fallback base64');
+        }catch(e){console.warn('Storage exception:',e,'→ fallback base64');}
+    }
+    return new Promise(res=>{const r=new FileReader();r.onloadend=()=>res(r.result);r.readAsDataURL(file);});
+};
+
+function ImgUpload({sb,folder='uploads',value,onChange}){
+    const[busy,setBusy]=useState(false);
+    const pick=async e=>{
+        const f=e.target.files[0];if(!f)return;
+        setBusy(true);
+        try{const url=await uploadImg(sb,f,folder);onChange(url);}
+        finally{setBusy(false);}
+    };
+    return(<label className="img-area" style={{display:'block',cursor:'pointer'}}>
+        {busy?<div className="img-placeholder"><span style={{fontSize:28}}>⏳</span>업로드 중...</div>:
+         value?<img src={value} alt="" style={{maxHeight:130,maxWidth:'100%',borderRadius:8,objectFit:'cover'}}/>:
+         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드</div>}
+        <input type="file" accept="image/*" style={{display:'none'}} onChange={pick}/>
+    </label>);
+}
+function AddNameModal({title,placeholder,onClose,onSave}){
+    const[name,setName]=useState('');
+    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>추가</button></div></div></div>);
+}
+
+/* ── 설정/로그인 ── */
+function SetupScreen({onDone}){const[url,setUrl]=useState('');const[key,setKey]=useState('');const save=()=>{if(url&&key){localStorage.setItem('supabase_config',JSON.stringify({url,key}));onDone({url,key});}};return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">⚙️ 초기 설정</div><div className="login-sub">Supabase 프로젝트 정보를 입력하면 데이터가 자동으로 연결됩니다.</div><div className="setup-block"><div className="setup-block-title">Supabase 연결 정보</div><div className="field"><label>Project URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co"/></div><div className="field"><label>anon public Key</label><input value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJ..."/></div></div><button className="btn btn-primary" style={{width:'100%',padding:14,fontSize:15,justifyContent:'center'}} onClick={save}>저장하고 시작하기</button><div className="login-notice" style={{marginTop:16}}>입력 정보는 브라우저에만 저장됩니다.</div></div></div>);}
+function LoginScreen({sb}){const[loading,setLoading]=useState(false);const login=async()=>{setLoading(true);await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.href}});};return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">🚐 럭키스타 로그인</div><div className="login-sub">구글 계정으로 로그인하면 모든 데이터가 실시간으로 클라우드에 저장됩니다.</div><button className="btn-google" onClick={login} disabled={loading}><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?'연결 중...':'Google 계정으로 로그인'}</button><div className="login-divider"><span>안내</span></div><div className="login-notice">허가된 구글 계정만 접속 가능합니다.<br/>문의: 럭키스타 캠핑카라반<br/><span style={{fontSize:10,color:'#94a3b8'}}>경기도 파주시 광탄면</span></div></div></div>);}
+
+/* ── 사이드바 ── */
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout}){
+    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate');
+    const toggle=id=>setOpen(o=>o===id?null:id);
+    const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
+    const avatar=user?.user_metadata?.avatar_url;
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':'estimate';
+    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});};
+    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});};
+    const SI=({label,isActive,onNav,onDel})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span>{onDel&&<button className="nav-sub-del" onClick={e=>{e.stopPropagation();onDel();}}>✕</button>}</div>);
+    return(<aside className="sidebar">
+        <div className="sb-header"><div className="sb-logo">LUCKY<span>STAR</span></div><div className="sb-sub">CARAVAN MANAGER v2.0</div></div>
+        <div className="sb-user"><div className="sb-avatar">{avatar?<img src={avatar} alt=""/>:uname[0]?.toUpperCase()}</div><div className="sb-username">{uname}</div><button className="sb-logout" onClick={onLogout} title="로그아웃">⏻</button></div>
+        <nav className="sb-nav">
+            <div className={`nav-row ${activeGroup==='material'?'active':''} ${open==='material'?'open':''}`}><div className="nav-label" onClick={()=>toggle('material')}><span className="nav-icon">📦</span>자재관리<span className="nav-arrow">▶</span></div><button className="nav-plus" onClick={e=>{e.stopPropagation();onAddMatCat();}}>＋</button></div>
+            <div className={`nav-sub ${open==='material'?'open':''}`}><SI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>{matCats.map(c=><SI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onDel={()=>onDelMatCat(c.id)}/>)}<SI label="재고 현황" isActive={page==='mat-stock'} onNav={()=>setPage('mat-stock')}/></div>
+            <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}><div className="nav-label" onClick={()=>toggle('product')}><span className="nav-icon">🛍</span>상품관리<span className="nav-arrow">▶</span></div><button className="nav-plus" onClick={e=>{e.stopPropagation();onAddProdCat();}}>＋</button></div>
+            <div className={`nav-sub ${open==='product'?'open':''}`}><SI label="전체 상품" isActive={page==='prod-list'&&activeCatId?.prod===null} onNav={()=>goProd(null)}/>{prodCats.map(c=><SI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onDel={()=>onDelProdCat(c.id)}/>)}</div>
+            <div className={`nav-row ${activeGroup==='estimate'?'active':''} ${open==='estimate'?'open':''}`}><div className="nav-label" onClick={()=>toggle('estimate')}><span className="nav-icon">📋</span>견적관리<span className="nav-arrow">▶</span></div></div>
+            <div className={`nav-sub ${open==='estimate'?'open':''}`}><SI label="새 견적서" isActive={page==='est-new'} onNav={()=>setPage('est-new')}/><SI label="견적 목록" isActive={page==='est-list'} onNav={()=>setPage('est-list')}/></div>
+        </nav>
+        <div className="sb-footer"><div className="sb-total-label">총 견적 (VAT포함)</div><div className="sb-total-val">{fmt(grandWithVat)}원</div><div className="sb-status"><span className="dot-green"/>클라우드 연결됨</div></div>
+    </aside>);
+}
+
+/* ── 자재 ── */
+function MaterialModal({sb,matCats,initial,onClose,onSave}){const blank={category_id:'',name:'',specification:'',unit:'개',unit_price:0,stock_qty:0,supplier:'',purchase_link:'',image_url:'',memo:''};const[form,setForm]=useState(initial?{...initial}:blank);const set=(k,v)=>setForm(p=>({...p,[k]:v}));const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}onSave(form);};return(<div className="modal-overlay" onClick={onClose}><div className="modal-box" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{initial?'자재 수정':'새 자재 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="materials" value={form.image_url} onChange={v=>set('image_url',v)}/></div><div className="modal-grid"><div className="mf"><label className="ml">분류 *</label><select className="ms" value={form.category_id} onChange={e=>set('category_id',e.target.value)}><option value="">분류 선택</option>{matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="mf"><label className="ml">품명 *</label><input className="mi" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="품명 입력"/></div><div className="mf"><label className="ml">규격</label><input className="mi" value={form.specification} onChange={e=>set('specification',e.target.value)} placeholder="예: 18T × 1220 × 2440"/></div><div className="mf"><label className="ml">단위</label><input className="mi" value={form.unit} onChange={e=>set('unit',e.target.value)} placeholder="개, m, kg, 장"/></div><div className="mf"><label className="ml">단가(원)</label><input type="number" className="mi" value={form.unit_price} onChange={e=>set('unit_price',e.target.value)} min="0"/></div><div className="mf"><label className="ml">재고수량</label><input type="number" className="mi" value={form.stock_qty} onChange={e=>set('stock_qty',e.target.value)} min="0"/></div><div className="mf"><label className="ml">공급업체</label><input className="mi" value={form.supplier} onChange={e=>set('supplier',e.target.value)} placeholder="업체명"/></div><div className="mf"><label className="ml">구매/참고 링크</label><input className="mi" value={form.purchase_link} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div><div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo} onChange={e=>set('memo',e.target.value)} placeholder="기타 참고사항"/></div></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div></div></div>);}
+
+function MaterialList({sb,matCats,onAddMatCat,initCatId}){
+    const[materials,setMaterials]=useState([]);const[loading,setLoading]=useState(true);const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);const[filterCat,setFilterCat]=useState(initCatId??null);
+    useEffect(()=>setFilterCat(initCatId??null),[initCatId]);
+    useEffect(()=>{if(!sb)return;(async()=>{setLoading(true);const{data}=await sb.from('materials').select('*').order('created_at',{ascending:false});if(data)setMaterials(data);setLoading(false);})();},[sb]);
+    const save=async form=>{setShowModal(false);if(editing){const{data}=await sb.from('materials').update(form).eq('id',editing.id).select();if(data)setMaterials(p=>p.map(m=>m.id===editing.id?data[0]:m));toast('✅ 수정됨');}else{const{data}=await sb.from('materials').insert([form]).select();if(data)setMaterials(p=>[data[0],...p]);toast('✅ 자재 등록됨');}setEditing(null);};
+    const del=async id=>{if(!confirm('삭제?'))return;await sb.from('materials').delete().eq('id',id);setMaterials(p=>p.filter(m=>m.id!==id));toast('🗑 삭제됨');};
+    const catName=id=>matCats.find(c=>c.id===id)?.name||'미분류';const count=id=>materials.filter(m=>m.category_id===id).length;const filtered=filterCat?materials.filter(m=>m.category_id===filterCat):materials;
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    return(<div>{showModal&&<MaterialModal sb={sb} matCats={matCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}<div className="page-header"><div className="page-title-wrap"><h1>📦 자재 목록</h1><p>분류 탭으로 필터링</p></div><div className="btn-row"><button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 자재 등록</button></div></div><div className="cat-filter"><div className={`cat-tab ${filterCat===null?'active':''}`} onClick={()=>setFilterCat(null)}>전체 <span className="cnt">{materials.length}</span></div>{matCats.map(c=><div key={c.id} className={`cat-tab ${filterCat===c.id?'active':''}`} onClick={()=>setFilterCat(c.id)}>{c.name} <span className="cnt">{count(c.id)}</span></div>)}<div className="cat-add-tab" onClick={onAddMatCat}>＋ 분류 추가</div></div><div className="table-wrap"><table><thead><tr><th className="tc" style={{width:56}}>사진</th><th style={{textAlign:'left'}}>품명</th><th style={{textAlign:'left'}}>분류</th><th style={{textAlign:'left'}}>규격</th><th className="tr">단가</th><th className="tc">재고</th><th style={{textAlign:'left'}}>공급업체</th><th className="tc">링크</th><th className="tc" style={{width:80}}>관리</th></tr></thead><tbody>{filtered.length===0&&<tr><td colSpan={9}><div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">등록된 자재가 없습니다.</div></div></td></tr>}{filtered.map(m=><tr key={m.id}><td className="tc">{m.image_url?<img src={m.image_url} className="mat-thumb" alt=""/>:<div className="mat-thumb-ph">📷</div>}</td><td><strong style={{color:'var(--navy)'}}>{m.name}</strong>{m.memo&&<div style={{fontSize:11,color:'var(--muted)'}}>{m.memo}</div>}</td><td><span className="badge badge-blue">{catName(m.category_id)}</span></td><td style={{color:'var(--muted)',fontSize:12}}>{m.specification||'-'}</td><td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price)}<span style={{fontSize:11,color:'var(--muted)',marginLeft:2}}>{m.unit}</span></td><td className="tc"><span className={`badge ${m.stock_qty>0?'badge-green':'badge-gray'}`}>{m.stock_qty||0}{m.unit}</span></td><td style={{fontSize:12}}>{m.supplier||'-'}</td><td className="tc">{m.purchase_link?<a href={m.purchase_link} target="_blank" rel="noreferrer" className="link-btn">🔗</a>:<span style={{color:'#cbd5e1',fontSize:11}}>-</span>}</td><td className="tc"><button className="btn-icon" onClick={()=>{setEditing(m);setShowModal(true);}}>✏️</button><button className="btn-icon" onClick={()=>del(m.id)}>🗑</button></td></tr>)}</tbody></table></div></div>);
+}
+
+/* ── 상품 ── */
+function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
+    const blank={category_id:'',name:'',description:'',price:0,image_url:''};
+    const[form,setForm]=useState(initial?{...initial}:blank);const[allMat,setAllMat]=useState([]);const[reqMats,setReqMats]=useState([]);const[selCat,setSelCat]=useState('');const[selMat,setSelMat]=useState('');const[selQty,setSelQty]=useState(1);
+    const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+    useEffect(()=>{if(!sb)return;sb.from('materials').select('*').order('name').then(({data})=>setAllMat(data||[]));if(initial?.id)sb.from('product_materials').select('*').eq('product_id',initial.id).then(({data})=>setReqMats(data||[]));},[]); 
+    const catMat=selCat?allMat.filter(m=>m.category_id===selCat):[];
+    const addRM=()=>{if(!selMat){alert('자재를 선택하세요');return;}const mat=allMat.find(m=>m.id===selMat);if(!mat)return;if(reqMats.find(r=>r.material_id===mat.id)){alert('이미 추가된 자재입니다');return;}setReqMats(prev=>[...prev,{material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price,unit:mat.unit||'개',quantity:Number(selQty)||1,total:mat.unit_price*(Number(selQty)||1)}]);setSelMat('');setSelQty(1);};
+    const rmRM=i=>setReqMats(prev=>prev.filter((_,j)=>j!==i));
+    const updQty=(i,q)=>setReqMats(prev=>prev.map((r,j)=>j===i?{...r,quantity:q,total:r.unit_price*q}:r));
+    const reqTotal=reqMats.reduce((s,r)=>s+r.total,0);
+    const ok=async()=>{if(!form.name.trim()){alert('상품명을 입력하세요');return;}onSave(form,reqMats);};
+    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box" style={{width:660}} onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{initial?'상품 수정':'새 상품 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="products" value={form.image_url} onChange={v=>set('image_url',v)}/></div><div className="modal-grid"><div className="mf"><label className="ml">카테고리 *</label><select className="ms" value={form.category_id} onChange={e=>set('category_id',e.target.value)}><option value="">-- 카테고리 선택 --</option>{prodCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="mf"><label className="ml">상품명 *</label><input className="mi" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="상품명 입력"/></div><div className="mf"><label className="ml">판매가격(원)</label><input type="number" className="mi" value={form.price} onChange={e=>set('price',e.target.value)} min="0"/></div><div className="mf"><label className="ml">설명</label><input className="mi" value={form.description} onChange={e=>set('description',e.target.value)} placeholder="상품 설명"/></div></div>
+    <div className="mat-req-section"><div className="mat-req-title">🔩 필요자재</div><div className="mat-add-row"><div><label className="ml">분류 선택</label><select className="ms" value={selCat} onChange={e=>{setSelCat(e.target.value);setSelMat();}}><option value="">-- 분류 --</option>{matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div><label className="ml">자재 선택</label><select className="ms" value={selMat} onChange={e=>setSelMat(e.target.value)} disabled={!selCat}><option value="">-- 자재 --</option>{catMat.map(m=><option key={m.id} value={m.id}>{m.name} ({fmt(m.unit_price)}원/{m.unit||'개'})</option>)}</select></div><div><label className="ml">수량</label><input type="number" className="mi" value={selQty} onChange={e=>setSelQty(e.target.value)} min="1" style={{textAlign:'right'}}/></div><div style={{display:'flex',alignItems:'flex-end'}}><button className="mat-add-btn" onClick={addRM}>＋ 추가</button></div></div>
+    <div className="mat-list"><div className="mat-list-head"><span>품명</span><span>단가</span><span>수량</span><span>소계</span><span></span></div>{reqMats.length===0&&<div className="mat-list-empty">추가된 자재가 없습니다</div>}{reqMats.map((r,i)=><div key={i} className="mat-list-row"><span style={{fontWeight:600,color:'var(--navy)'}}>{r.material_name}</span><span style={{color:'var(--muted)'}}>{fmt(r.unit_price)}원/{r.unit}</span><span><input type="number" value={r.quantity} min="1" onChange={e=>updQty(i,Number(e.target.value)||1)} style={{width:60,border:'1.5px solid var(--border)',borderRadius:6,padding:'4px 6px',fontSize:12,textAlign:'right',outline:'none'}}/></span><span style={{fontWeight:700,color:'var(--blue)'}}>{fmt(r.total)}원</span><button className="mat-list-del" onClick={()=>rmRM(i)}>✕</button></div>)}{reqMats.length>0&&<div className="mat-total-row"><span>자재 합계: <strong style={{color:'var(--navy)',marginLeft:8}}>{fmt(reqTotal)}원</strong></span></div>}</div></div>
+    <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div></div></div>);
+}
+
+function ProductList({sb,matCats,prodCats,onAddProdCat,onDelProdCat,initCatId}){
+    const[products,setProducts]=useState([]);const[loading,setLoading]=useState(true);const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);const[filterCat,setFilterCat]=useState(initCatId??null);const[matCounts,setMatCounts]=useState({});
+    useEffect(()=>setFilterCat(initCatId??null),[initCatId]);
+    useEffect(()=>{if(!sb)return;(async()=>{setLoading(true);const{data}=await sb.from('products').select('*').order('created_at',{ascending:false});if(data)setProducts(data);const{data:pm}=await sb.from('product_materials').select('product_id');if(pm){const cnt={};pm.forEach(r=>{cnt[r.product_id]=(cnt[r.product_id]||0)+1;});setMatCounts(cnt);}setLoading(false);})();},[sb]);
+    const save=async(form,reqMats)=>{setShowModal(false);let pid;if(editing){const{data}=await sb.from('products').update(form).eq('id',editing.id).select();if(data){setProducts(p=>p.map(x=>x.id===editing.id?data[0]:x));pid=editing.id;}toast('✅ 수정됨');}else{const{data}=await sb.from('products').insert([form]).select();if(data){setProducts(p=>[data[0],...p]);pid=data[0].id;}toast('✅ 상품 등록됨');}if(pid&&reqMats){await sb.from('product_materials').delete().eq('product_id',pid);if(reqMats.length>0)await sb.from('product_materials').insert(reqMats.map(r=>({...r,product_id:pid})));setMatCounts(p=>({...p,[pid]:reqMats.length}));}setEditing(null);};
+    const del=async id=>{if(!confirm('삭제?'))return;await sb.from('product_materials').delete().eq('product_id',id);await sb.from('products').delete().eq('id',id);setProducts(p=>p.filter(x=>x.id!==id));toast('🗑 삭제됨');};
+    const catName=id=>prodCats.find(c=>c.id===id)?.name||'미분류';const count=id=>products.filter(p=>p.category_id===id).length;
+    const visibleCats=filterCat?prodCats.filter(c=>c.id===filterCat):prodCats;
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    return(<div>{showModal&&<ProductModal sb={sb} matCats={matCats} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}<div className="page-header"><div className="page-title-wrap"><h1>🛍 상품 목록</h1><p>카테고리별 상품 · 필요자재 등록 가능</p></div><div className="btn-row"><button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 상품 등록</button></div></div><div className="cat-filter"><div className={`cat-tab ${filterCat===null?'active':''}`} onClick={()=>setFilterCat(null)}>전체 <span className="cnt">{products.length}</span></div>{prodCats.map(c=><div key={c.id} className={`cat-tab ${filterCat===c.id?'active':''}`} onClick={()=>setFilterCat(c.id)}>{c.name} <span className="cnt">{count(c.id)}</span></div>)}<div className="cat-add-tab" onClick={onAddProdCat}>＋ 카테고리 추가</div></div>
+    {prodCats.length===0&&<div className="empty-state"><div className="empty-icon">🛍</div><div className="empty-text">카테고리가 없습니다.<br/>사이드바 <strong>상품관리 옆 ＋</strong> 버튼으로 추가하세요.</div></div>}
+    {visibleCats.map(cat=>{const cp=products.filter(p=>p.category_id===cat.id);return(<div key={cat.id} className="prod-cat-section"><div className="prod-cat-header"><div className="prod-cat-name"><div className="prod-cat-bar"/>{cat.name}<span className="prod-cat-count">{cp.length}개</span></div><div className="btn-row"><button className="btn btn-outline btn-sm" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 상품 추가</button><button className="btn-icon" onClick={()=>onDelProdCat(cat.id)}>🗑</button></div></div>{cp.length===0?<div style={{background:'#fff',border:'1.5px dashed var(--border)',borderRadius:12,padding:'24px',textAlign:'center',color:'var(--muted)',fontSize:13}}>상품이 없습니다.</div>:<div className="prod-grid">{cp.map(prod=><div key={prod.id} className="prod-card">{prod.image_url?<img src={prod.image_url} className="prod-card-img" alt=""/>:<div className="prod-card-img-ph">📦</div>}<div className="prod-card-body"><div className="prod-card-cat">{catName(prod.category_id)}</div><div className="prod-card-name">{prod.name}</div><div className="prod-card-price">{fmt(prod.price)}원</div>{(matCounts[prod.id]||0)>0&&<div className="prod-card-mat-count">🔩 필요자재 {matCounts[prod.id]}종</div>}{prod.description&&<div className="prod-card-desc">{prod.description}</div>}<div className="prod-card-actions"><button className="btn btn-outline btn-xs" onClick={()=>{setEditing(prod);setShowModal(true);}}>✏️ 수정</button><button className="btn btn-xs" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={()=>del(prod.id)}>🗑</button></div></div></div>)}</div>}</div>);})}
+    </div>);
+}
+
+/* ── 상품 선택 모달 (견적용) ── */
+function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
+    const[products,setProducts]=useState([]);const[selCat,setSelCat]=useState(prodCats[0]?.id||null);const[targetCatId,setTargetCatId]=useState(cats[0]?.id||'');const[loading,setLoading]=useState(true);
+    useEffect(()=>{sb.from('products').select('*').order('name').then(({data})=>{setProducts(data||[]);setLoading(false);});},[]);
+    const catName=id=>prodCats.find(c=>c.id===id)?.name||'';
+    const filtered=selCat?products.filter(p=>p.category_id===selCat):products;
+    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box lg" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">🛍 상품 선택 — 견적 추가</div><button className="modal-close" onClick={onClose}>✕</button></div>
+    <div className="pick-cat-bar"><label>추가할 견적 카테고리</label><select value={targetCatId} onChange={e=>setTargetCatId(e.target.value)}><option value="">자동 (상품 카테고리명으로 생성)</option>{cats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+    {loading?<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>로딩 중...</div>:<div className="pick-modal"><div className="pick-left"><div className={`pick-left-item ${selCat===null?'active':''}`} onClick={()=>setSelCat(null)}>전체 ({products.length})</div>{prodCats.map(c=><div key={c.id} className={`pick-left-item ${selCat===c.id?'active':''}`} onClick={()=>setSelCat(c.id)}>{c.name} ({products.filter(p=>p.category_id===c.id).length})</div>)}</div>
+    <div className="pick-right">{filtered.length===0?<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>상품이 없습니다.</div>:<div className="pick-prod-grid">{filtered.map(prod=><div key={prod.id} className="pick-prod-card">{prod.image_url?<img src={prod.image_url} className="pick-prod-img" alt=""/>:<div className="pick-prod-img-ph">📦</div>}<div className="pick-prod-info"><div style={{fontSize:10,color:'var(--blue)',fontWeight:700,marginBottom:2}}>{catName(prod.category_id)}</div><div className="pick-prod-name">{prod.name}</div><div className="pick-prod-price">{fmt(prod.price)}원</div></div><button className="pick-prod-add" onClick={()=>onAddProduct(prod,catName(prod.category_id),targetCatId)}>＋ 견적에 추가</button></div>)}</div>}</div></div>}
+    <div className="modal-btns" style={{borderTop:'none',paddingTop:0,marginTop:12}}><button className="modal-cancel" onClick={onClose}>닫기</button></div></div></div>);
+}
+
+/* ═══════════════════════════════════════
+   ★ 견적서 폼 (새 견적 + 수정 공통)
+   mode: 'new' | 'edit'
+═══════════════════════════════════════ */
+function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
+    const[cats,setCats]=useState([]);  // {id,name,order}  — new: uid(), edit: DB uuid
+    const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
+    const[client,setClient]=useState({});
+    const[statusDates,setStatusDates]=useState({});
+    const[currentStatus,setCurrentStatus]=useState('가견적발송');
+    const[loading,setLoading]=useState(mode==='edit');
+    const[saving,setSaving]=useState(false);
+    const[showPick,setShowPick]=useState(false);
+    const[estNo]=useState(()=>mode==='new'?genEstNo():'');
+    // ★ 현장사진 & 결제 정보
+    const[sitePhotos,setSitePhotos]=useState([]);
+    const[paymentStatus,setPaymentStatus]=useState('입금전');
+    const[depositAmount,setDepositAmount]=useState('');
+    const[midAmount,setMidAmount]=useState('');
+    const[balancePaid,setBalancePaid]=useState(false);
+
+    // ★ edit: DB 로드
+    useEffect(()=>{
+        if(mode!=='edit'||!estimateId)return;
+        (async()=>{
+            setLoading(true);
+            const{data:est}=await sb.from('estimates').select('*').eq('id',estimateId).single();
+            if(est){setClient({name:est.client_name||'',phone:est.client_phone||'',address:est.client_address||'',model:est.client_model||'',caravan:est.client_caravan||'',manager:est.client_manager||''});
+                // status_dates: TEXT(JSON문자열) 또는 JSONB 모두 처리
+                let sd={};try{sd=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch(e){}
+                setStatusDates(sd);setCurrentStatus(est.status||'가견적발송');
+                // ★ 현장사진 & 결제 정보 로드
+                let sp=[];try{sp=typeof est.site_photos==='string'?JSON.parse(est.site_photos||'[]'):(est.site_photos||[]);}catch(e){}
+                setSitePhotos(sp);
+                setPaymentStatus(est.payment_status||'입금전');
+                setDepositAmount(est.deposit_amount||'');
+                setMidAmount(est.mid_amount||'');
+                setBalancePaid(!!est.balance_paid);}
+            const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
+            const mc=(cd||[]).map(c=>({id:c.id,name:c.name,order:c.display_order}));setCats(mc);
+            if(mc.length>0){const{data:id_}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');setItems((id_||[]).map(i=>({id:i.id,catId:i.cat_id,name:i.name,spec:i.specification||'',qty:i.quantity||1,unitPrice:i.unit_price||0,laborCost:i.labor_cost||0,total:i.total_amount||0,imgUrl:i.image_url||''})));}
+            setLoading(false);
+        })();
+    },[estimateId]);
+
+    // ★ 결제 계산
+    const depositNum=Number(depositAmount)||0;
+    const midNum=Number(midAmount)||0;
+    const totalMat=items.reduce((s,i)=>s+(parseFloat(i.qty)||0)*(parseFloat(i.unitPrice)||0),0);
+    const totalLab=items.reduce((s,i)=>s+(parseFloat(i.laborCost)||0),0);
+    const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
+    const balanceAmount=grandVat-depositNum-midNum;
+
+    // ★ 계약금 입력 시 결제상태 자동 변경
+    useEffect(()=>{
+        if(depositNum>0){setPaymentStatus(p=>p==='입금전'?'계약':p);}
+        else{setPaymentStatus(p=>p==='계약'?'입금전':p);}
+    },[depositNum]);
+    useEffect(()=>{onTotalChange&&onTotalChange(grandVat);},[items]);
+    const catTotal=cid=>items.filter(i=>i.catId===cid).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+    const updClient=(k,v)=>setClient(p=>({...p,[k]:v}));
+
+    // ── 카테고리 CRUD ──
+    const addCat=async()=>{
+        const name='새 카테고리';
+        if(mode==='new'){setCats(p=>[...p,{id:uid(),name,order:p.length}]);}
+        else{const{data}=await sb.from('est_cats').insert([{estimate_id:estimateId,name,display_order:cats.length}]).select();if(data)setCats(p=>[...p,{id:data[0].id,name,order:data[0].display_order}]);}
+    };
+    const updCat=async(id,name)=>{setCats(p=>p.map(c=>c.id===id?{...c,name}:c));if(mode==='edit')await sb.from('est_cats').update({name}).eq('id',id);};
+    const delCat=async id=>{if(!confirm('카테고리와 품목 모두 삭제?'))return;setCats(p=>p.filter(c=>c.id!==id));setItems(p=>p.filter(i=>i.catId!==id));if(mode==='edit'){await sb.from('est_items').delete().eq('cat_id',id);await sb.from('est_cats').delete().eq('id',id);}};
+
+    // ── 품목 CRUD ──
+    const addItem=async catId=>{
+        const ni={id:uid(),catId,name:'새 품목',spec:'',qty:1,unitPrice:0,laborCost:0,total:0,imgUrl:''};
+        if(mode==='new'){setItems(p=>[...p,ni]);}
+        else{const{data}=await sb.from('est_items').insert([{cat_id:catId,name:'새 품목',quantity:1,unit_price:0,labor_cost:0,total_amount:0,display_order:items.filter(i=>i.catId===catId).length}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
+    };
+    const updItem=async(id,field,value)=>{
+        const updated=items.map(item=>{if(item.id!==id)return item;const ni={...item,[field]:value};if(!['imgUrl','name','spec'].includes(field)){ni.total=(parseFloat(ni.qty)||0)*(parseFloat(ni.unitPrice)||0)+(parseFloat(ni.laborCost)||0);}return ni;});
+        setItems(updated);
+        if(mode==='edit'){const t=updated.find(i=>i.id===id);await sb.from('est_items').update({name:t.name,specification:t.spec,quantity:t.qty,unit_price:t.unitPrice,labor_cost:t.laborCost,total_amount:t.total,image_url:t.imgUrl}).eq('id',id);}
+    };
+    const delItem=async id=>{if(!confirm('삭제?'))return;setItems(p=>p.filter(i=>i.id!==id));if(mode==='edit')await sb.from('est_items').delete().eq('id',id);};
+    const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
+
+    // ★ 상태 날짜 수정 (edit mode)
+    const updStatusDate=async(status,datetime)=>{
+        const nd={...statusDates,[status]:datetime};setStatusDates(nd);
+        const latestStatus=STATUS_LIST.filter(s=>nd[s]).pop()||currentStatus;
+        setCurrentStatus(latestStatus);
+        if(mode==='edit')await sb.from('estimates').update({status_dates:JSON.stringify(nd),status:latestStatus}).eq('id',estimateId);
+    };
+
+    // ★ 상품 선택 → 견적 추가
+    const addProductToEst=async(prod,prodCatName,targetCatId)=>{
+        let estCat;
+        if(targetCatId){estCat=cats.find(c=>c.id===targetCatId);}
+        if(!estCat){
+            const n=prodCatName||'상품';estCat=cats.find(c=>c.name===n);
+            if(!estCat){if(mode==='new'){estCat={id:uid(),name:n,order:cats.length};setCats(p=>[...p,estCat]);}
+            else{const{data}=await sb.from('est_cats').insert([{estimate_id:estimateId,name:n,display_order:cats.length}]).select();if(data){estCat={id:data[0].id,name:n,order:data[0].display_order};setCats(p=>[...p,estCat]);}}}
+        }
+        if(!estCat)return;
+        const ni={id:uid(),catId:estCat.id,name:prod.name,spec:prod.description||'',qty:1,unitPrice:Number(prod.price)||0,laborCost:0,total:Number(prod.price)||0,imgUrl:prod.image_url||''};
+        if(mode==='new'){setItems(p=>[...p,ni]);}
+        else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
+        toast('✅ '+prod.name+' 추가됨');
+    };
+
+    // ★ DB 안내 팝업
+    const showSqlGuide=()=>alert(`📋 Supabase 설정 가이드\n\n` +
+`══ 1. 테이블 생성 ══\n` +
+`CREATE TABLE IF NOT EXISTS estimates (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  est_no TEXT, status TEXT DEFAULT '가견적발송',\n  status_dates TEXT DEFAULT '{}',\n  client_name TEXT, client_phone TEXT, client_address TEXT,\n  client_model TEXT, client_caravan TEXT, client_manager TEXT,\n  total_supply NUMERIC DEFAULT 0, total_vat NUMERIC DEFAULT 0, total_amount NUMERIC DEFAULT 0,\n  site_photos TEXT DEFAULT '[]', payment_status TEXT DEFAULT '입금전',\n  deposit_amount NUMERIC DEFAULT 0, mid_amount NUMERIC DEFAULT 0,\n  balance_amount NUMERIC DEFAULT 0, balance_paid BOOLEAN DEFAULT FALSE,\n  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()\n);\n` +
+`ALTER TABLE estimates DISABLE ROW LEVEL SECURITY;\n\n` +
+`CREATE TABLE IF NOT EXISTS est_cats (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  estimate_id UUID REFERENCES estimates(id) ON DELETE CASCADE,\n  name TEXT, display_order INT DEFAULT 0\n);\n` +
+`ALTER TABLE est_cats DISABLE ROW LEVEL SECURITY;\n\n` +
+`CREATE TABLE IF NOT EXISTS est_items (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  cat_id UUID REFERENCES est_cats(id) ON DELETE CASCADE,\n  name TEXT, specification TEXT, quantity NUMERIC DEFAULT 1,\n  unit_price NUMERIC DEFAULT 0, labor_cost NUMERIC DEFAULT 0,\n  total_amount NUMERIC DEFAULT 0, image_url TEXT, display_order INT DEFAULT 0\n);\n` +
+`ALTER TABLE est_items DISABLE ROW LEVEL SECURITY;\n\n` +
+`-- 기존 테이블에 컬럼 추가 (이미 있으면 무시)\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS site_photos TEXT DEFAULT '[]';\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT '입금전';\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS deposit_amount NUMERIC DEFAULT 0;\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS mid_amount NUMERIC DEFAULT 0;\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS balance_amount NUMERIC DEFAULT 0;\n` +
+`ALTER TABLE estimates ADD COLUMN IF NOT EXISTS balance_paid BOOLEAN DEFAULT FALSE;\n\n` +
+`══ 2. Storage 버킷 생성 ══\n` +
+`-- Supabase 대시보드 → Storage → New bucket\n` +
+`-- 이름: lucky-star  /  Public bucket: ON\n\n` +
+`-- 또는 SQL로 생성:\n` +
+`INSERT INTO storage.buckets (id,name,public) VALUES ('lucky-star','lucky-star',true) ON CONFLICT DO NOTHING;\n\n` +
+`CREATE POLICY IF NOT EXISTS "allow_upload" ON storage.objects\n  FOR INSERT TO authenticated WITH CHECK (bucket_id='lucky-star');\n` +
+`CREATE POLICY IF NOT EXISTS "allow_view" ON storage.objects\n  FOR SELECT TO public USING (bucket_id='lucky-star');\n` +
+`CREATE POLICY IF NOT EXISTS "allow_delete" ON storage.objects\n  FOR DELETE TO authenticated USING (bucket_id='lucky-star');`
+    );
+
+    // ★ 저장 버튼
+    const save=async()=>{
+        setSaving(true);
+        try{
+            const now=new Date().toISOString();
+            if(mode==='new'){
+                // ── 1. 견적 헤더 저장 ──
+                const{data:ed,error:e1}=await sb.from('estimates').insert([{
+                    est_no:estNo,
+                    status:'가견적발송',
+                    status_dates:JSON.stringify({'가견적발송':now}),
+                    client_name:client.name||'',
+                    client_phone:client.phone||'',
+                    client_address:client.address||'',
+                    client_model:client.model||'',
+                    client_caravan:client.caravan||'',
+                    client_manager:client.manager||'',
+                    total_supply:grand,
+                    total_vat:vat,
+                    total_amount:grandVat,
+                    site_photos:JSON.stringify(sitePhotos),
+                    payment_status:paymentStatus,
+                    deposit_amount:depositNum,
+                    mid_amount:midNum,
+                    balance_amount:balanceAmount,
+                    balance_paid:balancePaid
+                }]).select();
+                if(e1) throw new Error('[estimates] '+e1.message+(e1.code?' ('+e1.code+')':''));
+                if(!ed||!ed[0]) throw new Error('견적 데이터가 반환되지 않았습니다');
+                const eid=ed[0].id;
+                const cidMap={};
+
+                // ── 2. 카테고리 저장 ──
+                for(let i=0;i<cats.length;i++){
+                    const{data:cd,error:e2}=await sb.from('est_cats').insert([{
+                        estimate_id:eid,name:cats[i].name,display_order:i
+                    }]).select();
+                    if(e2) throw new Error('[est_cats] '+e2.message);
+                    if(!cd||!cd[0]) throw new Error('카테고리 데이터가 반환되지 않았습니다');
+                    cidMap[cats[i].id]=cd[0].id;
+                }
+
+                // ── 3. 품목 저장 ──
+                const irows=items.filter(i=>cidMap[i.catId]).map(i=>({
+                    cat_id:cidMap[i.catId],name:i.name,specification:i.spec||'',
+                    quantity:Number(i.qty)||1,unit_price:Number(i.unitPrice)||0,
+                    labor_cost:Number(i.laborCost)||0,total_amount:Number(i.total)||0,
+                    image_url:i.imgUrl||''
+                }));
+                if(irows.length>0){
+                    const{error:e3}=await sb.from('est_items').insert(irows);
+                    if(e3) throw new Error('[est_items] '+e3.message);
+                }
+                toast('✅ 견적서가 저장되었습니다');
+                onNavigate('est-list');
+            } else {
+                // ── 수정 저장 ──
+                const{error:e4}=await sb.from('estimates').update({
+                    client_name:client.name||'',client_phone:client.phone||'',
+                    client_address:client.address||'',client_model:client.model||'',
+                    client_caravan:client.caravan||'',client_manager:client.manager||'',
+                    status:currentStatus,
+                    status_dates:JSON.stringify(statusDates),
+                    total_supply:grand,total_vat:vat,total_amount:grandVat,
+                    site_photos:JSON.stringify(sitePhotos),
+                    payment_status:paymentStatus,
+                    deposit_amount:depositNum,
+                    mid_amount:midNum,
+                    balance_amount:balanceAmount,
+                    balance_paid:balancePaid,
+                    updated_at:now
+                }).eq('id',estimateId);
+                if(e4) throw new Error('[estimates update] '+e4.message);
+                toast('✅ 견적서가 수정되었습니다');
+                onNavigate('est-list');
+            }
+        }catch(e){
+            const msg=e.message||String(e);
+            console.error('저장 실패:', msg);
+            // RLS 오류 안내
+            if(msg.includes('row-level security')||msg.includes('policy')||msg.includes('42501')){
+                alert('⚠️ 저장 실패: Supabase RLS(보안 정책) 오류\n\n아래 SQL을 Supabase SQL Editor에서 실행하세요:\n\nALTER TABLE estimates DISABLE ROW LEVEL SECURITY;\nALTER TABLE est_cats DISABLE ROW LEVEL SECURITY;\nALTER TABLE est_items DISABLE ROW LEVEL SECURITY;');
+            } else if(msg.includes('relation')||msg.includes('does not exist')||msg.includes('42P01')){
+                alert('⚠️ 저장 실패: 테이블이 없습니다\n\n채팅 아래쪽에 안내된 SQL 3개를 Supabase SQL Editor에서 먼저 실행하세요.');
+            } else {
+                alert('⚠️ 저장 실패\n\n오류 내용: '+msg+'\n\n브라우저 콘솔(F12)에서 자세한 내용을 확인하세요.');
+            }
+        }finally{setSaving(false);}
+    };
+
+    // Excel
+    const exportExcel=()=>{const wb=XLSX.utils.book_new();const en=mode==='new'?estNo:client.name||'견적';const rows=[['럭키스타 캠핑카라반 견적서'],[`고객: ${client.name||''}`,`연락처: ${client.phone||''}`],[`상태: ${currentStatus}`],[],['카테고리','품목명','규격','수량','단가','노무비','합계']];cats.forEach(cat=>items.filter(i=>i.catId===cat.id).forEach(item=>rows.push([cat.name,item.name,item.spec||'',item.qty,item.unitPrice,item.laborCost,item.total])));rows.push([],[``,``,``,``,`자재비`,``,totalMat],[``,``,``,``,`노무비`,``,totalLab],[``,``,``,``,`공급가액`,``,grand],[``,``,``,``,`VAT`,``,vat],[``,``,``,``,`합계(VAT포함)`,``,grandVat]);const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:22},{wch:18},{wch:7},{wch:13},{wch:13},{wch:15}];XLSX.utils.book_append_sheet(wb,ws,'견적서');XLSX.writeFile(wb,`럭키스타_${en}.xlsx`);toast('📊 엑셀 저장됨');};
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+
+    return(<div>
+        {showPick&&<ProductPickModal sb={sb} prodCats={prodCats} cats={cats} onAddProduct={addProductToEst} onClose={()=>setShowPick(false)}/>}
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'항목 수정은 실시간 저장 · 저장 버튼으로 마무리'}</p></div>
+            <div className="btn-row no-print">
+                <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
+                <button className="btn btn-green" onClick={()=>setShowPick(true)}>🛍 상품 선택</button>
+                <button className="btn btn-gold" onClick={exportExcel}>📊 엑셀</button>
+                <button className="btn btn-outline" onClick={()=>window.print()}>🖨 인쇄</button>
+                <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
+                <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'저장 중...':'💾 저장'}</button>
+            </div>
+        </div>
+
+        {/* 견적 배지 */}
+        <div className="est-badge">
+            {[['견적번호',<span className="est-badge-num">{mode==='new'?estNo:estimateId?.substr(0,8).toUpperCase()}</span>],['작성일',<span style={{color:'#fff',fontSize:14,fontWeight:600}}>{new Date().toLocaleDateString('ko-KR')}</span>],['상태',<StatusBadge status={currentStatus}/>]].map(([l,v],i)=><React.Fragment key={l}>{i>0&&<div className="est-badge-sep"/>}<div><div className="est-badge-label">{l}</div>{v}</div></React.Fragment>)}
+        </div>
+
+        {/* ★ 수정 모드: 진행 상태 타임라인 */}
+        {mode==='edit'&&(
+            <div className="status-timeline-card">
+                <div className="status-timeline-title" style={{color:'var(--navy)'}}>📊 진행 상태 관리</div>
+                {STATUS_LIST.map(s=>{
+                    const hasDate=!!statusDates[s];
+                    const isCurrent=currentStatus===s;
+                    const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate;
+                    const cls=isCurrent?'current':isDone?'done':'pending';
+                    return(
+                        <div key={s} className="status-row">
+                            <div className={`status-row-icon ${cls}`}>{STATUS_ICON[s]}</div>
+                            <div className="status-row-info">
+                                <div className={`status-row-label ${cls}`}>{s}{isCurrent&&<span style={{fontSize:10,marginLeft:6,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 8px',borderRadius:10}}>현재</span>}</div>
+                                {statusDates[s]&&<div className="status-row-time">{new Date(statusDates[s]).toLocaleString('ko-KR')}</div>}
+                            </div>
+                            <div>
+                                <input type="datetime-local" className={`status-dt-input ${statusDates[s]?'has-value':''}`}
+                                    value={statusDates[s]?statusDates[s].slice(0,16):''}
+                                    onChange={e=>updStatusDate(s,e.target.value)}
+                                    title={s+' 날짜/시간'}/>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        )}
+
+        {/* 고객 정보 */}
+        <div className="card"><div className="card-title">고객 정보</div>
+            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['model','차량 모델','카니발, 스타리아'],['caravan','카라반 유형','팝업, 에어스트림'],['manager','담당자','담당자명']].map(([k,l,p])=><div className="info-field" key={k}><label>{l}</label><input value={client[k]||''} onChange={e=>updClient(k,e.target.value)} placeholder={p}/></div>)}</div>
+        </div>
+
+        {/* 카테고리 버튼 */}
+        <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}} className="no-print">
+            <button className="btn btn-outline btn-sm" onClick={addCat}>＋ 카테고리 추가</button>
+        </div>
+
+        {/* 품목 테이블 */}
+        {cats.length===0&&<div className="empty-state" style={{marginTop:20}}><div className="empty-icon">📋</div><div className="empty-text"><strong style={{color:'var(--blue)'}}>🛍 상품 선택</strong> 또는 <strong>카테고리 추가</strong>로 시작하세요.</div></div>}
+        {cats.map(cat=>{const ci=items.filter(i=>i.catId===cat.id);const sub=catTotal(cat.id);return(
+            <div key={cat.id} className="cat-section">
+                <div className="cat-header"><div className="cat-header-left"><div className="cat-bar"/><input className="cat-name-input" value={cat.name} onChange={e=>updCat(cat.id,e.target.value)}/><span className="cat-subtotal">소계 {fmt(sub)}원</span></div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}} className="no-print"><button className="btn btn-outline btn-sm" onClick={()=>addItem(cat.id)}>＋ 품목</button><button className="del-btn" onClick={()=>delCat(cat.id)}>🗑</button></div></div>
+                <div className="table-wrap"><table>
+                    <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left',minWidth:130}}>품목/부품명</th><th style={{textAlign:'left',minWidth:100}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:110}}>노무비(원)</th><th className="tr" style={{width:115}}>합계(원)</th><th className="no-print" style={{width:34}}></th></tr></thead>
+                    <tbody>
+                        {ci.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
+                        {ci.map(item=><tr key={item.id}><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" style={{color:'var(--purple)',fontWeight:600}} value={item.laborCost} onChange={e=>updItem(item.id,'laborCost',e.target.value)} min="0"/></td><td style={{textAlign:'right',fontWeight:800,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>)}
+                        {ci.length>0&&<tr className="subtotal-row"><td colSpan={5}/><td className="tr subtotal-lbl">소 계</td><td className="tr subtotal-val">{fmt(sub)}원</td><td/></tr>}
+                    </tbody>
+                </table></div>
+            </div>
+        );})}
+
+        {grand>0&&<div className="grand-card">
+            <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div><div className="grand-vat">공급가액 {fmt(grand)}원 + VAT {fmt(vat)}원</div></div>
+            <div className="grand-breakdown">{[['자재비',totalMat,false],['노무비',totalLab,false],['공급가액',grand,false],['VAT 10%',vat,true]].map(([l,v,g])=><div className="bd-item" key={l}><div className="bd-label">{l}</div><div className="bd-val" style={g?{color:'var(--gold)'}:{}}>{fmt(v)}원</div></div>)}</div>
+        </div>}
+  
+        {/* ★ 결제 정보 */}
+        <div className="card" style={{marginTop:16}}>
+            <div className="card-title">💳 결제 정보</div>
+            <div className="pay-status-row">
+                {['입금전','계약','완료'].map(s=>(
+                    <button key={s} className={'pay-status-btn '+(paymentStatus===s?'ps-'+s:'')} onClick={()=>setPaymentStatus(s)}>
+                        {s==='입금전'?'⏳ 입금전':s==='계약'?'📝 계약':'✅ 완료'}
+                    </button>
+                ))}
+            </div>
+            <div className="pay-grid">
+                <div className="pay-field">
+                    <div className="pay-label">계약금</div>
+                    <input type="number" className="pay-input" value={depositAmount} min="0"
+                        onChange={e=>setDepositAmount(e.target.value)} placeholder="금액 입력"/>
+                    <div className="pay-sub">{fmt(depositNum)}원</div>
+                </div>
+                <div className="pay-field">
+                    <div className="pay-label">중도금</div>
+                    <input type="number" className="pay-input" value={midAmount} min="0"
+                        onChange={e=>setMidAmount(e.target.value)} placeholder="금액 입력"/>
+                    <div className="pay-sub">{fmt(midNum)}원</div>
+                </div>
+                <div className="pay-field">
+                    <div className="pay-label">잔금 (자동계산)</div>
+                    <input readOnly className={'pay-input auto '+(balanceAmount<=0&&grandVat>0?'zero':'')}
+                        value={grandVat>0?fmt(Math.max(0,balanceAmount))+'원':'-'}/>
+                    <div className="pay-check-row">
+                        <input type="checkbox" id="bpaid" className="pay-check"
+                            checked={balancePaid} onChange={e=>setBalancePaid(e.target.checked)}/>
+                        <label htmlFor="bpaid" className={'pay-check-lbl'+(balancePaid?' on':'')} style={{cursor:'pointer'}}>
+                            잔금 입금 완료
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* ★ 현장사진 */}
+        <div className="card">
+            <div className="card-title">📸 현장사진</div>
+            <div className="site-photos-grid">
+                {sitePhotos.map((photo,i)=>(
+                    <div key={i} className="site-photo-item">
+                        <img src={photo} className="site-photo-img" alt={'현장 '+(i+1)}/>
+                        <button className="site-photo-del no-print"
+                            onClick={()=>setSitePhotos(p=>p.filter((_,j)=>j!==i))}>✕</button>
+                    </div>
+                ))}
+                <label className="site-photo-item site-photo-add no-print">
+                    <span className="site-photo-add-icon">📷</span>
+                    <span>사진 추가</span>
+                    <input type="file" accept="image/*" multiple style={{display:'none'}}
+                        onChange={async e=>{
+                            const files=Array.from(e.target.files);e.target.value='';
+                            for(const f of files){
+                                const url=await uploadImg(sb,f,'site-photos');
+                                setSitePhotos(p=>[...p,url]);
+                            }
+                        }}/>
+                </label>
+            </div>
+            {sitePhotos.length===0&&<p style={{fontSize:12,color:'var(--muted)',marginTop:8}}>현장 사진을 추가하면 견적서에 함께 저장됩니다.</p>}
+        </div>
+
+        <div style={{textAlign:'center',marginTop:18,fontSize:11,color:'#94a3b8',paddingBottom:40}}>★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | {new Date().toLocaleDateString('ko-KR')} 기준</div>
+    </div>);
+}
+
+/* ═══════════════════════════════════════
+   ★ 견적 목록
+═══════════════════════════════════════ */
+function EstimateList({sb,onEdit,onNew}){
+    const[estimates,setEstimates]=useState([]);const[loading,setLoading]=useState(true);
+    useEffect(()=>{if(!sb)return;(async()=>{setLoading(true);const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});if(data)setEstimates(data);setLoading(false);})();},[sb]);
+
+    const changeStatus=async(id,status)=>{
+        const est=estimates.find(e=>e.id===id);
+        let nd={};try{nd=typeof est?.status_dates==='string'?JSON.parse(est?.status_dates||'{}'):(est?.status_dates||{});}catch(e){}
+        if(!nd[status])nd[status]=new Date().toISOString();
+        await sb.from('estimates').update({status,status_dates:JSON.stringify(nd)}).eq('id',id);
+        setEstimates(p=>p.map(e=>e.id===id?{...e,status,status_dates:nd}:e));
+        toast('✅ 상태 변경: '+status);
+    };
+    const del=async id=>{
+        if(!confirm('견적서를 삭제하시겠습니까?'))return;
+        await sb.from('estimates').delete().eq('id',id);
+        setEstimates(p=>p.filter(e=>e.id!==id));toast('🗑 견적서 삭제됨');
+    };
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+
+    return(<div>
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>저장된 견적서 조회 · 상태 변경 · 수정</p></div>
+            <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서 작성</button></div>
+        </div>
+        {estimates.length===0
+            ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.<br/><strong>+ 새 견적서 작성</strong> 버튼으로 시작하세요.</div></div>
+            :<div className="est-list-wrap"><table>
+                <thead><tr>
+                    <th style={{textAlign:'left'}}>견적번호</th>
+                    <th style={{textAlign:'left'}}>고객명</th>
+                    <th style={{textAlign:'left'}}>연락처</th>
+                    <th className="tr">공급가액(원)</th>
+                    <th style={{textAlign:'left',minWidth:220}}>상태</th>
+                    <th style={{textAlign:'left'}}>작성일</th>
+                    <th className="tc" style={{width:100}}>관리</th>
+                </tr></thead>
+                <tbody>
+                    {estimates.map(est=>(
+                        <tr key={est.id}>
+                            <td><div className="est-no">{est.est_no||est.id?.substr(0,8).toUpperCase()}</div></td>
+                            <td><div className="est-client">{est.client_name||'-'}</div></td>
+                            <td style={{fontSize:12,color:'var(--muted)'}}>{est.client_phone||'-'}</td>
+                            <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
+                            <td>
+                                {/* ★ 목록에서 상태 변경 드롭다운 */}
+                                <select className="status-select"
+                                    value={est.status||'가견적발송'}
+                                    onChange={e=>changeStatus(est.id,e.target.value)}
+                                    style={{fontWeight:700,color:STATUS_COLOR[est.status]||'#64748b',background:STATUS_BG[est.status]||'#f1f5f9',border:`1.5px solid ${STATUS_COLOR[est.status]||'#e2e8f0'}44`}}>
+                                    {STATUS_LIST.map(s=><option key={s} value={s}>{STATUS_ICON[s]} {s}</option>)}
+                                </select>
+                            </td>
+                            <td style={{fontSize:12,color:'var(--muted)'}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</td>
+                            <td className="tc">
+                                <button className="btn-icon" onClick={()=>onEdit(est.id)} title="수정">✏️</button>
+                                <button className="btn-icon" onClick={()=>del(est.id)} title="삭제">🗑</button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table></div>}
+    </div>);
+}
+
+function ComingSoon({icon,title,desc,tags=[]}){return<div className="coming-wrap"><div className="coming-icon">{icon}</div><div className="coming-title">{title}</div><div className="coming-desc">{desc}</div><div className="coming-tags">{tags.map(t=><span key={t} className="coming-tag">{t}</span>)}</div></div>;}
+
+/* ═══════════════════════════════════════
+   메인 앱
+═══════════════════════════════════════ */
+function App(){
+    const[config,setConfig]=useState(()=>{try{return JSON.parse(localStorage.getItem('supabase_config'));}catch{return null;}});
+    const[sb,setSb]=useState(null);const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
+    const[page,setPage]=useState('est-list');
+    const[editEstId,setEditEstId]=useState(null); // 수정할 견적 ID
+    const[grandWithVat,setGrandWithVat]=useState(0);
+    const[matCats,setMatCats]=useState([]);const[prodCats,setProdCats]=useState([]);
+    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
+    const[addMatModal,setAddMatModal]=useState(false);const[addProdModal,setAddProdModal]=useState(false);
+
+    useEffect(()=>{
+        if(!config){setAuthLoading(false);return;}
+        const client=window.supabase.createClient(config.url,config.key);setSb(client);
+        client.auth.getSession().then(({data:{session}})=>{setUser(session?.user||null);setAuthLoading(false);});
+        const{data:{subscription}}=client.auth.onAuthStateChange((_,session)=>{setUser(session?.user||null);setAuthLoading(false);});
+        return()=>subscription.unsubscribe();
+    },[config]);
+    useEffect(()=>{
+        if(!sb||!user)return;
+        sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
+        sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
+    },[sb,user]);
+
+    const addMatCat=async name=>{if(!name?.trim())return;setAddMatModal(false);const{data}=await sb.from('material_categories').insert([{name:name.trim(),display_order:matCats.length+1}]).select();if(data){setMatCats(p=>[...p,data[0]]);toast('✅ 분류 추가: '+name);}};
+    const delMatCat=async id=>{if(!confirm('분류와 해당 자재 모두 삭제?'))return;await sb.from('materials').delete().eq('category_id',id);await sb.from('material_categories').delete().eq('id',id);setMatCats(p=>p.filter(c=>c.id!==id));toast('🗑 분류 삭제됨');};
+    const addProdCat=async name=>{if(!name?.trim())return;setAddProdModal(false);const{data}=await sb.from('product_categories').insert([{name:name.trim(),display_order:prodCats.length+1}]).select();if(data){setProdCats(p=>[...p,data[0]]);toast('✅ 카테고리 추가: '+name);}};
+    const delProdCat=async id=>{if(!confirm('카테고리와 해당 상품 모두 삭제?'))return;await sb.from('products').delete().eq('category_id',id);await sb.from('product_categories').delete().eq('id',id);setProdCats(p=>p.filter(c=>c.id!==id));toast('🗑 카테고리 삭제됨');};
+    const handleLogout=async()=>{if(!confirm('로그아웃?'))return;await sb.auth.signOut();toast('👋 로그아웃');};
+
+    const navigate=(p,estId=null)=>{setPage(p);if(estId!==null)setEditEstId(estId);};
+
+    if(authLoading)return<div className="loading-wrap"><div className="loading-spinner"/><div style={{fontSize:13,color:'var(--muted)'}}>로그인 확인 중...</div></div>;
+    if(!config)return<SetupScreen onDone={c=>{setConfig(c);const cl=window.supabase.createClient(c.url,c.key);setSb(cl);setAuthLoading(false);}}/>;
+    if(!user)return<LoginScreen sb={sb}/>;
+
+    const renderPage=()=>{
+        switch(page){
+            case 'mat-list': return<MaterialList key="mat" sb={sb} matCats={matCats} onAddMatCat={()=>setAddMatModal(true)} initCatId={activeCatId.mat}/>;
+            case 'mat-stock':return<ComingSoon icon="🏭" title="재고 현황" desc="자재 입출고 내역과 현재 재고를 실시간으로 파악합니다." tags={['입고','출고','재고 알림','월별 리포트']}/>;
+            case 'prod-list':return<ProductList key="prod" sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} onDelProdCat={delProdCat} initCatId={activeCatId.prod}/>;
+            case 'prod-price':return<ComingSoon icon="💰" title="가격 관리" desc="상품별 기준 단가와 할인율을 설정합니다." tags={['기준 단가','할인','이력']}/>;
+            // ★ 새 견적서
+            case 'est-new': return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat}/>;
+            // ★ 견적 목록
+            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')}/>;
+            // ★ 견적 수정
+            case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat}/>;
+            default:return null;
+        }
+    };
+
+    return(<div style={{display:'flex',width:'100%'}}>
+        <div id="__toast" className="toast" style={{display:'none'}}/>
+        {addMatModal&&<AddNameModal title="📦 자재 분류 추가" placeholder="예: 목재, 철물, 가전, 단열재" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
+        {addProdModal&&<AddNameModal title="🛍 상품 카테고리 추가" placeholder="예: 수납장, 싱크대, 신발장, 침대" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
+        <Sidebar user={user} page={page} setPage={p=>navigate(p)} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>setAddMatModal(true)} onDelMatCat={delMatCat} onAddProdCat={()=>setAddProdModal(true)} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout}/>
+        <main className="main">{renderPage()}</main>
+    </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

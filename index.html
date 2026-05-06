@@ -704,12 +704,12 @@ function MaterialModal({sb,matCats,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">품명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="자재명 입력"/></div>
                 <div className="mf"><label className="ml">규격/재질</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 입력"/></div>
                 <div className="mf"><label className="ml">두께</label><input className="mi" value={form.thickness||''} onChange={e=>set('thickness',e.target.value)} placeholder="예: 18mm, 2T"/></div>
+                <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 외부용, 방수, A등급"/></div>
                 <div className="mf"><label className="ml">단가(원)</label><input className="mi" type="number" value={form.unit_price||0} onChange={e=>set('unit_price',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">가공비(원)</label><input className="mi" type="number" value={form.processing_cost||0} onChange={e=>set('processing_cost',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">재고수량</label><input className="mi" type="number" value={form.stock_qty||0} onChange={e=>set('stock_qty',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">제조사</label><input className="mi" value={form.manufacturer||''} onChange={e=>set('manufacturer',e.target.value)} placeholder="제조사명"/></div>
                 <div className="mf"><label className="ml">공급업체</label><input className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)} placeholder="업체명"/></div>
-                <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 외부용, 방수, A등급"/></div>
                 <div className="mf"><label className="ml">구매링크</label><input className="mi" value={form.purchase_link||''} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div>
                 <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
             </div>
@@ -854,6 +854,7 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
                 <th style={{textAlign:'left'}}>제조사</th>
                 <th style={{textAlign:'left'}}>공급업체</th>
                 <th style={{textAlign:'left'}}>기타구분</th>
+                <th style={{textAlign:'center',width:70}}>링크</th>
                 <th style={{textAlign:'center',width:70}}>관리</th>
             </tr></thead>
             <tbody>{filtered.map(m=>(
@@ -869,6 +870,11 @@ function MaterialList({sb,matCats,onAddMatCat,initialCatId}){
                     <td style={{fontSize:12}}>{m.manufacturer||'-'}</td>
                     <td style={{fontSize:12}}>{m.supplier||'-'}</td>
                     <td style={{fontSize:12,color:'var(--muted)'}}>{m.category_extra||'-'}</td>
+                    <td style={{textAlign:'center'}}>
+                        {m.purchase_link?<a href={m.purchase_link} target="_blank" rel="noreferrer">
+                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>🔗 열기</button>
+                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
+                    </td>
                     <td style={{textAlign:'center'}}>
                         <button className="btn-icon" onClick={()=>{setEditing(m);setShowModal(true);}}>✏️</button>
                         <button className="btn-icon" onClick={()=>del(m.id)}>🗑</button>
@@ -1014,23 +1020,27 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
     </div>);
 }
 
-function ProductPickModal({sb,prodCats,cats,onAddItems,onClose}){
+function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
     const[products,setProducts]=useState([]);const[activeCat,setActiveCat]=useState(null);
     const[picked,setPicked]=useState([]);const[loading,setLoading]=useState(true);
 
     useEffect(()=>{
         if(!sb)return;
-        sb.from('products').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setProducts(data);setLoading(false);});
+        sb.from('products').select('*').order('name',{ascending:true}).then(({data})=>{if(data)setProducts(data);setLoading(false);});
     },[sb]);
 
     const toggle=prod=>setPicked(p=>p.find(x=>x.id===prod.id)?p.filter(x=>x.id!==prod.id):[...p,prod]);
     const filtered=activeCat?products.filter(p=>p.category_id===activeCat):products;
 
     const confirm=()=>{
-        if(picked.length===0)return;
-        onAddItems(picked);
+        if(picked.length===0){toast('상품을 선택하세요');return;}
+        // 각 선택된 상품을 순서대로 추가
+        picked.forEach(prod=>{
+            const catName=prodCats.find(c=>c.id===prod.category_id)?.name||'상품';
+            onAddProduct(prod,catName,null);
+        });
         onClose();
-        toast('✅ '+picked.length+'개 상품 선택됨');
+        toast('✅ '+picked.length+'개 상품 추가됨');
     };
 
     return(<div className="modal-overlay" onClick={onClose}>
@@ -1079,6 +1089,17 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
     const[statusChecked,setStatusChecked]=useState({}); // 진행상태 완료체크
     const[portItems,setPortItems]=useState([]);   // 첨부 포트폴리오
     const[showPortPick,setShowPortPick]=useState(false);
+
+    // ★ 신규 견적 시 담당자 자동 설정
+    useEffect(()=>{
+        if(mode!=='new'||!sb)return;
+        sb.auth.getUser().then(({data:{user}})=>{
+            if(user){
+                const name=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
+                setClient(p=>({...p,manager:p.manager||name}));
+            }
+        });
+    },[sb,mode]);
 
     // ★ edit: DB 로드
     useEffect(()=>{
@@ -1425,7 +1446,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
 
         {/* 고객 정보 */}
         <div className="card"><div className="card-title">고객 정보</div>
-            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['model','차량 모델','카니발, 스타리아'],['caravan','카라반 유형','팝업, 에어스트림'],['manager','담당자','담당자명']].map(([k,l,p])=>(
+            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['manager','담당자','담당자명']].map(([k,l,p])=>(
                     <div className="info-field" key={k}>
                         <label>{l}</label>
                         <div style={{display:'flex',gap:5,alignItems:'center'}}>
@@ -1445,11 +1466,11 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
 
         {/* 카테고리 버튼 */}
         <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}} className="no-print">
-            <button className="btn btn-outline btn-sm" onClick={addCat}>＋ 카테고리 추가</button>
+            <button className="btn btn-outline btn-sm" onClick={addCat}>＋ 기타상품추가</button>
         </div>
 
         {/* 품목 테이블 */}
-        {cats.length===0&&<div className="empty-state" style={{marginTop:20}}><div className="empty-icon">📋</div><div className="empty-text"><strong style={{color:'var(--blue)'}}>🛍 상품 선택</strong> 또는 <strong>카테고리 추가</strong>로 시작하세요.</div></div>}
+        {cats.length===0&&<div className="empty-state" style={{marginTop:20}}><div className="empty-icon">📋</div><div className="empty-text"><strong style={{color:'var(--blue)'}}>🛍 상품 선택</strong> 또는 <strong>기타상품추가</strong>로 시작하세요.</div></div>}
         {cats.map(cat=>{const ci=items.filter(i=>i.catId===cat.id);const sub=catTotal(cat.id);return(
             <div key={cat.id} className="cat-section">
                 <div className="cat-header"><div className="cat-header-left"><div className="cat-bar"/><input className="cat-name-input" value={cat.name} onChange={e=>updCat(cat.id,e.target.value)}/><span className="cat-subtotal">소계 {fmt(sub)}원</span></div>
@@ -1551,7 +1572,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                                 :<div className="est-port-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#94a3b8'}}>🖼</div>}
                             <div className="est-port-info">
                                 {p.title}
-                                {p.image_url&&<a href={p.image_url} target="_blank" rel="noreferrer" className="est-port-link">🔗 이미지 링크</a>}
+                                <div style={{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}}>
+                                    {p.image_url&&<a href={p.image_url} target="_blank" rel="noreferrer"><button className="btn btn-outline btn-xs" style={{fontSize:10}}>🔗 열기</button></a>}
+                                    {p.image_url&&<button className="btn btn-outline btn-xs" style={{fontSize:10}} onClick={()=>{navigator.clipboard?.writeText(p.image_url).then(()=>toast('📋 복사됨')).catch(()=>alert(p.image_url));}}>📋 복사</button>}
+                                </div>
                             </div>
                             <button className="est-port-del no-print" onClick={()=>setPortItems(prev=>prev.filter((_,j)=>j!==i))}>✕</button>
                         </div>
@@ -1732,8 +1756,9 @@ function Portfolio({sb, prodCats}){
                             <div className="port-card-cats">{cats.map(id=><span key={id} className="port-cat-tag">{catName(id)}</span>)}</div>
                             {item.description&&<div className="port-card-desc">{item.description}</div>}
                             <div className="port-card-actions">
-                                <button className="btn btn-outline btn-sm" onClick={()=>{setEditing(item);setShowModal(true);}}>✏️ 수정</button>
-                                <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={()=>del(item.id)}>🗑 삭제</button>
+                                {item.image_url&&<button className="btn btn-outline btn-sm" onClick={()=>{navigator.clipboard?.writeText(item.image_url).then(()=>toast('📋 링크 복사됨')).catch(()=>alert(item.image_url));}}>📋 링크복사</button>}
+                                <button className="btn btn-outline btn-sm" onClick={()=>{setEditing(item);setShowModal(true);}}>✏️</button>
+                                <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={()=>del(item.id)}>🗑</button>
                             </div>
                         </div>
                     </div>);

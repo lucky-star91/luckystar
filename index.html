@@ -1349,22 +1349,45 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
     const blank={category_id:'',name:'',description:'',price:0,image_url:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const[mats,setMats]=useState([]);
-    const[allMaterials,setAllMaterials]=useState([]);
+    const[allMaterials,setAllMaterials]=useState([]); // category_id 포함
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
     useEffect(()=>{
         if(!sb)return;
-        sb.from('materials').select('id,name,specification,unit_price').order('name').then(({data})=>{if(data)setAllMaterials(data);});
+        // category_id 포함해서 로드
+        sb.from('materials').select('id,name,specification,unit_price,category_id').order('name')
+          .then(({data})=>{if(data)setAllMaterials(data);});
         if(!initial?.id)return;
-        sb.from('product_materials').select('*').eq('product_id',initial.id).then(({data})=>{if(data)setMats(data);});
+        sb.from('product_materials').select('*').eq('product_id',initial.id)
+          .then(({data})=>{
+              if(data)setMats(data.map(m=>({
+                  _catId:m.category_id||'', // 로드시 분류 복원
+                  material_id:m.material_id||'',
+                  material_name:m.material_name||'',
+                  unit_price:m.unit_price||0,
+                  quantity:m.quantity||1,
+                  total:m.total||0,
+              })));
+          });
     },[sb,initial?.id]);
 
-    const addMat=()=>setMats(p=>[...p,{material_id:'',material_name:'',unit:'개',unit_price:0,quantity:1,total:0}]);
-    const updMat=(i,k,v)=>setMats(p=>p.map((m,j)=>{if(j!==i)return m;const nm={...m,[k]:v};nm.total=(Number(nm.unit_price)||0)*(Number(nm.quantity)||1);return nm;}));
-    const updMatFull=(i,updates)=>setMats(p=>p.map((m,j)=>{if(j!==i)return m;const nm={...m,...updates};nm.total=(Number(nm.unit_price)||0)*(Number(nm.quantity)||1);return nm;}));
+    const addMat=()=>setMats(p=>[...p,{_catId:'',material_id:'',material_name:'',unit_price:0,quantity:1,total:0}]);
+    const updMat=(i,k,v)=>setMats(p=>p.map((m,j)=>{if(j!==i)return m;const nm=k==='__batch__'?{...m,...v}:{...m,[k]:v};nm.total=(Number(nm.unit_price)||0)*(Number(nm.quantity)||1);return nm;}));
     const delMat=i=>setMats(p=>p.filter((_,j)=>j!==i));
 
-    const ok=()=>{if(!form.name.trim()){alert('상품명을 입력하세요');return;}onSave({form,mats});};
+    // ★ 저장 시 DB 전용 필드만 추출 (id, product_id 제외)
+    const ok=()=>{
+        if(!form.name.trim()){alert('상품명을 입력하세요');return;}
+        const cleanMats=mats.filter(m=>m.material_name).map(m=>({
+            material_id:m.material_id||null,
+            material_name:m.material_name||'',
+            unit_price:Number(m.unit_price)||0,
+            unit:'개',
+            quantity:Number(m.quantity)||1,
+            total:(Number(m.unit_price)||0)*(Number(m.quantity)||1),
+        }));
+        onSave({form,mats:cleanMats});
+    };
 
     return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
@@ -1376,28 +1399,46 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">설명</label><input className="mi" value={form.description||''} onChange={e=>set('description',e.target.value)} placeholder="상품 설명"/></div>
                 <div className="mf"><label className="ml">판매가(원)</label><input className="mi" type="number" value={form.price} onChange={e=>set('price',Number(e.target.value))} min="0"/></div>
             </div>
-            <div style={{marginTop:12}}>
+            <div style={{marginTop:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                     <span style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1,textTransform:'uppercase'}}>필요 자재</span>
                     <button className="btn btn-outline btn-sm" onClick={addMat}>＋ 자재 추가</button>
                 </div>
+                {/* 컬럼 헤더 */}
+                {mats.length>0&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px 36px',gap:6,marginBottom:4}}>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 분류</span>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 품명</span>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1,textAlign:'center'}}>수량</span>
+                    <span></span>
+                </div>}
                 {mats.map((m,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:6,marginBottom:6,alignItems:'center'}}>
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px 36px',gap:6,marginBottom:6,alignItems:'center'}}>
+                        {/* 1. 자재 분류 선택 */}
+                        <select className="mi" style={{fontSize:12}} value={m._catId||''}
+                            onChange={e=>updMat(i,'_catId',e.target.value)}>
+                            <option value="">── 분류 선택 ──</option>
+                            {matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        {/* 2. 자재 품명 (분류 선택 후 필터링) */}
                         <select className="mi" style={{fontSize:12}} value={m.material_id||''}
+                            disabled={!m._catId}
                             onChange={e=>{
                                 const mat=allMaterials.find(x=>x.id===e.target.value);
-                                if(mat)updMatFull(i,{material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
-                                else updMatFull(i,{material_id:'',material_name:''});
+                                if(mat)updMat(i,'__batch__',{material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
+                                else updMat(i,'material_id','');
                             }}>
-                            <option value="">── 자재 선택 ──</option>
-                            {allMaterials.map(mat=><option key={mat.id} value={mat.id}>{mat.name}{mat.specification?' ['+mat.specification+']':''}</option>)}
+                            <option value="">{m._catId?'── 품명 선택 ──':'← 분류 먼저 선택'}</option>
+                            {allMaterials.filter(mat=>mat.category_id===m._catId).map(mat=>(
+                                <option key={mat.id} value={mat.id}>{mat.name}{mat.specification?' ('+mat.specification+')':''}</option>
+                            ))}
                         </select>
-                        <input className="mi" placeholder="수량" type="number" value={m.quantity||1}
-                            onChange={e=>updMat(i,'quantity',Number(e.target.value)||1)}
-                            style={{fontSize:12}} min="1"/>
+                        {/* 3. 수량 */}
+                        <input className="mi" type="number" value={m.quantity||1} min="1" style={{fontSize:12,textAlign:'right'}}
+                            onChange={e=>updMat(i,'quantity',Number(e.target.value)||1)}/>
                         <button className="btn-icon" onClick={()=>delMat(i)}>🗑</button>
                     </div>
                 ))}
+                {mats.length===0&&<p style={{fontSize:12,color:'var(--muted)',margin:'8px 0'}}>자재 추가 버튼으로 필요 자재를 등록하세요.</p>}
             </div>
             <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
         </div>
@@ -1417,22 +1458,42 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
 
     const save=async({form,mats})=>{
         setShowModal(false);setEditing(null);
+        // ★ 안전한 자재 데이터 (id/product_id 제외, DB필드만)
+        const cleanRow=(m,pid)=>({
+            product_id:pid,
+            material_id:m.material_id||null,
+            material_name:m.material_name||'',
+            unit_price:Number(m.unit_price)||0,
+            unit:'개',
+            quantity:Number(m.quantity)||1,
+            total:(Number(m.unit_price)||0)*(Number(m.quantity)||1),
+        });
         if(editing){
-            const{data}=await sb.from('products').update(form).eq('id',editing.id).select();
+            const{data,error:e1}=await sb.from('products').update(form).eq('id',editing.id).select();
+            if(e1){toast('오류: '+e1.message);return;}
             if(data){
                 await sb.from('product_materials').delete().eq('product_id',editing.id);
-                if(mats.length>0)await sb.from('product_materials').insert(mats.map(m=>({...m,product_id:editing.id})));
+                const validMats=mats.filter(m=>m.material_name);
+                if(validMats.length>0){
+                    const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,editing.id)));
+                    if(e2)console.error('자재 저장 오류:',e2);
+                }
                 setProducts(p=>p.map(x=>x.id===editing.id?data[0]:x));
             }
-            toast('✅ 수정됨');
+            toast('수정됨');
         }else{
-            const{data}=await sb.from('products').insert([form]).select();
+            const{data,error:e1}=await sb.from('products').insert([form]).select();
+            if(e1){toast('오류: '+e1.message);return;}
             if(data){
                 const pid=data[0].id;
-                if(mats.length>0)await sb.from('product_materials').insert(mats.map(m=>({...m,product_id:pid})));
-                setProducts(p=>[data[0],...p]);
+                const validMats=mats.filter(m=>m.material_name);
+                if(validMats.length>0){
+                    const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,pid)));
+                    if(e2)console.error('자재 저장 오류:',e2);
+                }
+                setProducts(p=>[...p,data[0]]);
             }
-            toast('✅ 상품 등록됨');
+            toast('상품 등록됨');
         }
     };
     const del=async id=>{
@@ -1682,12 +1743,19 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(mode==='new'){setItems(p=>[...p,ni]);}
         else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
         toast('✅ '+prod.name+' 추가됨');
-        // ★ 상품의 필요 자재도 추가
+        // ★ 상품의 필요 자재도 견적 소요자재에 추가
         if(prod.id&&sb){
             const{data:pm}=await sb.from('product_materials').select('*').eq('product_id',prod.id);
             if(pm&&pm.length>0){
-                const newMats=pm.map(m=>({id:uid(),name:m.material_name||'',spec:'',qty:Number(m.quantity)||1,unit_price:Number(m.unit_price)||0,material_id:m.material_id||null}));
+                const newMats=pm.map(m=>({
+                    id:uid(),
+                    name:m.material_name||'',
+                    qty:Number(m.quantity)||1,
+                    unit_price:Number(m.unit_price)||0,
+                    material_id:m.material_id||null,
+                }));
                 setEstMaterials(p=>[...p,...newMats]);
+                toast('소요 자재 '+newMats.length+'종 추가됨');
             }
         }
     };
@@ -2053,20 +2121,24 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         {/* ★ 소요 자재 */}
         <div className="card">
             <div className="card-title">🔧 소요 자재
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 견적서 미출력 · 설치완료 시 재고 차감)</span>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
             </div>
-            <div className="table-wrap" style={{marginBottom:10}}>
-                {estMaterials.length===0
-                    ?<p style={{fontSize:12,color:'var(--muted)'}}>상품 추가 시 자재가 자동으로 포함됩니다. 직접 추가도 가능합니다.</p>
-                    :<table style={{minWidth:360}}>
+            {estMaterials.length===0
+                ?<p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
+                :<div className="table-wrap" style={{marginBottom:10}}>
+                    <table style={{minWidth:400}}>
                         <thead><tr>
                             <th style={{textAlign:'left'}}>자재명</th>
-                            <th className="tr" style={{width:100}}>수량</th>
-                            <th style={{width:40}}></th>
+                            <th className="tr" style={{width:90}}>수량</th>
+                            <th style={{width:36}}></th>
                         </tr></thead>
                         <tbody>{estMaterials.map((m,i)=>(
-                            <tr key={m.id}>
-                                <td style={{fontWeight:700}}>{m.name||<span style={{color:'var(--muted)'}}>자재명 미입력</span>}</td>
+                            <tr key={m.id||i}>
+                                <td>
+                                    <input value={m.name||''} placeholder="자재명"
+                                        style={{width:'100%',border:'1.5px solid var(--border)',borderRadius:6,padding:'4px 8px',fontSize:13,fontFamily:'Noto Sans KR,sans-serif'}}
+                                        onChange={e=>setEstMaterials(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
+                                </td>
                                 <td className="tr">
                                     <input type="number" value={m.qty||0} min="0"
                                         style={{width:70,padding:'4px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,textAlign:'right',fontFamily:'Noto Sans KR,sans-serif'}}
@@ -2077,8 +2149,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                                 </td>
                             </tr>
                         ))}</tbody>
-                    </table>}
-            </div>
+                    </table>
+                </div>}
             <button className="btn btn-outline btn-sm" onClick={()=>setEstMaterials(p=>[...p,{id:uid(),name:'',qty:1,unit_price:0,material_id:null}])}>＋ 자재 직접 추가</button>
         </div>
 

@@ -920,7 +920,14 @@ function ComingSoon({icon,title,desc,tags=[]}){return<div className="coming-wrap
    메인 앱
 ═══════════════════════════════════════ */
 function App(){
-    const[config,setConfig]=useState(()=>{try{return JSON.parse(localStorage.getItem('supabase_config'));}catch{return null;}});
+    // ★ Supabase 연결 정보 — 여기에 직접 입력하면 초기설정 화면 생략
+    const SUPABASE_URL = 'https://ubxoyogkygwzdlmfrtfn.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_vKyoKH8lAH5m4zZu5fYn_w_aUjVVSV2';
+    const[config,setConfig]=useState(()=>{
+        // 코드에 직접 입력된 경우 우선 사용
+        if(SUPABASE_URL && SUPABASE_KEY) return {url:SUPABASE_URL, key:SUPABASE_KEY};
+        try{return JSON.parse(localStorage.getItem('supabase_config'));}catch{return null;}
+    });
     const[sb,setSb]=useState(null);const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
     const[page,setPage]=useState('est-list');
     const[editEstId,setEditEstId]=useState(null); // 수정할 견적 ID

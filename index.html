@@ -1580,8 +1580,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         // ★ 설치완료 체크 시 자재 재고 차감 확인
         if(status==='설치완료'&&checked&&estMaterials.length>0){
             const mats=estMaterials.filter(m=>m.material_id&&m.qty>0);
-            if(mats.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까?
-차감할 자재: '+mats.length+'종')){
+            if(mats.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까? ('+mats.length+'종)')){
                 for(const m of mats){
                     const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
                     const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);

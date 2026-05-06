@@ -1809,7 +1809,21 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         else{const{data}=await sb.from('est_cats').insert([{estimate_id:estimateId,name,display_order:cats.length}]).select();if(data)setCats(p=>[...p,{id:data[0].id,name,order:data[0].display_order}]);}
     };
     const updCat=async(id,name)=>{setCats(p=>p.map(c=>c.id===id?{...c,name}:c));if(mode==='edit')await sb.from('est_cats').update({name}).eq('id',id);};
-    const delCat=async id=>{if(!confirm('카테고리와 품목 모두 삭제?'))return;setCats(p=>p.filter(c=>c.id!==id));setItems(p=>p.filter(i=>i.catId!==id));if(mode==='edit'){await sb.from('est_items').delete().eq('cat_id',id);await sb.from('est_cats').delete().eq('id',id);}};
+    const delCat=async id=>{
+        if(!confirm('카테고리와 품목 모두 삭제?'))return;
+        // 삭제될 품목 id 목록 수집
+        const delItemIds=items.filter(i=>i.catId===id).map(i=>i.id);
+        const delItemNames=items.filter(i=>i.catId===id).map(i=>i.name);
+        setCats(p=>p.filter(c=>c.id!==id));
+        setItems(p=>p.filter(i=>i.catId!==id));
+        // 해당 품목들의 자재 제거
+        setEstMaterials(p=>p.filter(m=>{
+            if(m.itemId&&delItemIds.includes(m.itemId)) return false;
+            if(!m.itemId&&m.itemName&&delItemNames.includes(m.itemName)) return false;
+            return true;
+        }));
+        if(mode==='edit'){await sb.from('est_items').delete().eq('cat_id',id);await sb.from('est_cats').delete().eq('id',id);}
+    };
 
     // ── 품목 CRUD ──
     const addItem=async catId=>{
@@ -1822,7 +1836,18 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         setItems(updated);
         if(mode==='edit'){const t=updated.find(i=>i.id===id);await sb.from('est_items').update({name:t.name,specification:t.spec,quantity:t.qty,unit_price:t.unitPrice,labor_cost:t.laborCost,total_amount:t.total,image_url:t.imgUrl}).eq('id',id);}
     };
-    const delItem=async id=>{if(!confirm('삭제?'))return;setItems(p=>p.filter(i=>i.id!==id));setEstMaterials(p=>p.filter(m=>m.itemId!==id));if(mode==='edit')await sb.from('est_items').delete().eq('id',id);};
+    const delItem=async id=>{
+        if(!confirm('삭제?'))return;
+        const target=items.find(i=>i.id===id);
+        setItems(p=>p.filter(i=>i.id!==id));
+        // itemId(정확) 또는 itemName(폴백) 기준으로 자재 제거
+        setEstMaterials(p=>p.filter(m=>{
+            if(m.itemId===id) return false; // itemId 일치 → 제거
+            if(!m.itemId&&target&&m.itemName&&m.itemName===target.name) return false; // itemName 폴백
+            return true;
+        }));
+        if(mode==='edit')await sb.from('est_items').delete().eq('id',id);
+    };
     const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
 
     // ★ 상태 날짜 수정 (edit mode)
@@ -1870,10 +1895,14 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         }
         if(!estCat)return;
         const ni={id:uid(),catId:estCat.id,name:prod.name,spec:prod.description||'',qty:1,unitPrice:Number(prod.price)||0,laborCost:0,total:Number(prod.price)||0,imgUrl:prod.image_url||''};
+        let actualItemId=ni.id; // 실제 사용할 itemId
         if(mode==='new'){setItems(p=>[...p,ni]);}
-        else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
+        else{
+            const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();
+            if(data){actualItemId=data[0].id;setItems(p=>[...p,{...ni,id:actualItemId}]);}
+        }
         toast('✅ '+prod.name+' 추가됨');
-        // ★ 상품의 필요 자재도 견적 소요자재에 추가 (itemId로 연결)
+        // ★ 상품의 필요 자재도 견적 소요자재에 추가
         if(prod.id&&sb){
             const{data:pm}=await sb.from('product_materials').select('*').eq('product_id',prod.id);
             if(pm&&pm.length>0){
@@ -1883,8 +1912,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     qty:Number(m.quantity)||1,
                     unit_price:Number(m.unit_price)||0,
                     material_id:m.material_id||null,
-                    itemId:ni.id,       // 어느 상품 품목에서 온 자재인지
-                    itemName:prod.name, // 상품명 (표시용)
+                    itemId:actualItemId,  // edit모드에선 DB id, new모드에선 uid
+                    itemName:prod.name,
                 }));
                 setEstMaterials(p=>[...p,...newMats]);
             }

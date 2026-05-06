@@ -1476,11 +1476,11 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 const validMats=mats.filter(m=>m.material_name);
                 if(validMats.length>0){
                     const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,editing.id)));
-                    if(e2)console.error('자재 저장 오류:',e2);
+                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials DISABLE ROW LEVEL SECURITY;');return;}
                 }
                 setProducts(p=>p.map(x=>x.id===editing.id?data[0]:x));
             }
-            toast('수정됨');
+            toast('수정됨 (자재 '+mats.length+'종)');
         }else{
             const{data,error:e1}=await sb.from('products').insert([form]).select();
             if(e1){toast('오류: '+e1.message);return;}
@@ -1489,11 +1489,11 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 const validMats=mats.filter(m=>m.material_name);
                 if(validMats.length>0){
                     const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,pid)));
-                    if(e2)console.error('자재 저장 오류:',e2);
+                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials DISABLE ROW LEVEL SECURITY;');return;}
                 }
                 setProducts(p=>[...p,data[0]]);
             }
-            toast('상품 등록됨');
+            toast('등록됨 (자재 '+mats.length+'종)');
         }
     };
     const del=async id=>{
@@ -1675,6 +1675,16 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(depositNum>0){setPaymentStatus(p=>p==='입금전'?'계약':p);}
         else{setPaymentStatus(p=>p==='계약'?'입금전':p);}
     },[depositNum]);
+
+    // ★ 잔금입금완료 체크 시 결제상태 완료로 변경
+    useEffect(()=>{
+        if(balancePaid){
+            setPaymentStatus('완료');
+        }else{
+            // 미체크 시 계약금에 따라 복원
+            setPaymentStatus(depositNum>0?'계약':'입금전');
+        }
+    },[balancePaid]);
     useEffect(()=>{onTotalChange&&onTotalChange(grandVat);},[items]);
     const catTotal=cid=>items.filter(i=>i.catId===cid).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
     const updClient=(k,v)=>setClient(p=>({...p,[k]:v}));
@@ -2078,8 +2088,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 </div>
                 <div className="pay-field">
                     <div className="pay-label">잔금 (자동계산)</div>
-                    <input readOnly className={'pay-input auto '+(balanceAmount<=0&&grandVat>0?'zero':'')}
-                        value={grandVat>0?fmt(Math.max(0,balanceAmount))+'원':'-'}/>
+                    <input readOnly className={'pay-input auto '+(balancePaid||balanceAmount<=0&&grandVat>0?'zero':'')}
+                        value={balancePaid?'0원':(grandVat>0?fmt(Math.max(0,balanceAmount))+'원':'-')}/>
                     <div className="pay-check-row">
                         <input type="checkbox" id="bpaid" className="pay-check"
                             checked={balancePaid} onChange={e=>setBalancePaid(e.target.checked)}/>

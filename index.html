@@ -60,6 +60,19 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .field input:focus{border-color:var(--blue);background:#f0f6ff;}
 .setup-block{background:var(--bg);border-radius:12px;padding:20px;margin-bottom:24px;}
 .setup-block-title{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;}
+/* ── 인앱브라우저 경고 ── */
+.inapp-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:30px;background:linear-gradient(135deg,#0f1923,#1a3050);text-align:center;gap:20px;}
+.inapp-icon{font-size:64px;}
+.inapp-title{font-size:22px;font-weight:900;color:#fff;line-height:1.3;}
+.inapp-desc{font-size:14px;color:rgba(255,255,255,.65);line-height:1.8;max-width:320px;}
+.inapp-url{background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;padding:12px 16px;font-size:13px;color:#fff;word-break:break-all;margin:0 auto;max-width:320px;}
+.inapp-btn{background:var(--gold);color:var(--navy);border:none;border-radius:10px;padding:14px 28px;font-size:15px;font-weight:900;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:background .15s;}
+.inapp-btn:hover{background:#d4900a;}
+.inapp-steps{background:rgba(255,255,255,.07);border-radius:12px;padding:16px 20px;max-width:320px;text-align:left;}
+.inapp-step{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:13px;color:rgba(255,255,255,.8);}
+.inapp-step:last-child{margin-bottom:0;}
+.inapp-step-num{background:var(--gold);color:var(--navy);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;}
+
 .btn-google{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;background:#fff;border:2px solid var(--border);border-radius:10px;padding:14px 20px;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;color:var(--text);cursor:pointer;transition:all .15s;}
 .btn-google:hover{border-color:var(--blue);background:#f0f6ff;color:var(--blue);}
 .btn-google:disabled{opacity:.5;cursor:not-allowed;}
@@ -443,7 +456,53 @@ function AddNameModal({title,placeholder,onClose,onSave}){
 
 /* ── 설정/로그인 ── */
 function SetupScreen({onDone}){const[url,setUrl]=useState('');const[key,setKey]=useState('');const save=()=>{if(url&&key){localStorage.setItem('supabase_config',JSON.stringify({url,key}));onDone({url,key});}};return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">⚙️ 초기 설정</div><div className="login-sub">Supabase 프로젝트 정보를 입력하면 데이터가 자동으로 연결됩니다.</div><div className="setup-block"><div className="setup-block-title">Supabase 연결 정보</div><div className="field"><label>Project URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co"/></div><div className="field"><label>anon public Key</label><input value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJ..."/></div></div><button className="btn btn-primary" style={{width:'100%',padding:14,fontSize:15,justifyContent:'center'}} onClick={save}>저장하고 시작하기</button><div className="login-notice" style={{marginTop:16}}>입력 정보는 브라우저에만 저장됩니다.</div></div></div>);}
-function LoginScreen({sb}){const[loading,setLoading]=useState(false);const login=async()=>{setLoading(true);await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});};return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">🚐 럭키스타 로그인</div><div className="login-sub">구글 계정으로 로그인하면 모든 데이터가 실시간으로 클라우드에 저장됩니다.</div><button className="btn-google" onClick={login} disabled={loading}><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?'연결 중...':'Google 계정으로 로그인'}</button><div className="login-divider"><span>안내</span></div><div className="login-notice">허가된 구글 계정만 접속 가능합니다.<br/>문의: 럭키스타 캠핑카라반<br/><span style={{fontSize:10,color:'#94a3b8'}}>경기도 파주시 광탄면</span></div></div></div>);}
+function LoginScreen({sb}){
+    const[loading,setLoading]=useState(false);
+
+    // ★ 인앱 브라우저 감지 (카카오톡, 네이버, 인스타그램 등)
+    const isInApp=(()=>{
+        const ua=window.navigator.userAgent||'';
+        const isAndroidWV=/wv/.test(ua)&&/Android/.test(ua);
+        const isIOSInApp=/iPhone|iPad/.test(ua)&&!/Safari\//.test(ua)&&/AppleWebKit/.test(ua)&&!/CriOS/.test(ua);
+        const isKnownApp=/KAKAOTALK|kakaotalk|NAVER|naver|Line\/|Instagram|FB_IAB|FBAN|Twitter|Snapchat|Whale/i.test(ua);
+        return isAndroidWV||isIOSInApp||isKnownApp;
+    })();
+
+    const copyUrl=()=>{
+        navigator.clipboard?.writeText(window.location.href).then(()=>alert('주소가 복사됐습니다!
+브라우저(Chrome/Safari)를 열고 붙여넣기 하세요.')).catch(()=>alert('주소: '+window.location.href));
+    };
+
+    // ★ 인앱 브라우저 감지 시 안내 화면 표시
+    if(isInApp){
+        return(
+            <div className="inapp-wrap">
+                <div className="inapp-icon">🚫</div>
+                <div className="inapp-title">앱 내 브라우저에서는<br/>Google 로그인이 불가합니다</div>
+                <div className="inapp-desc">카카오톡·네이버 등 앱 내 브라우저는<br/>Google 보안 정책에 의해 차단됩니다.<br/>아래 방법으로 접속해 주세요.</div>
+                <div className="inapp-steps">
+                    <div className="inapp-step">
+                        <div className="inapp-step-num">1</div>
+                        <span>아래 주소 복사 버튼을 눌러 주소를 복사하세요</span>
+                    </div>
+                    <div className="inapp-step">
+                        <div className="inapp-step-num">2</div>
+                        <span><strong style={{color:'var(--gold)'}}>Chrome</strong> 또는 <strong style={{color:'var(--gold)'}}>Safari</strong> 앱을 직접 열어주세요</span>
+                    </div>
+                    <div className="inapp-step">
+                        <div className="inapp-step-num">3</div>
+                        <span>주소창에 붙여넣기 후 접속하세요</span>
+                    </div>
+                </div>
+                <div className="inapp-url">{window.location.href}</div>
+                <button className="inapp-btn" onClick={copyUrl}>📋 주소 복사하기</button>
+                <div style={{fontSize:12,color:'rgba(255,255,255,.35)',marginTop:8}}>★ 럭키스타 캠핑카라반</div>
+            </div>
+        );
+    }
+
+    const login=async()=>{setLoading(true);await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});};
+    return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">🚐 럭키스타 로그인</div><div className="login-sub">구글 계정으로 로그인하면 모든 데이터가 실시간으로 클라우드에 저장됩니다.</div><button className="btn-google" onClick={login} disabled={loading}><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?'연결 중...':'Google 계정으로 로그인'}</button><div className="login-divider"><span>안내</span></div><div className="login-notice">허가된 구글 계정만 접속 가능합니다.<br/>문의: 럭키스타 캠핑카라반<br/><span style={{fontSize:10,color:'#94a3b8'}}>경기도 파주시 광탄면</span></div></div></div>);}
 
 /* ── 사이드바 ── */
 function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout}){

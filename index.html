@@ -1611,6 +1611,93 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
     </div>);
 }
 
+/* ═══════════════════════════════════════
+   ★ 소요자재 카드 (상품별 + 합산)
+═══════════════════════════════════════ */
+function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
+    // 상품별 그룹 (itemName 있는 것)
+    const byItem = {};
+    estMaterials.forEach(m => {
+        if(!m.itemName) return;
+        if(!byItem[m.itemName]) byItem[m.itemName] = [];
+        byItem[m.itemName].push(m);
+    });
+    const itemGroups = Object.entries(byItem);
+
+    // 합산 (material_id 또는 name 기준)
+    const sumMap = {};
+    estMaterials.forEach(m => {
+        const key = m.material_id || m.name;
+        if(!key) return;
+        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, qty:0};
+        sumMap[key].qty += Number(m.qty) || 0;
+    });
+    const sumList = Object.values(sumMap).filter(m => m.qty > 0);
+
+    const removeByKey = key => setEstMaterials(p => p.filter(x => (x.material_id || x.name) !== key));
+    const addBlank = () => setEstMaterials(p => [...p, {id:uid(), name:'', qty:1, unit_price:0, material_id:null}]);
+
+    return(
+        <div className="card">
+            <div className="card-title">🔧 소요 자재
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
+            </div>
+
+            {/* ① 상품별 필요자재 - itemName 있을 때만 표시 */}
+            {itemGroups.length > 0 && (
+                <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>상품별 필요자재</div>
+                    {itemGroups.map(([itemName, mats]) => (
+                        <div key={itemName} style={{marginBottom:10}}>
+                            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:5}}>📦 {itemName}</div>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:5,paddingLeft:16}}>
+                                {mats.map((m, i) => (
+                                    <span key={i} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:12,fontWeight:600}}>
+                                        {m.name} <strong style={{fontFamily:'Bebas Neue,sans-serif',fontSize:13,color:'var(--navy)'}}>× {m.qty}</strong>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    <div style={{borderTop:'1.5px dashed var(--border)',margin:'4px 0 12px'}}/>
+                </div>
+            )}
+
+            {/* ② 합산 소요자재 */}
+            <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>
+                {itemGroups.length > 0 ? '합산 소요자재' : '소요자재'}
+            </div>
+            {sumList.length === 0
+                ? <p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
+                : <div className="table-wrap" style={{marginBottom:10}}>
+                    <table style={{minWidth:340}}>
+                        <thead>
+                            <tr>
+                                <th style={{textAlign:'left'}}>자재명</th>
+                                <th className="tr" style={{width:100}}>합산수량</th>
+                                <th style={{width:36}}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sumList.map((m, i) => (
+                                <tr key={i}>
+                                    <td style={{fontWeight:700}}>{m.name || '(자재명 없음)'}</td>
+                                    <td className="tr" style={{fontWeight:900,fontSize:16,fontFamily:'Bebas Neue,sans-serif',color:'var(--navy)',letterSpacing:1}}>
+                                        {m.qty}
+                                    </td>
+                                    <td style={{textAlign:'center'}}>
+                                        <button className="btn-icon" onClick={() => removeByKey(m.material_id || m.name)}>✕</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>}
+            <button className="btn btn-outline btn-sm" onClick={addBlank}>＋ 자재 직접 추가</button>
+        </div>
+    );
+}
+
 function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
     const[cats,setCats]=useState([]);  // {id,name,order}  — new: uid(), edit: DB uuid
     const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
@@ -2148,78 +2235,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         </div>
 
         {/* ★ 소요 자재 */}
-        {(()=>{
-            // ── 상품별 그룹 (itemName 있는 것만)
-            const byItem={};
-            estMaterials.forEach(m=>{
-                if(!m.itemName) return;
-                if(!byItem[m.itemName]) byItem[m.itemName]=[];
-                byItem[m.itemName].push(m);
-            });
-            const hasItemGroup=Object.keys(byItem).length>0;
-
-            // ── 합산 (material_id 또는 name 기준)
-            const sumMap={};
-            estMaterials.forEach(m=>{
-                const key=m.material_id||m.name;
-                if(!key) return;
-                if(!sumMap[key]) sumMap[key]={...m,qty:0};
-                sumMap[key].qty+=Number(m.qty)||0;
-            });
-            const sumList=Object.values(sumMap).filter(m=>m.qty>0);
-
-            return(<div className="card">
-                <div className="card-title">🔧 소요 자재
-                    <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
-                </div>
-
-                {/* ① 상품별 필요자재 (itemName이 있는 경우만) */}
-                {hasItemGroup&&<div style={{marginBottom:14}}>
-                    <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>상품별 필요자재</div>
-                    {Object.entries(byItem).map(([itemName,mats])=>(
-                        <div key={itemName} style={{marginBottom:8}}>
-                            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:4}}>📦 {itemName}</div>
-                            <div style={{display:'flex',flexWrap:'wrap',gap:5,paddingLeft:18}}>
-                                {mats.map((m,i)=>(
-                                    <span key={i} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:12,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
-                                        {m.name}
-                                        <strong style={{color:'var(--navy)',fontFamily:'Bebas Neue,sans-serif',fontSize:13,letterSpacing:.5}}>× {m.qty}</strong>
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                    <div style={{borderTop:'1.5px dashed var(--border)',margin:'10px 0 10px'}}/>
-                </div>}
-
-                {/* ② 합산 (항상 표시) */}
-                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>
-                    {hasItemGroup?'합산 소요자재':'소요자재'}
-                </div>
-                {sumList.length===0
-                    ?<p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
-                    :<div className="table-wrap" style={{marginBottom:10}}>
-                        <table style={{minWidth:340}}>
-                            <thead><tr>
-                                <th style={{textAlign:'left'}}>자재명</th>
-                                <th className="tr" style={{width:90,fontFamily:'Bebas Neue,sans-serif',letterSpacing:1}}>합산수량</th>
-                                <th style={{width:36}}></th>
-                            </tr></thead>
-                            <tbody>{sumList.map((m,i)=>(
-                                <tr key={i}>
-                                    <td style={{fontWeight:700}}>{m.name||'(자재명 없음)'}</td>
-                                    <td className="tr" style={{fontWeight:900,fontSize:16,fontFamily:'Bebas Neue,sans-serif',color:'var(--navy)',letterSpacing:1}}>{m.qty}</td>
-                                    <td style={{textAlign:'center'}}>
-                                        <button className="btn-icon" title="삭제"
-                                            onClick={()=>setEstMaterials(p=>p.filter(x=>(x.material_id||x.name)!==(m.material_id||m.name)))}>✕</button>
-                                    </td>
-                                </tr>
-                            ))}</tbody>
-                        </table>
-                    </div>}
-                <button className="btn btn-outline btn-sm" onClick={()=>setEstMaterials(p=>[...p,{id:uid(),name:'',qty:1,unit_price:0,material_id:null}])}>＋ 자재 직접 추가</button>
-            </div>);
-        })()}
+        <SoyoJaeCard estMaterials={estMaterials} setEstMaterials={setEstMaterials} uid={uid}/>
 
 
         {/* ★ 포트폴리오 첨부 */}

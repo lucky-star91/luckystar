@@ -1736,16 +1736,23 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         const nc={...statusChecked,[status]:checked};
         setStatusChecked(nc);
         if(mode==='edit')await sb.from('estimates').update({status_checked:JSON.stringify(nc)}).eq('id',estimateId);
-        // ★ 설치완료 체크 시 자재 재고 차감 확인
+        // ★ 설치완료 체크 시 합산 기준으로 자재 재고 차감
         if(status==='설치완료'&&checked&&estMaterials.length>0){
-            const mats=estMaterials.filter(m=>m.material_id&&m.qty>0);
-            if(mats.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까? ('+mats.length+'종)')){
-                for(const m of mats){
+            // material_id 기준으로 합산
+            const sumMap={};
+            estMaterials.forEach(m=>{
+                if(!m.material_id||!m.qty) return;
+                if(!sumMap[m.material_id]) sumMap[m.material_id]={material_id:m.material_id,name:m.name,qty:0};
+                sumMap[m.material_id].qty+=Number(m.qty)||0;
+            });
+            const sumList=Object.values(sumMap).filter(m=>m.qty>0);
+            if(sumList.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까? ('+sumList.length+'종)')){
+                for(const m of sumList){
                     const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
                     const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);
                     await sb.from('materials').update({stock_qty:newQty}).eq('id',m.material_id);
                 }
-                toast('✅ 자재 재고 차감 완료 ('+mats.length+'종)');
+                toast('재고 차감 완료 ('+sumList.length+'종)');
             }
         }
     };
@@ -1764,7 +1771,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(mode==='new'){setItems(p=>[...p,ni]);}
         else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
         toast('✅ '+prod.name+' 추가됨');
-        // ★ 상품의 필요 자재도 견적 소요자재에 추가
+        // ★ 상품의 필요 자재도 견적 소요자재에 추가 (itemId로 연결)
         if(prod.id&&sb){
             const{data:pm}=await sb.from('product_materials').select('*').eq('product_id',prod.id);
             if(pm&&pm.length>0){
@@ -1774,9 +1781,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     qty:Number(m.quantity)||1,
                     unit_price:Number(m.unit_price)||0,
                     material_id:m.material_id||null,
+                    itemId:ni.id,       // 어느 상품 품목에서 온 자재인지
+                    itemName:prod.name, // 상품명 (표시용)
                 }));
                 setEstMaterials(p=>[...p,...newMats]);
-                toast('소요 자재 '+newMats.length+'종 추가됨');
             }
         }
     };
@@ -2062,7 +2070,26 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left',minWidth:130}}>품목/부품명</th><th style={{textAlign:'left',minWidth:100}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:110}}>노무비(원)</th><th className="tr" style={{width:115}}>합계(원)</th><th className="no-print" style={{width:34}}></th></tr></thead>
                     <tbody>
                         {ci.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
-                        {ci.map(item=><tr key={item.id}><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" style={{color:'var(--purple)',fontWeight:600}} value={item.laborCost} onChange={e=>updItem(item.id,'laborCost',e.target.value)} min="0"/></td><td style={{textAlign:'right',fontWeight:800,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>)}
+                        {ci.map(item=>{
+                            const itemMats=estMaterials.filter(m=>m.itemId===item.id);
+                            return(<React.Fragment key={item.id}>
+                                <tr><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.laborCost} onChange={e=>updItem(item.id,'laborCost',e.target.value)} min="0"/></td><td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>
+                                {/* ★ 상품 필요자재 sub-row */}
+                                {itemMats.length>0&&<tr style={{background:'#f8faff'}}>
+                                    <td></td>
+                                    <td colSpan={7} style={{paddingBottom:6,paddingLeft:8}}>
+                                        <div style={{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center'}}>
+                                            <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:.5}}>필요자재:</span>
+                                            {itemMats.map((m,mi)=>(
+                                                <span key={mi} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'2px 8px',borderRadius:10,fontWeight:600}}>
+                                                    {m.name} <strong style={{color:'var(--navy)'}}>{m.qty}</strong>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </td>
+                                </tr>}
+                            </React.Fragment>);
+                        })}
                         {ci.length>0&&<tr className="subtotal-row"><td colSpan={5}/><td className="tr subtotal-lbl">소 계</td><td className="tr subtotal-val">{fmt(sub)}원</td><td/></tr>}
                     </tbody>
                 </table></div>
@@ -2140,40 +2167,51 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         </div>
 
         {/* ★ 소요 자재 */}
-        <div className="card">
-            <div className="card-title">🔧 소요 자재
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
-            </div>
-            {estMaterials.length===0
-                ?<p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
-                :<div className="table-wrap" style={{marginBottom:10}}>
-                    <table style={{minWidth:400}}>
-                        <thead><tr>
-                            <th style={{textAlign:'left'}}>자재명</th>
-                            <th className="tr" style={{width:90}}>수량</th>
-                            <th style={{width:36}}></th>
-                        </tr></thead>
-                        <tbody>{estMaterials.map((m,i)=>(
-                            <tr key={m.id||i}>
-                                <td>
-                                    <input value={m.name||''} placeholder="자재명"
-                                        style={{width:'100%',border:'1.5px solid var(--border)',borderRadius:6,padding:'4px 8px',fontSize:13,fontFamily:'Noto Sans KR,sans-serif'}}
-                                        onChange={e=>setEstMaterials(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
-                                </td>
-                                <td className="tr">
-                                    <input type="number" value={m.qty||0} min="0"
-                                        style={{width:70,padding:'4px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,textAlign:'right',fontFamily:'Noto Sans KR,sans-serif'}}
-                                        onChange={e=>setEstMaterials(p=>p.map((x,j)=>j===i?{...x,qty:Number(e.target.value)||0}:x))}/>
-                                </td>
-                                <td style={{textAlign:'center'}}>
-                                    <button className="btn-icon" onClick={()=>setEstMaterials(p=>p.filter((_,j)=>j!==i))}>✕</button>
-                                </td>
-                            </tr>
-                        ))}</tbody>
-                    </table>
-                </div>}
-            <button className="btn btn-outline btn-sm" onClick={()=>setEstMaterials(p=>[...p,{id:uid(),name:'',qty:1,unit_price:0,material_id:null}])}>＋ 자재 직접 추가</button>
-        </div>
+        {(()=>{
+            // ★ 합산 계산: material_id 또는 name 기준으로 그룹핑
+            const sumMap={};
+            estMaterials.forEach(m=>{
+                const key=m.material_id||m.name;
+                if(!key)return;
+                if(!sumMap[key])sumMap[key]={...m,qty:0,sources:[]};
+                sumMap[key].qty+=Number(m.qty)||0;
+                if(m.itemName)sumMap[key].sources.push(m.itemName);
+            });
+            const sumList=Object.values(sumMap);
+
+            return(<div className="card">
+                <div className="card-title">🔧 소요 자재 합계
+                    <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
+                </div>
+                {sumList.length===0
+                    ?<p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
+                    :<div className="table-wrap" style={{marginBottom:10}}>
+                        <table style={{minWidth:400}}>
+                            <thead><tr>
+                                <th style={{textAlign:'left'}}>자재명</th>
+                                <th style={{textAlign:'left',fontSize:10,color:'rgba(255,255,255,.5)'}}>상품</th>
+                                <th className="tr" style={{width:90}}>합산수량</th>
+                                <th style={{width:36}}></th>
+                            </tr></thead>
+                            <tbody>{sumList.map((m,i)=>(
+                                <tr key={m.id||i}>
+                                    <td style={{fontWeight:700}}>{m.name||'(자재명 없음)'}</td>
+                                    <td style={{fontSize:11,color:'var(--muted)'}}>{[...new Set(m.sources)].join(', ')||'-'}</td>
+                                    <td className="tr" style={{fontWeight:900,color:'var(--navy)'}}>
+                                        {m.qty}
+                                    </td>
+                                    <td style={{textAlign:'center'}}>
+                                        <button className="btn-icon" title="이 자재 전체 삭제"
+                                            onClick={()=>setEstMaterials(p=>p.filter(x=>(x.material_id||x.name)!==(m.material_id||m.name)))}>✕</button>
+                                    </td>
+                                </tr>
+                            ))}</tbody>
+                        </table>
+                    </div>}
+                <button className="btn btn-outline btn-sm" onClick={()=>setEstMaterials(p=>[...p,{id:uid(),name:'',qty:1,unit_price:0,material_id:null}])}>＋ 자재 직접 추가</button>
+            </div>);
+        })()}
+
 
         {/* ★ 포트폴리오 첨부 */}
         <div className="card">

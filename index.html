@@ -2070,26 +2070,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left',minWidth:130}}>품목/부품명</th><th style={{textAlign:'left',minWidth:100}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:110}}>노무비(원)</th><th className="tr" style={{width:115}}>합계(원)</th><th className="no-print" style={{width:34}}></th></tr></thead>
                     <tbody>
                         {ci.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
-                        {ci.map(item=>{
-                            const itemMats=estMaterials.filter(m=>m.itemId===item.id);
-                            return(<React.Fragment key={item.id}>
-                                <tr><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.laborCost} onChange={e=>updItem(item.id,'laborCost',e.target.value)} min="0"/></td><td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>
-                                {/* ★ 상품 필요자재 sub-row */}
-                                {itemMats.length>0&&<tr style={{background:'#f8faff'}}>
-                                    <td></td>
-                                    <td colSpan={7} style={{paddingBottom:6,paddingLeft:8}}>
-                                        <div style={{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center'}}>
-                                            <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:.5}}>필요자재:</span>
-                                            {itemMats.map((m,mi)=>(
-                                                <span key={mi} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'2px 8px',borderRadius:10,fontWeight:600}}>
-                                                    {m.name} <strong style={{color:'var(--navy)'}}>{m.qty}</strong>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </td>
-                                </tr>}
-                            </React.Fragment>);
-                        })}
+                        {ci.map(item=><tr key={item.id}><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.laborCost} onChange={e=>updItem(item.id,'laborCost',e.target.value)} min="0"/></td><td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>)}
                         {ci.length>0&&<tr className="subtotal-row"><td colSpan={5}/><td className="tr subtotal-lbl">소 계</td><td className="tr subtotal-val">{fmt(sub)}원</td><td/></tr>}
                     </tbody>
                 </table></div>
@@ -2168,40 +2149,68 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
 
         {/* ★ 소요 자재 */}
         {(()=>{
-            // ★ 합산 계산: material_id 또는 name 기준으로 그룹핑
+            // ── 상품별 그룹 (itemName 있는 것만)
+            const byItem={};
+            estMaterials.forEach(m=>{
+                if(!m.itemName) return;
+                if(!byItem[m.itemName]) byItem[m.itemName]=[];
+                byItem[m.itemName].push(m);
+            });
+            const hasItemGroup=Object.keys(byItem).length>0;
+
+            // ── 합산 (material_id 또는 name 기준)
             const sumMap={};
             estMaterials.forEach(m=>{
                 const key=m.material_id||m.name;
-                if(!key)return;
-                if(!sumMap[key])sumMap[key]={...m,qty:0,sources:[]};
+                if(!key) return;
+                if(!sumMap[key]) sumMap[key]={...m,qty:0};
                 sumMap[key].qty+=Number(m.qty)||0;
-                if(m.itemName)sumMap[key].sources.push(m.itemName);
             });
-            const sumList=Object.values(sumMap);
+            const sumList=Object.values(sumMap).filter(m=>m.qty>0);
 
             return(<div className="card">
-                <div className="card-title">🔧 소요 자재 합계
+                <div className="card-title">🔧 소요 자재
                     <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
+                </div>
+
+                {/* ① 상품별 필요자재 (itemName이 있는 경우만) */}
+                {hasItemGroup&&<div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>상품별 필요자재</div>
+                    {Object.entries(byItem).map(([itemName,mats])=>(
+                        <div key={itemName} style={{marginBottom:8}}>
+                            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:4}}>📦 {itemName}</div>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:5,paddingLeft:18}}>
+                                {mats.map((m,i)=>(
+                                    <span key={i} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:12,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                                        {m.name}
+                                        <strong style={{color:'var(--navy)',fontFamily:'Bebas Neue,sans-serif',fontSize:13,letterSpacing:.5}}>× {m.qty}</strong>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    <div style={{borderTop:'1.5px dashed var(--border)',margin:'10px 0 10px'}}/>
+                </div>}
+
+                {/* ② 합산 (항상 표시) */}
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>
+                    {hasItemGroup?'합산 소요자재':'소요자재'}
                 </div>
                 {sumList.length===0
                     ?<p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
                     :<div className="table-wrap" style={{marginBottom:10}}>
-                        <table style={{minWidth:400}}>
+                        <table style={{minWidth:340}}>
                             <thead><tr>
                                 <th style={{textAlign:'left'}}>자재명</th>
-                                <th style={{textAlign:'left',fontSize:10,color:'rgba(255,255,255,.5)'}}>상품</th>
-                                <th className="tr" style={{width:90}}>합산수량</th>
+                                <th className="tr" style={{width:90,fontFamily:'Bebas Neue,sans-serif',letterSpacing:1}}>합산수량</th>
                                 <th style={{width:36}}></th>
                             </tr></thead>
                             <tbody>{sumList.map((m,i)=>(
-                                <tr key={m.id||i}>
+                                <tr key={i}>
                                     <td style={{fontWeight:700}}>{m.name||'(자재명 없음)'}</td>
-                                    <td style={{fontSize:11,color:'var(--muted)'}}>{[...new Set(m.sources)].join(', ')||'-'}</td>
-                                    <td className="tr" style={{fontWeight:900,color:'var(--navy)'}}>
-                                        {m.qty}
-                                    </td>
+                                    <td className="tr" style={{fontWeight:900,fontSize:16,fontFamily:'Bebas Neue,sans-serif',color:'var(--navy)',letterSpacing:1}}>{m.qty}</td>
                                     <td style={{textAlign:'center'}}>
-                                        <button className="btn-icon" title="이 자재 전체 삭제"
+                                        <button className="btn-icon" title="삭제"
                                             onClick={()=>setEstMaterials(p=>p.filter(x=>(x.material_id||x.name)!==(m.material_id||m.name)))}>✕</button>
                                     </td>
                                 </tr>

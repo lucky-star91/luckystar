@@ -459,18 +459,17 @@ function SetupScreen({onDone}){const[url,setUrl]=useState('');const[key,setKey]=
 function LoginScreen({sb}){
     const[loading,setLoading]=useState(false);
 
-    // ★ 인앱 브라우저 감지 (카카오톡·네이버 등 앱 내 브라우저만 차단, Chrome/Safari는 허용)
+    // ★ 인앱 브라우저 감지 (카카오톡·네이버 등만 차단, Chrome/Safari 허용)
     const isInApp=(()=>{
         try{
-            const ua=window.navigator?.userAgent||'';
-            // Android 정식 WebView (wv 포함, Chrome은 미포함)
-            if(/Android/.test(ua)&&/wv/.test(ua)) return true;
-            // 명백히 알려진 인앱 브라우저
-            if(/KAKAOTALK|kakaotalk/i.test(ua)) return true;
-            if(/NAVER|NaverSearch/i.test(ua)) return true;
-            if(/Line\/[0-9]/i.test(ua)) return true;
-            if(/Instagram\/[0-9]|FB_IAB|FBAN/i.test(ua)) return true;
-            if(/Snapchat\/[0-9]/i.test(ua)) return true;
+            const ua=window.navigator&&window.navigator.userAgent?window.navigator.userAgent:'';
+            const lc=ua.toLowerCase();
+            if(lc.indexOf('kakaotalk')>=0) return true;
+            if(ua.indexOf('NAVER')>=0||ua.indexOf('NaverSearch')>=0) return true;
+            if(ua.indexOf('Line/')>=0&&ua.indexOf('Line/0')<0) return true;
+            if(ua.indexOf('Instagram/')>=0||ua.indexOf('FB_IAB')>=0||ua.indexOf('FBAN')>=0) return true;
+            if(ua.indexOf('Snapchat/')>=0) return true;
+            if(ua.indexOf('Android')>=0&&(ua.indexOf('; wv)')>=0||ua.indexOf(' wv)')>=0)) return true;
             return false;
         }catch(e){return false;}
     })();

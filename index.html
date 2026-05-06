@@ -975,7 +975,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
             <td align="right">${it.qty}</td>
             <td align="right">${(it.mat.unit_price||0).toLocaleString('ko-KR')}</td>
             <td align="right">${(it.mat.processing_cost||0).toLocaleString('ko-KR')}</td>
-            <td align="right"><b>${((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty).toLocaleString('ko-KR')}</b></td>
+            <td align="right"><b>${(((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty).toLocaleString('ko-KR')}</b></td>
         </tr>`).join('');
         const total=items.reduce((s,it)=>s+((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty,0);
         const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서-${supName}</title>

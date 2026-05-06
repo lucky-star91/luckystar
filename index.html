@@ -658,6 +658,82 @@ function AddNameModal({title,placeholder,onClose,onSave}){
 
 /* ── 설정/로그인 ── */
 function SetupScreen({onDone}){const[url,setUrl]=useState('');const[key,setKey]=useState('');const save=()=>{if(url&&key){localStorage.setItem('supabase_config',JSON.stringify({url,key}));onDone({url,key});}};return(<div className="login-wrap"><div className="login-left"><div className="login-logo">LUCKY<span>STAR</span></div><div className="login-tagline">Camping Caravan Management</div>{FEATURES.map(([i,t,d])=><div className="lf-item" key={t}><div className="lf-icon">{i}</div><div className="lf-text"><strong>{t}</strong><span>{d}</span></div></div>)}</div><div className="login-right"><div className="login-title">⚙️ 초기 설정</div><div className="login-sub">Supabase 프로젝트 정보를 입력하면 데이터가 자동으로 연결됩니다.</div><div className="setup-block"><div className="setup-block-title">Supabase 연결 정보</div><div className="field"><label>Project URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co"/></div><div className="field"><label>anon public Key</label><input value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJ..."/></div></div><button className="btn btn-primary" style={{width:'100%',padding:14,fontSize:15,justifyContent:'center'}} onClick={save}>저장하고 시작하기</button><div className="login-notice" style={{marginTop:16}}>입력 정보는 브라우저에만 저장됩니다.</div></div></div>);}
+/* ── 승인 대기 화면 ── */
+const ADMIN_EMAIL = 'kyuill75@gmail.com';
+
+function AccessDenied({user, sb, onLogout, onApprove}){
+    const isAdmin = user?.email === ADMIN_EMAIL;
+    const[pendingEmails,setPendingEmails]=useState('');
+    const[approvedList,setApprovedList]=useState([]);
+    const[loadingList,setLoadingList]=useState(false);
+
+    useEffect(()=>{
+        if(!isAdmin||!sb)return;
+        setLoadingList(true);
+        sb.from('approved_users').select('*').order('email').then(({data})=>{if(data)setApprovedList(data);setLoadingList(false);});
+    },[isAdmin,sb]);
+
+    const approve=async()=>{
+        const emails=pendingEmails.split(/[\n,;]/).map(e=>e.trim().toLowerCase()).filter(e=>e&&e.includes('@'));
+        if(!emails.length){alert('이메일을 입력하세요');return;}
+        for(const email of emails){
+            await sb.from('approved_users').upsert([{email}],{onConflict:'email'});
+        }
+        const{data}=await sb.from('approved_users').select('*').order('email');
+        if(data)setApprovedList(data);
+        setPendingEmails('');
+        alert(emails.length+'개 계정이 승인됐습니다.');
+    };
+    const revoke=async id=>{
+        if(!confirm('승인을 취소하시겠습니까?'))return;
+        await sb.from('approved_users').delete().eq('id',id);
+        setApprovedList(p=>p.filter(x=>x.id!==id));
+    };
+
+    if(isAdmin) return(
+        <div style={{minHeight:'100vh',background:'var(--bg)',padding:'30px 20px',fontFamily:'Noto Sans KR,sans-serif'}}>
+            <div style={{maxWidth:600,margin:'0 auto'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+                    <div><div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:28,letterSpacing:2,color:'var(--navy)'}}>LUCKY<span style={{color:'var(--gold)'}}>STAR</span></div>
+                    <div style={{fontSize:12,color:'var(--muted)'}}>관리자 — {user.email}</div></div>
+                    <button className="btn btn-outline" onClick={onLogout}>로그아웃</button>
+                </div>
+                <div className="card">
+                    <div className="card-title">👥 사용자 승인 관리</div>
+                    <div style={{marginBottom:16}}>
+                        <label style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1,display:'block',marginBottom:6}}>승인할 이메일 주소 (여러 개는 줄바꿈 또는 쉼표로 구분)</label>
+                        <textarea value={pendingEmails} onChange={e=>setPendingEmails(e.target.value)}
+                            style={{width:'100%',height:100,padding:'9px 12px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',resize:'vertical'}}
+                            placeholder="user@gmail.com"/>
+                        <button className="btn btn-primary" style={{marginTop:8}} onClick={approve}>✅ 승인 추가</button>
+                    </div>
+                    <div style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1,textTransform:'uppercase',marginBottom:8}}>승인된 계정 ({approvedList.length})</div>
+                    {loadingList?<div>로딩 중...</div>:approvedList.map(u=>(
+                        <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                            <span style={{flex:1,fontSize:13}}>{u.email}</span>
+                            {u.email!==ADMIN_EMAIL&&<button className="btn-icon" onClick={()=>revoke(u.id)}>🗑</button>}
+                        </div>
+                    ))}
+                </div>
+                <div style={{textAlign:'center',marginTop:16}}>
+                    <button className="btn btn-primary" onClick={onApprove}>앱 실행</button>
+                </div>
+            </div>
+        </div>
+    );
+
+    return(
+        <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#0f1923,#1a3050)',display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:'Noto Sans KR,sans-serif'}}>
+            <div style={{textAlign:'center',color:'#fff'}}>
+                <div style={{fontFamily:'Bebas Neue,sans-serif',fontSize:36,letterSpacing:3,color:'#f0a500'}}>LUCKYSTAR</div>
+                <div style={{fontSize:18,fontWeight:700,margin:'20px 0 10px'}}>접근이 제한된 계정입니다</div>
+                <div style={{fontSize:14,color:'rgba(255,255,255,.6)',marginBottom:24}}>{user?.email}<br/>관리자(kyuill75@gmail.com)에게 접근 요청하세요.</div>
+                <button className="btn btn-outline" style={{color:'#fff',borderColor:'rgba(255,255,255,.3)'}} onClick={onLogout}>다른 계정으로 로그인</button>
+            </div>
+        </div>
+    );
+}
+
 function LoginScreen({sb}){
     const[loading,setLoading]=useState(false);
 
@@ -971,27 +1047,27 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     const printOrder=(supName,items)=>{
         const sup=suppliers.find(s=>s.name===supName)||{};
         const rows=items.map(it=>`<tr>
-            <td>${it.mat.name}</td><td>${it.mat.specification||''}</td><td>${it.mat.thickness||''}</td>
-            <td align="right">${it.qty}</td>
-            <td align="right">${(it.mat.unit_price||0).toLocaleString('ko-KR')}</td>
-            <td align="right">${(it.mat.processing_cost||0).toLocaleString('ko-KR')}</td>
-            <td align="right"><b>${(((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty).toLocaleString('ko-KR')}</b></td>
+            <td>${it.mat.name}</td>
+            <td>${it.mat.specification||''}</td>
+            <td>${it.mat.thickness||''}</td>
+            <td style="text-align:right;font-weight:700">${it.qty}</td>
         </tr>`).join('');
-        const total=items.reduce((s,it)=>s+((it.mat.unit_price||0)+(it.mat.processing_cost||0))*it.qty,0);
         const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서-${supName}</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans KR',sans-serif;padding:30px;color:#1e293b;font-size:13px;}
-        h1{font-size:22px;font-weight:900;margin-bottom:4px;}
+        <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Noto Sans KR',sans-serif;padding:30px;color:#1e293b;font-size:13px;background:#fff;}
+        h1{font-size:22px;font-weight:900;margin-bottom:4px;color:#0f1923;}
         .sub{font-size:12px;color:#64748b;margin-bottom:18px;}
         .info{background:#f4f6fa;border-radius:8px;padding:14px 18px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-        .info-row{font-size:12px;}.info-label{font-weight:700;color:#64748b;margin-right:8px;}
+        .info-row{font-size:12px;color:#1e293b;}.info-label{font-weight:700;color:#475569;margin-right:8px;}
         table{width:100%;border-collapse:collapse;margin-bottom:16px;}
-        thead{background:#0f1923;}th{color:rgba(255,255,255,.8);padding:8px 10px;font-size:11px;letter-spacing:.5px;text-align:left;}
-        td{padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;}
-        .total{text-align:right;font-size:16px;font-weight:900;color:#0f1923;padding:12px 0;}
-        .total span{color:#f0a500;font-size:20px;}
+        thead{background:#0f1923;}
+        th{color:#fff;padding:8px 10px;font-size:11px;letter-spacing:.5px;text-align:left;font-weight:700;}
+        td{padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#1e293b;}
         .footer{text-align:center;font-size:11px;color:#94a3b8;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:10px;}
-        @media print{body{padding:15px;}}</style></head><body>
+        @media print{body{padding:15px;}}
+        </style></head><body>
         <h1>발주서 (PURCHASE ORDER)</h1>
         <div class="sub">발주일: ${new Date().toLocaleDateString('ko-KR')} &nbsp;|&nbsp; 럭키스타 캠핑카라반</div>
         <div class="info">
@@ -1002,12 +1078,13 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
             <div class="info-row"><span class="info-label">주소</span>${sup.address||'-'}</div>
             <div class="info-row"><span class="info-label">발주처</span>${sup.order_to||'-'}</div>
         </div>
-        <table><thead><tr><th>품명</th><th>규격/재질</th><th>두께</th><th>발주수량</th><th>단가(원)</th><th>가공비(원)</th><th>금액(원)</th></tr></thead>
-        <tbody>${rows}</tbody></table>
-        <div class="total">총 발주금액: <span>${total.toLocaleString('ko-KR')}원</span></div>
+        <table>
+            <thead><tr><th>품명</th><th>규격/재질</th><th>두께</th><th style="text-align:right">발주수량</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
         <div class="footer">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면</div>
         <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        const w=window.open('','_blank','width=900,height=700');
+        const w=window.open('','_blank','width=800,height=600');
         if(w){w.document.write(html);w.document.close();}
     };
 
@@ -1202,12 +1279,15 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
     const blank={category_id:'',name:'',description:'',price:0,image_url:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const[mats,setMats]=useState([]);
+    const[allMaterials,setAllMaterials]=useState([]);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
     useEffect(()=>{
-        if(!sb||!initial?.id)return;
+        if(!sb)return;
+        sb.from('materials').select('id,name,specification,unit_price').order('name').then(({data})=>{if(data)setAllMaterials(data);});
+        if(!initial?.id)return;
         sb.from('product_materials').select('*').eq('product_id',initial.id).then(({data})=>{if(data)setMats(data);});
-    },[sb,initial]);
+    },[sb,initial?.id]);
 
     const addMat=()=>setMats(p=>[...p,{material_id:'',material_name:'',unit:'개',unit_price:0,quantity:1,total:0}]);
     const updMat=(i,k,v)=>setMats(p=>p.map((m,j)=>{if(j!==i)return m;const nm={...m,[k]:v};nm.total=(Number(nm.unit_price)||0)*(Number(nm.quantity)||0);return nm;}));
@@ -1232,10 +1312,12 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                 </div>
                 {mats.map((m,i)=>(
                     <div key={i} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:6,marginBottom:6,alignItems:'center'}}>
-                        <input className="mi" placeholder="자재명" value={m.material_name||''} onChange={e=>updMat(i,'material_name',e.target.value)} style={{fontSize:12}}/>
-                        <input className="mi" placeholder="단위" value={m.unit||'개'} onChange={e=>updMat(i,'unit',e.target.value)} style={{fontSize:12}}/>
-                        <input className="mi" type="number" placeholder="단가" value={m.unit_price||0} onChange={e=>updMat(i,'unit_price',Number(e.target.value))} style={{fontSize:12}} min="0"/>
-                        <input className="mi" type="number" placeholder="수량" value={m.quantity||1} onChange={e=>updMat(i,'quantity',Number(e.target.value))} style={{fontSize:12}} min="1"/>
+                        <select className="mi" style={{fontSize:12}} value={m.material_id||''}
+                            onChange={e=>{const mat=allMaterials.find(x=>x.id===e.target.value);if(mat){updMat(i,'material_id',mat.id);updMat(i,'material_name',mat.name);updMat(i,'unit_price',mat.unit_price||0);}else{updMat(i,'material_id','');}}}>
+                            <option value="">자재 선택...</option>
+                            {allMaterials.map(mat=><option key={mat.id} value={mat.id}>{mat.name}{mat.specification?' ('+mat.specification+')':''}</option>)}
+                        </select>
+                        <input className="mi" placeholder="수량" type="number" value={m.quantity||1} onChange={e=>updMat(i,'quantity',Number(e.target.value))} style={{fontSize:12}} min="1"/>
                         <button className="btn-icon" onClick={()=>delMat(i)}>🗑</button>
                     </div>
                 ))}
@@ -1398,6 +1480,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
     const[balancePaid,setBalancePaid]=useState(false);
     const[statusChecked,setStatusChecked]=useState({}); // 진행상태 완료체크
     const[portItems,setPortItems]=useState([]);   // 첨부 포트폴리오
+    const[estMaterials,setEstMaterials]=useState([]); // 소요 자재
     const[showPortPick,setShowPortPick]=useState(false);
 
     // ★ 신규 견적 시 담당자 자동 설정
@@ -1431,7 +1514,9 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 let sc={};try{sc=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch(e){}
                 setStatusChecked(sc);
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
-                setPortItems(pi);}
+                setPortItems(pi);
+                let em=[];try{em=typeof est.est_materials==='string'?JSON.parse(est.est_materials||'[]'):(est.est_materials||[]);}catch{}
+                setEstMaterials(em);}
             const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
             const mc=(cd||[]).map(c=>({id:c.id,name:c.name,order:c.display_order}));setCats(mc);
             if(mc.length>0){const{data:id_}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');setItems((id_||[]).map(i=>({id:i.id,catId:i.cat_id,name:i.name,spec:i.specification||'',qty:i.quantity||1,unitPrice:i.unit_price||0,laborCost:i.labor_cost||0,total:i.total_amount||0,imgUrl:i.image_url||''})));}
@@ -1492,6 +1577,19 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         const nc={...statusChecked,[status]:checked};
         setStatusChecked(nc);
         if(mode==='edit')await sb.from('estimates').update({status_checked:JSON.stringify(nc)}).eq('id',estimateId);
+        // ★ 설치완료 체크 시 자재 재고 차감 확인
+        if(status==='설치완료'&&checked&&estMaterials.length>0){
+            const mats=estMaterials.filter(m=>m.material_id&&m.qty>0);
+            if(mats.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까?
+차감할 자재: '+mats.length+'종')){
+                for(const m of mats){
+                    const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
+                    const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);
+                    await sb.from('materials').update({stock_qty:newQty}).eq('id',m.material_id);
+                }
+                toast('✅ 자재 재고 차감 완료 ('+mats.length+'종)');
+            }
+        }
     };
 
     // ★ 상품 선택 → 견적 추가
@@ -1508,6 +1606,14 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
         if(mode==='new'){setItems(p=>[...p,ni]);}
         else{const{data}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
         toast('✅ '+prod.name+' 추가됨');
+        // ★ 상품의 필요 자재도 추가
+        if(prod.id&&sb){
+            const{data:pm}=await sb.from('product_materials').select('*').eq('product_id',prod.id);
+            if(pm&&pm.length>0){
+                const newMats=pm.map(m=>({id:uid(),name:m.material_name||'',spec:'',qty:Number(m.quantity)||1,unit_price:Number(m.unit_price)||0,material_id:m.material_id||null}));
+                setEstMaterials(p=>[...p,...newMats]);
+            }
+        }
     };
 
     // ★ 인쇄 팝업
@@ -1622,7 +1728,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     balance_amount:balanceAmount,
                     balance_paid:balancePaid,
                     status_checked:JSON.stringify(statusChecked),
-                    portfolio_items:JSON.stringify(portItems)
+                    portfolio_items:JSON.stringify(portItems),
+                    est_materials:JSON.stringify(estMaterials)
                 }]).select();
                 if(e1) throw new Error('[estimates] '+e1.message+(e1.code?' ('+e1.code+')':''));
                 if(!ed||!ed[0]) throw new Error('견적 데이터가 반환되지 않았습니다');
@@ -1669,6 +1776,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     balance_paid:balancePaid,
                     status_checked:JSON.stringify(statusChecked),
                     portfolio_items:JSON.stringify(portItems),
+                    est_materials:JSON.stringify(estMaterials),
                     updated_at:now
                 }).eq('id',estimateId);
                 if(e4) throw new Error('[estimates update] '+e4.message);
@@ -1864,6 +1972,38 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                 </label>
             </div>
             {sitePhotos.length===0&&<p style={{fontSize:12,color:'var(--muted)',marginTop:8}}>현장 사진을 추가하면 견적서에 함께 저장됩니다.</p>}
+        </div>
+
+        {/* ★ 소요 자재 */}
+        <div className="card">
+            <div className="card-title">🔧 소요 자재
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 견적서 미출력 · 설치완료 시 재고 차감)</span>
+            </div>
+            <div className="table-wrap" style={{marginBottom:10}}>
+                {estMaterials.length===0
+                    ?<p style={{fontSize:12,color:'var(--muted)'}}>상품 추가 시 자재가 자동으로 포함됩니다. 직접 추가도 가능합니다.</p>
+                    :<table style={{minWidth:360}}>
+                        <thead><tr>
+                            <th style={{textAlign:'left'}}>자재명</th>
+                            <th className="tr" style={{width:100}}>수량</th>
+                            <th style={{width:40}}></th>
+                        </tr></thead>
+                        <tbody>{estMaterials.map((m,i)=>(
+                            <tr key={m.id}>
+                                <td style={{fontWeight:700}}>{m.name||<span style={{color:'var(--muted)'}}>자재명 미입력</span>}</td>
+                                <td className="tr">
+                                    <input type="number" value={m.qty||0} min="0"
+                                        style={{width:70,padding:'4px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,textAlign:'right',fontFamily:'Noto Sans KR,sans-serif'}}
+                                        onChange={e=>setEstMaterials(p=>p.map((x,j)=>j===i?{...x,qty:Number(e.target.value)||0}:x))}/>
+                                </td>
+                                <td style={{textAlign:'center'}}>
+                                    <button className="btn-icon" onClick={()=>setEstMaterials(p=>p.filter((_,j)=>j!==i))}>✕</button>
+                                </td>
+                            </tr>
+                        ))}</tbody>
+                    </table>}
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={()=>setEstMaterials(p=>[...p,{id:uid(),name:'',qty:1,unit_price:0,material_id:null}])}>＋ 자재 직접 추가</button>
         </div>
 
         {/* ★ 포트폴리오 첨부 */}
@@ -2234,9 +2374,14 @@ function Schedule({sb,onEditEst}){
         const evts=[];
         estimates.forEach(est=>{
             let dates={};try{dates=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch{}
+            let checked={};try{checked=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch{}
             Object.entries(SCHED_MAP).forEach(([status,info])=>{
                 const ds=dates[status];
-                if(ds){const d=new Date(ds);if(!isNaN(d))evts.push({date:d,label:info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});}
+                // 날짜 입력 AND 완료 체크가 된 항목만 표시
+                if(ds && checked[status]===true){
+                    const d=new Date(ds);
+                    if(!isNaN(d))evts.push({date:d,label:info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
+                }
             });
         });
         return evts;
@@ -2443,6 +2588,7 @@ function App(){
     const[sb,setSb]=useState(null);
     const[user,setUser]=useState(null);
     const[authLoading,setAuthLoading]=useState(true);
+    const[isApproved,setIsApproved]=useState(false);
     const[page,setPage]=useState('sched-biweek'); // 첫 화면: 2주간 일정
     const[sbOpen,setSbOpen]=useState(false);
     const[editEstId,setEditEstId]=useState(null);
@@ -2458,8 +2604,21 @@ function App(){
         if(!config)return setAuthLoading(false);
         const client=window.supabase.createClient(config.url,config.key);
         setSb(client);
-        client.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
-        client.auth.onAuthStateChange((_,session)=>setUser(session?.user??null));
+        client.auth.getSession().then(async({data:{session}})=>{
+            const u=session?.user??null;setUser(u);
+            if(u){
+                if(u.email===ADMIN_EMAIL){setIsApproved(true);}
+                else{const{data}=await client.from('approved_users').select('email').eq('email',u.email).maybeSingle();setIsApproved(!!data);}
+            }
+            setAuthLoading(false);
+        });
+        client.auth.onAuthStateChange(async(_,session)=>{
+            const u=session?.user??null;setUser(u);
+            if(u){
+                if(u.email===ADMIN_EMAIL){setIsApproved(true);}
+                else{const{data}=await client.from('approved_users').select('email').eq('email',u.email).maybeSingle();setIsApproved(!!data);}
+            }else{setIsApproved(false);}
+        });
     },[config]);
 
     useEffect(()=>{
@@ -2512,6 +2671,7 @@ function App(){
     if(authLoading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     if(!config)return<SetupScreen onDone={c=>{localStorage.setItem('supabase_config',JSON.stringify(c));setConfig(c);}}/>;
     if(!user)return<LoginScreen sb={sb}/>;
+    if(!isApproved)return<AccessDenied user={user} sb={sb} onLogout={handleLogout} onApprove={()=>setIsApproved(true)}/>;
 
     return(<div className="layout">
         <div className="mobile-header">

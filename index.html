@@ -475,8 +475,7 @@ function LoginScreen({sb}){
     })();
 
     const copyUrl=()=>{
-        navigator.clipboard?.writeText(window.location.href).then(()=>alert('주소가 복사됐습니다!
-브라우저(Chrome/Safari)를 열고 붙여넣기 하세요.')).catch(()=>alert('주소: '+window.location.href));
+        navigator.clipboard?.writeText(window.location.href).then(()=>alert('주소가 복사됐습니다. Chrome 또는 Safari 브라우저에서 붙여넣기 하세요.')).catch(()=>alert('주소: '+window.location.href));
     };
 
     // ★ 인앱 브라우저 감지 시 안내 화면 표시

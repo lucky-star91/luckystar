@@ -731,6 +731,47 @@ function UserApprovalPage({sb, user}){
     </div>);
 }
 
+/* ═══════════════════════════════════════
+   ★ 담당자 연락처 설정 모달
+═══════════════════════════════════════ */
+function ProfileSetupModal({user, sb, onSave}){
+    const[phone,setPhone]=useState('');
+    const[saving,setSaving]=useState(false);
+    const name=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'';
+
+    const save=async()=>{
+        if(!phone.trim()){alert('연락처를 입력하세요');return;}
+        setSaving(true);
+        await sb.from('user_profiles').upsert([{email:user.email,name,phone}],{onConflict:'email'});
+        setSaving(false);
+        onSave({email:user.email,name,phone});
+    };
+
+    return(
+        <div className="modal-overlay">
+            <div className="modal-box sm" style={{maxWidth:360}}>
+                <div className="modal-header">
+                    <div className="modal-title">📞 담당자 연락처 설정</div>
+                </div>
+                <div style={{padding:'8px 0 16px',fontSize:13,color:'var(--muted)'}}>
+                    <strong style={{color:'var(--navy)'}}>{name}</strong>님 처음 로그인하셨습니다.<br/>
+                    견적서에 자동으로 입력될 연락처를 등록해 주세요.
+                </div>
+                <div className="mf">
+                    <label className="ml">담당자 연락처</label>
+                    <input className="mi" value={phone} onChange={e=>setPhone(e.target.value)}
+                        placeholder="010-0000-0000" autoFocus
+                        onKeyDown={e=>{if(e.key==='Enter')save();}}/>
+                </div>
+                <div className="modal-btns">
+                    <button className="modal-cancel" onClick={()=>onSave({email:user.email,name,phone:''})}>나중에</button>
+                    <button className="modal-ok" onClick={save} disabled={saving}>{saving?'저장 중...':'저장'}</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function AccessDenied({user, sb, onLogout, onApprove}){
     const isAdmin = user?.email === ADMIN_EMAIL;
     const[pendingEmails,setPendingEmails]=useState('');
@@ -1713,10 +1754,10 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
     );
 }
 
-function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
+function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,userProfile}){
     const[cats,setCats]=useState([]);  // {id,name,order}  — new: uid(), edit: DB uuid
     const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
-    const[client,setClient]=useState({});
+    const[client,setClient]=useState({name:'',phone:'',address:'',manager:'',managerPhone:''});
     const[statusDates,setStatusDates]=useState({});
     const[currentStatus,setCurrentStatus]=useState('가견적발송');
     const[loading,setLoading]=useState(mode==='edit');
@@ -1734,16 +1775,20 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
     const[estMaterials,setEstMaterials]=useState([]); // 소요 자재
     const[showPortPick,setShowPortPick]=useState(false);
 
-    // ★ 신규 견적 시 담당자 자동 설정
+    // ★ 신규 견적 시 담당자명 + 연락처 자동 설정
     useEffect(()=>{
-        if(mode!=='new'||!sb)return;
-        sb.auth.getUser().then(({data:{user}})=>{
-            if(user){
-                const name=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
-                setClient(p=>({...p,manager:p.manager||name}));
-            }
-        });
-    },[sb,mode]);
+        if(mode!=='new')return;
+        if(userProfile){
+            setClient(p=>({...p,manager:p.manager||userProfile.name||'',managerPhone:p.managerPhone||userProfile.phone||''}));
+        }else if(sb){
+            sb.auth.getUser().then(({data:{user}})=>{
+                if(user){
+                    const name=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
+                    setClient(p=>({...p,manager:p.manager||name}));
+                }
+            });
+        }
+    },[mode,userProfile]);
 
     // ★ edit: DB 로드
     useEffect(()=>{
@@ -2022,6 +2067,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
                     client_model:client.model||'',
                     client_caravan:client.caravan||'',
                     client_manager:client.manager||'',
+                    manager_phone:client.managerPhone||'',
                     total_supply:grand,
                     total_vat:vat,
                     total_amount:grandVat,
@@ -2168,7 +2214,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange}){
 
         {/* 고객 정보 */}
         <div className="card"><div className="card-title">고객 정보</div>
-            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['manager','담당자','담당자명']].map(([k,l,p])=>(
+            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['manager','담당자','담당자명'],['managerPhone','담당자연락처','010-0000-0000']].map(([k,l,p])=>(
                     <div className="info-field" key={k}>
                         <label>{l}</label>
                         <div style={{display:'flex',gap:5,alignItems:'center'}}>
@@ -2886,6 +2932,8 @@ function App(){
     const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
+    const[userProfile,setUserProfile]=useState(null); // 담당자 프로필
+    const[showProfileSetup,setShowProfileSetup]=useState(false);
 
     useEffect(()=>{
         if(!config)return setAuthLoading(false);
@@ -2913,6 +2961,17 @@ function App(){
         sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
         sb.from('suppliers').select('*').order('name').then(({data})=>{if(data)setSuppliers(data);});
         sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
+        // ★ 담당자 프로필 로드
+        (async()=>{
+            const uname=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
+            const{data:prof}=await sb.from('user_profiles').select('*').eq('email',user.email).maybeSingle();
+            if(prof){setUserProfile(prof);if(!prof.phone)setShowProfileSetup(true);}
+            else{
+                const{data:np}=await sb.from('user_profiles').insert([{email:user.email,name:uname,phone:''}]).select().maybeSingle();
+                if(np)setUserProfile(np);
+                setShowProfileSetup(true);
+            }
+        })();
     },[sb,user]);
 
     const navigate=(p,id)=>{if(id)setEditEstId(id);setPage(p);setSbOpen(false);};
@@ -2946,9 +3005,9 @@ function App(){
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
-            case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat}/>;
+            case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
             case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')}/>;
-            case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat}/>;
+            case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
             case 'sched-biweek':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>;
             case 'sched-month':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
@@ -2962,6 +3021,7 @@ function App(){
     if(!isApproved)return<AccessDenied user={user} sb={sb} onLogout={handleLogout} onApprove={()=>setIsApproved(true)}/>;
 
     return(<div className="layout">
+        {showProfileSetup&&<ProfileSetupModal user={user} sb={sb} onSave={prof=>{setUserProfile(prof);setShowProfileSetup(false);}}/>}
         <div className="mobile-header">
             <button className="hamburger" onClick={()=>setSbOpen(o=>!o)}>☰</button>
             <div className="mobile-logo">LUCKY<span>STAR</span></div>

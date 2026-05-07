@@ -2939,20 +2939,24 @@ function App(){
         if(!config)return setAuthLoading(false);
         const client=window.supabase.createClient(config.url,config.key);
         setSb(client);
+        const checkApproval=async(u,cl)=>{
+            if(!u){setIsApproved(false);return;}
+            try{
+                if(u.email===ADMIN_EMAIL){setIsApproved(true);return;}
+                const{data,error}=await cl.from('approved_users').select('email').eq('email',u.email).maybeSingle();
+                if(error){console.error('approved_users 오류:',error.message);setIsApproved(false);}
+                else{setIsApproved(!!data);}
+            }catch(e){console.error('승인 체크 오류:',e);setIsApproved(false);}
+        };
         client.auth.getSession().then(async({data:{session}})=>{
-            const u=session?.user??null;setUser(u);
-            if(u){
-                if(u.email===ADMIN_EMAIL){setIsApproved(true);}
-                else{const{data}=await client.from('approved_users').select('email').eq('email',u.email).maybeSingle();setIsApproved(!!data);}
-            }
-            setAuthLoading(false);
-        });
+            const u=session?.user??null;
+            setUser(u);
+            await checkApproval(u,client);
+            setAuthLoading(false); // ★ 항상 실행
+        }).catch(e=>{console.error('세션 로드 오류:',e);setAuthLoading(false);});
         client.auth.onAuthStateChange(async(_,session)=>{
             const u=session?.user??null;setUser(u);
-            if(u){
-                if(u.email===ADMIN_EMAIL){setIsApproved(true);}
-                else{const{data}=await client.from('approved_users').select('email').eq('email',u.email).maybeSingle();setIsApproved(!!data);}
-            }else{setIsApproved(false);}
+            await checkApproval(u,client);
         });
     },[config]);
 
@@ -2961,16 +2965,20 @@ function App(){
         sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
         sb.from('suppliers').select('*').order('name').then(({data})=>{if(data)setSuppliers(data);});
         sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
-        // ★ 담당자 프로필 로드
+        // ★ 담당자 프로필 로드 (오류 무시 - 핵심 기능 영향 없음)
         (async()=>{
-            const uname=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
-            const{data:prof}=await sb.from('user_profiles').select('*').eq('email',user.email).maybeSingle();
-            if(prof){setUserProfile(prof);if(!prof.phone)setShowProfileSetup(true);}
-            else{
-                const{data:np}=await sb.from('user_profiles').insert([{email:user.email,name:uname,phone:''}]).select().maybeSingle();
-                if(np)setUserProfile(np);
-                setShowProfileSetup(true);
-            }
+            try{
+                const uname=user.user_metadata?.full_name||user.email?.split('@')[0]||'';
+                const{data:prof,error:e1}=await sb.from('user_profiles').select('*').eq('email',user.email).maybeSingle();
+                if(e1){console.warn('user_profiles 로드 실패:',e1.message);return;}
+                if(prof){setUserProfile(prof);if(!prof.phone)setShowProfileSetup(true);}
+                else{
+                    const{data:np,error:e2}=await sb.from('user_profiles').insert([{email:user.email,name:uname,phone:''}]).select().maybeSingle();
+                    if(e2){console.warn('user_profiles 생성 실패:',e2.message);return;}
+                    if(np)setUserProfile(np);
+                    setShowProfileSetup(true);
+                }
+            }catch(e){console.warn('프로필 로드 오류:',e);}
         })();
     },[sb,user]);
 

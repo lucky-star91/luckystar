@@ -651,6 +651,28 @@ function ImgUpload({sb,folder='uploads',value,onChange}){
         <input type="file" accept="image/*" style={{display:'none'}} onChange={pick}/>
     </label>);
 }
+function FileUpload({sb,folder='files',value,fileName,onChange}){
+    const[busy,setBusy]=useState(false);
+    const pick=async e=>{
+        const f=e.target.files[0];if(!f)return;
+        setBusy(true);
+        try{const url=await uploadImg(sb,f,folder);onChange(url,f.name);}
+        finally{setBusy(false);}
+    };
+    const remove=e=>{e.preventDefault();e.stopPropagation();onChange('','');};
+    return value?(
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8,background:'#f8fafc'}}>
+            <span style={{fontSize:18}}>📄</span>
+            <a href={value} target="_blank" rel="noopener noreferrer" style={{flex:1,color:'#1e6fd9',fontSize:13,textDecoration:'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fileName||'첨부파일 보기'}</a>
+            <button onClick={remove} style={{border:'none',background:'none',cursor:'pointer',color:'var(--muted)',fontSize:15}} title="삭제">✕</button>
+        </div>
+    ):(
+        <label style={{display:'block',cursor:'pointer',padding:'14px',textAlign:'center',border:'1px dashed var(--border)',borderRadius:8}}>
+            {busy?<span style={{fontSize:13,color:'var(--muted)'}}>⏳ 업로드 중...</span>:<span style={{color:'var(--muted)',fontSize:13}}>📎 클릭하여 견적서 파일 업로드 (PDF·이미지·문서)</span>}
+            <input type="file" accept=".pdf,image/*,.doc,.docx,.xls,.xlsx" style={{display:'none'}} onChange={pick}/>
+        </label>
+    );
+}
 function AddNameModal({title,placeholder,onClose,onSave}){
     const[name,setName]=useState('');
     return(<div className="modal-overlay" onClick={onClose}><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>추가</button></div></div></div>);
@@ -1020,7 +1042,7 @@ function SupplierList({sb,suppliers,setSuppliers}){
 }
 
 function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
-    const blank={category_id:'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:''};
+    const blank={category_id:'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
     const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}onSave(form);};
@@ -1048,6 +1070,7 @@ function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
                 </div>
                 <div className="mf"><label className="ml">구매링크</label><input className="mi" value={form.purchase_link||''} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div>
                 <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
+                <div className="mf full"><label className="ml">견적서 파일</label><FileUpload sb={sb} folder="quotes" value={form.quote_file_url} fileName={form.quote_file_name} onChange={(url,name)=>{set('quote_file_url',url);set('quote_file_name',name);}}/></div>
             </div>
             <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
         </div>
@@ -1351,6 +1374,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
                 <th style={{textAlign:'left'}}>공급업체</th>
                 <th style={{textAlign:'left'}}>기타구분</th>
                 <th style={{textAlign:'center',width:70}}>링크</th>
+                <th style={{textAlign:'center',width:70}}>견적서</th>
                 <th style={{textAlign:'center',width:70}}>관리</th>
             </tr></thead>
             <tbody>{filtered.map(m=>(
@@ -1369,6 +1393,11 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
                     <td style={{textAlign:'center'}}>
                         {m.purchase_link?<a href={m.purchase_link} target="_blank" rel="noreferrer">
                             <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>🔗 열기</button>
+                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                        {m.quote_file_url?<a href={m.quote_file_url} target="_blank" rel="noreferrer" title={m.quote_file_name||'견적서'}>
+                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>📄 보기</button>
                         </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
                     </td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>

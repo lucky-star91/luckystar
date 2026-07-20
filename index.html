@@ -935,11 +935,25 @@ function LoginScreen({sb}){
 /* ═══════════════════════════════════════
    ★ 공급사 관리
 ═══════════════════════════════════════ */
-function SupplierModal({initial,onClose,onSave}){
-    const blank={name:'',business_no:'',contact_person:'',phone:'',address:'',order_to:''};
-    const[form,setForm]=useState(initial?{...initial}:blank);
+function SupplierModal({sb,matCats,outCats,initial,onClose,onSave}){
+    const blank={name:'',business_no:'',contact_person:'',phone:'',phone2:'',fax:'',address:'',order_to:'',is_material_supplier:false,is_outsourcing_supplier:false,card_image_url:''};
+    const[form,setForm]=useState(()=>{
+        if(!initial)return{...blank,_matIds:[],_outIds:[]};
+        let matIds=[];try{matIds=typeof initial.material_category_ids==='string'?JSON.parse(initial.material_category_ids||'[]'):(initial.material_category_ids||[]);}catch{}
+        let outIds=[];try{outIds=typeof initial.outsourcing_category_ids==='string'?JSON.parse(initial.outsourcing_category_ids||'[]'):(initial.outsourcing_category_ids||[]);}catch{}
+        return{...blank,...initial,_matIds:matIds,_outIds:outIds};
+    });
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-    const ok=()=>{if(!form.name.trim()){alert('업체명을 입력하세요');return;}onSave(form);};
+    const toggleMatCat=id=>setForm(p=>({...p,_matIds:p._matIds.includes(id)?p._matIds.filter(x=>x!==id):[...p._matIds,id]}));
+    const toggleOutCat=id=>setForm(p=>({...p,_outIds:p._outIds.includes(id)?p._outIds.filter(x=>x!==id):[...p._outIds,id]}));
+    const ok=()=>{
+        if(!form.name.trim()){alert('업체명을 입력하세요');return;}
+        const{_matIds,_outIds,...rest}=form;
+        onSave({...rest,
+            material_category_ids:JSON.stringify(form.is_material_supplier?_matIds:[]),
+            outsourcing_category_ids:JSON.stringify(form.is_outsourcing_supplier?_outIds:[])
+        });
+    };
     return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
@@ -951,15 +965,58 @@ function SupplierModal({initial,onClose,onSave}){
                 <div className="mf"><label className="ml">사업자등록번호</label><input className="mi" value={form.business_no||''} onChange={e=>set('business_no',e.target.value)} placeholder="000-00-00000"/></div>
                 <div className="mf"><label className="ml">담당자명</label><input className="mi" value={form.contact_person||''} onChange={e=>set('contact_person',e.target.value)} placeholder="담당자 이름"/></div>
                 <div className="mf"><label className="ml">연락처</label><input className="mi" value={form.phone||''} onChange={e=>set('phone',e.target.value)} placeholder="010-0000-0000"/></div>
+                <div className="mf"><label className="ml">연락처2</label><input className="mi" value={form.phone2||''} onChange={e=>set('phone2',e.target.value)} placeholder="010-0000-0000"/></div>
+                <div className="mf"><label className="ml">팩스</label><input className="mi" value={form.fax||''} onChange={e=>set('fax',e.target.value)} placeholder="02-000-0000"/></div>
                 <div className="mf full"><label className="ml">주소</label><input className="mi" value={form.address||''} onChange={e=>set('address',e.target.value)} placeholder="업체 주소"/></div>
                 <div className="mf full"><label className="ml">발주서 보낼 곳</label><input className="mi" value={form.order_to||''} onChange={e=>set('order_to',e.target.value)} placeholder="이메일, 팩스번호, 카카오 등"/></div>
+
+                <div className="mf full">
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+                        <input type="checkbox" checked={!!form.is_material_supplier} onChange={e=>set('is_material_supplier',e.target.checked)} style={{width:16,height:16,cursor:'pointer',accentColor:'var(--blue)'}}/>
+                        <span style={{fontSize:13,fontWeight:700,color:'var(--navy)'}}>📦 자재업체</span>
+                        <span style={{fontSize:11,color:'var(--muted)'}}>— 체크 시 공급 자재분류 선택</span>
+                    </label>
+                    {form.is_material_supplier&&(
+                        <div className="cat-check-grid">
+                            {matCats.map(c=>(
+                                <label key={c.id} className={`cat-check-item ${form._matIds.includes(c.id)?'checked':''}`} onClick={()=>toggleMatCat(c.id)}>
+                                    {form._matIds.includes(c.id)?'✅':'⬜'} {c.name}
+                                </label>
+                            ))}
+                            {matCats.length===0&&<span style={{fontSize:12,color:'var(--muted)'}}>등록된 자재분류가 없습니다.</span>}
+                        </div>
+                    )}
+                </div>
+
+                <div className="mf full">
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+                        <input type="checkbox" checked={!!form.is_outsourcing_supplier} onChange={e=>set('is_outsourcing_supplier',e.target.checked)} style={{width:16,height:16,cursor:'pointer',accentColor:'var(--purple)'}}/>
+                        <span style={{fontSize:13,fontWeight:700,color:'var(--navy)'}}>🛠 외주업체</span>
+                        <span style={{fontSize:11,color:'var(--muted)'}}>— 체크 시 담당 외주분류 선택</span>
+                    </label>
+                    {form.is_outsourcing_supplier&&(
+                        <div className="cat-check-grid">
+                            {(outCats||[]).map(c=>(
+                                <label key={c.id} className={`cat-check-item ${form._outIds.includes(c.id)?'checked':''}`} onClick={()=>toggleOutCat(c.id)}>
+                                    {form._outIds.includes(c.id)?'✅':'⬜'} {c.name}
+                                </label>
+                            ))}
+                            {(!outCats||outCats.length===0)&&<span style={{fontSize:12,color:'var(--muted)'}}>등록된 외주분류가 없습니다.</span>}
+                        </div>
+                    )}
+                </div>
+
+                <div className="mf full">
+                    <label className="ml">명함 이미지</label>
+                    <ImgUpload sb={sb} folder="supplier-cards" value={form.card_image_url} onChange={v=>set('card_image_url',v)}/>
+                </div>
             </div>
             <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
         </div>
     </div>);
 }
 
-function SupplierList({sb,suppliers,setSuppliers}){
+function SupplierList({sb,suppliers,setSuppliers,matCats,outCats}){
     const[materials,setMaterials]=useState([]);
     useEffect(()=>{if(!sb)return;sb.from('materials').select('id,name,specification,thickness,unit_price,stock_qty,supplier').order('name').then(({data})=>{if(data)setMaterials(data);});},[sb]);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
@@ -968,10 +1025,12 @@ function SupplierList({sb,suppliers,setSuppliers}){
     const save=async form=>{
         setShowModal(false);setEditing(null);
         if(editing){
-            const{data}=await sb.from('suppliers').update(form).eq('id',editing.id).select();
+            const{data,error}=await sb.from('suppliers').update(form).eq('id',editing.id).select();
+            if(error){alert('오류: '+error.message+'\n\n"⚙️ DB 안내" 버튼을 눌러 컬럼을 먼저 추가하세요.');return;}
             if(data)setSuppliers(p=>p.map(s=>s.id===editing.id?data[0]:s));toast('✅ 수정됨');
         }else{
-            const{data}=await sb.from('suppliers').insert([form]).select();
+            const{data,error}=await sb.from('suppliers').insert([form]).select();
+            if(error){alert('오류: '+error.message+'\n\n"⚙️ DB 안내" 버튼을 눌러 컬럼을 먼저 추가하세요.');return;}
             if(data)setSuppliers(p=>[...p,data[0]]);toast('✅ 공급사 등록됨');
         }
     };
@@ -983,14 +1042,27 @@ function SupplierList({sb,suppliers,setSuppliers}){
         toast('🗑 삭제됨');
     };
 
+    const showSqlGuide=()=>alert(`📋 공급사 필드 추가 Supabase 안내\n\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone2 TEXT;\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS fax TEXT;\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_material_supplier BOOLEAN DEFAULT FALSE;\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS material_category_ids TEXT DEFAULT '[]';\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_outsourcing_supplier BOOLEAN DEFAULT FALSE;\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS outsourcing_category_ids TEXT DEFAULT '[]';\n`+
+`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS card_image_url TEXT;`);
+
     // 선택된 공급사의 자재만 필터
     const supMaterials=activeSup?materials.filter(m=>m.supplier===activeSup.name):[];
+    const catNames=(ids,list)=>{let arr=[];try{arr=typeof ids==='string'?JSON.parse(ids||'[]'):(ids||[]);}catch{}return arr.map(id=>(list||[]).find(c=>c.id===id)?.name).filter(Boolean);};
 
     return(<div>
-        {showModal&&<SupplierModal initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        {showModal&&<SupplierModal sb={sb} matCats={matCats||[]} outCats={outCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🏢 공급사 관리</h1><p>거래 공급업체 정보 · 자재별 공급사 현황</p></div>
-            <div className="btn-row"><button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공급사 등록</button></div>
+            <div className="btn-row">
+                <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
+                <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공급사 등록</button>
+            </div>
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20,alignItems:'start'}}>
@@ -999,19 +1071,32 @@ function SupplierList({sb,suppliers,setSuppliers}){
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({suppliers.length})</div>
                 {suppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">등록된 공급사가 없습니다.</div></div>
                 :<div style={{display:'flex',flexDirection:'column',gap:10}}>
-                    {suppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>(
+                    {suppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>{
+                        const mNames=catNames(s.material_category_ids,matCats);
+                        const oNames=catNames(s.outsourcing_category_ids,outCats);
+                        return(
                         <div key={s.id} className={`supplier-card ${activeSup?.id===s.id?'active':''}`} onClick={()=>setActiveSup(p=>p?.id===s.id?null:s)}>
-                            <div className="supplier-name">🏢 {s.name}</div>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                                <div className="supplier-name">🏢 {s.name}</div>
+                                {s.card_image_url&&<a href={s.card_image_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}><button className="btn btn-outline btn-xs">🪪 명함</button></a>}
+                            </div>
+                            {(s.is_material_supplier||s.is_outsourcing_supplier)&&<div style={{display:'flex',gap:5,flexWrap:'wrap',margin:'4px 0 6px'}}>
+                                {s.is_material_supplier&&<span className="badge badge-blue">📦 자재업체{mNames.length>0?' · '+mNames.join(', '):''}</span>}
+                                {s.is_outsourcing_supplier&&<span className="badge" style={{background:'#ede9fe',color:'var(--purple)'}}>🛠 외주업체{oNames.length>0?' · '+oNames.join(', '):''}</span>}
+                            </div>}
                             {s.business_no&&<div className="supplier-info-row"><span className="supplier-info-label">사업자번호</span><span>{s.business_no}</span></div>}
                             {s.contact_person&&<div className="supplier-info-row"><span className="supplier-info-label">담당자</span><span>{s.contact_person}</span></div>}
                             {s.phone&&<div className="supplier-info-row"><span className="supplier-info-label">연락처</span><span>{s.phone}</span></div>}
+                            {s.phone2&&<div className="supplier-info-row"><span className="supplier-info-label">연락처2</span><span>{s.phone2}</span></div>}
+                            {s.fax&&<div className="supplier-info-row"><span className="supplier-info-label">팩스</span><span>{s.fax}</span></div>}
                             {s.order_to&&<div className="supplier-info-row"><span className="supplier-info-label">발주처</span><span style={{color:'var(--blue)'}}>{s.order_to}</span></div>}
                             <div style={{display:'flex',gap:6,marginTop:10}}>
                                 <button className="btn btn-outline btn-sm" onClick={e=>{e.stopPropagation();setEditing(s);setShowModal(true);}}>✏️ 수정</button>
                                 <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={e=>{e.stopPropagation();del(s.id);}}>🗑</button>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>}
             </div>
 
@@ -3238,7 +3323,7 @@ function App(){
     const renderPage=()=>{
         switch(page){
             case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat}/>;
-            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers}/>;
+            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats}/>;
             case 'out-list':return<OutsourcingList sb={sb} outCats={outCats} suppliers={suppliers} onAddOutCat={()=>setAddOutModal(true)} initialCatId={activeCatId.out}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;

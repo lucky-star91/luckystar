@@ -133,6 +133,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .ssi-del{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
 .ssi:hover .ssi-del{color:rgba(255,255,255,.25);}
 .ssi-del:hover{color:var(--red) !important;}
+.ssi-edit{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
+.ssi:hover .ssi-edit{color:rgba(255,255,255,.3);}
+.ssi-edit:hover{color:var(--gold) !important;}
 .ssi-add{display:flex;align-items:center;gap:5px;padding:5px 12px 8px 62px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.25);transition:color .15s;}
 .ssi-add:hover{color:var(--gold);}
 .sb-footer{padding:14px 20px;border-top:1px solid rgba(255,255,255,.07);}
@@ -673,9 +676,9 @@ function FileUpload({sb,folder='files',value,fileName,onChange}){
         </label>
     );
 }
-function AddNameModal({title,placeholder,onClose,onSave}){
-    const[name,setName]=useState('');
-    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>추가</button></div></div></div>);
+function AddNameModal({title,placeholder,initial='',saveLabel='추가',onClose,onSave}){
+    const[name,setName]=useState(initial);
+    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onFocus={e=>e.target.select()} onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>{saveLabel}</button></div></div></div>);
 }
 
 /* ── 설정/로그인 ── */
@@ -2841,7 +2844,7 @@ function Schedule({sb,onEditEst}){
 /* ═══════════════════════════════════════
    ★ 사이드바
 ═══════════════════════════════════════ */
-function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onEditMatCat,onAddProdCat,onDelProdCat,onEditProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
     const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
     const[openSub,setOpenSub]=useState({mat:true,prod:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
@@ -2854,7 +2857,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
     const go=p=>{setPage(p);if(onClose)onClose();};
 
     const SI=({label,isActive,onNav})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span></div>);
-    const SSI=({label,isActive,onNav,onDel})=>(<div className={`ssi ${isActive?'active':''}`} onClick={onNav}><span className="ssi-dot"/><span className="ssi-label">{label}</span>{onDel&&<button className="ssi-del" onClick={e=>{e.stopPropagation();onDel();}}>✕</button>}</div>);
+    const SSI=({label,isActive,onNav,onEdit,onDel})=>(<div className={`ssi ${isActive?'active':''}`} onClick={onNav}><span className="ssi-dot"/><span className="ssi-label">{label}</span>{onEdit&&<button className="ssi-edit" onClick={e=>{e.stopPropagation();onEdit();}} title="이름 수정">✏️</button>}{onDel&&<button className="ssi-del" onClick={e=>{e.stopPropagation();onDel();}} title="삭제">✕</button>}</div>);
 
     return(<aside className={`sidebar ${sbOpen?'sb-open':''}`} onClick={e=>e.stopPropagation()}>
         <div className="sb-header"><div className="sb-logo">LUCKY<span>STAR</span></div><div className="sb-sub">CARAVAN MANAGER v2.0</div></div>
@@ -2875,7 +2878,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
                 </div>
                 <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
                     <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
-                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onDel={()=>onDelMatCat(c.id)}/>)}
+                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
                 </div>
                 <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
@@ -2893,7 +2896,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
                 </div>
                 <div className={`nav-sub-sub ${openSub.prod?'open':''}`}>
                     <SSI label="전체 상품" isActive={page==='prod-list'&&activeCatId?.prod===null} onNav={()=>goProd(null)}/>
-                    {prodCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onDel={()=>onDelProdCat(c.id)}/>)}
+                    {prodCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onEdit={()=>onEditProdCat(c)} onDel={()=>onDelProdCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddProdCat}>＋ 카테고리 추가</div>
                 </div>
             </div>
@@ -2958,6 +2961,8 @@ function App(){
     const[prodCats,setProdCats]=useState([]);
     const[addMatModal,setAddMatModal]=useState(false);
     const[addProdModal,setAddProdModal]=useState(false);
+    const[editMatCat,setEditMatCat]=useState(null); // 수정 대상 자재분류
+    const[editProdCat,setEditProdCat]=useState(null); // 수정 대상 상품카테고리
     const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
@@ -3023,6 +3028,13 @@ function App(){
         await sb.from('material_categories').delete().eq('id',id);
         setMatCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
     };
+    const renameMatCat=async name=>{
+        const id=editMatCat.id;
+        const{error}=await sb.from('material_categories').update({name}).eq('id',id);
+        if(error){toast('오류: '+error.message);return;}
+        setMatCats(p=>p.map(c=>c.id===id?{...c,name}:c));
+        setEditMatCat(null);toast('✏️ 분류명 수정됨');
+    };
     const addProdCat=async name=>{
         const{data}=await sb.from('product_categories').insert([{name,display_order:prodCats.length}]).select();
         if(data)setProdCats(p=>[...p,data[0]]);
@@ -3032,6 +3044,13 @@ function App(){
         if(!confirm('카테고리를 삭제하시겠습니까?'))return;
         await sb.from('product_categories').delete().eq('id',id);
         setProdCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
+    };
+    const renameProdCat=async name=>{
+        const id=editProdCat.id;
+        const{error}=await sb.from('product_categories').update({name}).eq('id',id);
+        if(error){toast('오류: '+error.message);return;}
+        setProdCats(p=>p.map(c=>c.id===id?{...c,name}:c));
+        setEditProdCat(null);toast('✏️ 카테고리명 수정됨');
     };
     const handleLogout=async()=>{if(sb)await sb.auth.signOut();setUser(null);};
 
@@ -3066,8 +3085,10 @@ function App(){
         </div>
         <div className={`sb-overlay ${sbOpen?'active':''}`} onClick={()=>setSbOpen(false)}/>
         {addMatModal&&<AddNameModal title="자재 분류 추가" placeholder="분류명 입력" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
+        {editMatCat&&<AddNameModal title="자재 분류 수정" placeholder="분류명 입력" initial={editMatCat.name} saveLabel="저장" onClose={()=>setEditMatCat(null)} onSave={renameMatCat}/>}
         {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
+        {editProdCat&&<AddNameModal title="상품 카테고리 수정" placeholder="카테고리명 입력" initial={editProdCat.name} saveLabel="저장" onClose={()=>setEditProdCat(null)} onSave={renameProdCat}/>}
+        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={cat=>{setEditMatCat(cat);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} onEditProdCat={cat=>{setEditProdCat(cat);setSbOpen(false);}} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

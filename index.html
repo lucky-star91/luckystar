@@ -3036,8 +3036,8 @@ function App(){
             <button style={{background:'none',border:'none',color:'rgba(255,255,255,.5)',cursor:'pointer',fontSize:13,fontFamily:'Noto Sans KR,sans-serif'}} onClick={handleLogout}>⏻</button>
         </div>
         <div className={`sb-overlay ${sbOpen?'active':''}`} onClick={()=>setSbOpen(false)}/>
-        {addMatModal&&<AddNameModal title="자재 분류 추가" placeholder="분류명 입력" onClose={()=>setAddMatModal(false)} onAdd={addMatCat}/>}
-        {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onAdd={addProdCat}/>}
+        {addMatModal&&<AddNameModal title="자재 분류 추가" placeholder="분류명 입력" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
+        {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
         <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);

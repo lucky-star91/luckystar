@@ -1016,11 +1016,12 @@ function SupplierModal({sb,matCats,outCats,initial,onClose,onSave}){
     </div>);
 }
 
-function SupplierList({sb,suppliers,setSuppliers,matCats,outCats}){
+function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter}){
     const[materials,setMaterials]=useState([]);
     useEffect(()=>{if(!sb)return;sb.from('materials').select('id,name,specification,thickness,unit_price,stock_qty,supplier').order('name').then(({data})=>{if(data)setMaterials(data);});},[sb]);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[activeSup,setActiveSup]=useState(null);
+    const[filter,setFilter]=useState(initialFilter||null); // null | 'material' | 'outsourcing'
 
     const save=async form=>{
         setShowModal(false);setEditing(null);
@@ -1054,6 +1055,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats}){
     // 선택된 공급사의 자재만 필터
     const supMaterials=activeSup?materials.filter(m=>m.supplier===activeSup.name):[];
     const catNames=(ids,list)=>{let arr=[];try{arr=typeof ids==='string'?JSON.parse(ids||'[]'):(ids||[]);}catch{}return arr.map(id=>(list||[]).find(c=>c.id===id)?.name).filter(Boolean);};
+    const filteredSuppliers=suppliers.filter(s=>!filter||(filter==='material'?s.is_material_supplier:filter==='outsourcing'?s.is_outsourcing_supplier:true));
 
     return(<div>
         {showModal&&<SupplierModal sb={sb} matCats={matCats||[]} outCats={outCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
@@ -1065,13 +1067,19 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats}){
             </div>
         </div>
 
+        <div className="cat-filter">
+            <div className={`cat-tab ${!filter?'active':''}`} onClick={()=>setFilter(null)}>전체 <span className="cnt">{suppliers.length}</span></div>
+            <div className={`cat-tab ${filter==='material'?'active':''}`} onClick={()=>setFilter('material')}>📦 자재업체 <span className="cnt">{suppliers.filter(s=>s.is_material_supplier).length}</span></div>
+            <div className={`cat-tab ${filter==='outsourcing'?'active':''}`} onClick={()=>setFilter('outsourcing')}>🛠 외주업체 <span className="cnt">{suppliers.filter(s=>s.is_outsourcing_supplier).length}</span></div>
+        </div>
+
         <div style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20,alignItems:'start'}}>
             {/* 공급사 카드 목록 */}
             <div>
-                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({suppliers.length})</div>
-                {suppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">등록된 공급사가 없습니다.</div></div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({filteredSuppliers.length})</div>
+                {filteredSuppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">{filter?'해당 조건의 공급사가 없습니다.':'등록된 공급사가 없습니다.'}</div></div>
                 :<div style={{display:'flex',flexDirection:'column',gap:10}}>
-                    {suppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>{
+                    {filteredSuppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>{
                         const mNames=catNames(s.material_category_ids,matCats);
                         const oNames=catNames(s.outsourcing_category_ids,outCats);
                         return(
@@ -3078,16 +3086,17 @@ function Schedule({sb,onEditEst}){
    ★ 사이드바
 ═══════════════════════════════════════ */
 function Sidebar({user,page,setPage,matCats,prodCats,outCats,onAddMatCat,onDelMatCat,onEditMatCat,onAddProdCat,onDelProdCat,onEditProdCat,onAddOutCat,onDelOutCat,onEditOutCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
-    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
+    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
     const[openSub,setOpenSub]=useState({mat:true,prod:true,out:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
-    const activeGroup=page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
-    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null,out:null});if(onClose)onClose();};
-    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId,out:null});if(onClose)onClose();};
-    const goOut=(catId=null)=>{setPage('out-list');setActiveCatId({mat:null,prod:null,out:catId});if(onClose)onClose();};
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null,out:null,sup:null});if(onClose)onClose();};
+    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId,out:null,sup:null});if(onClose)onClose();};
+    const goOut=(catId=null)=>{setPage('out-list');setActiveCatId({mat:null,prod:null,out:catId,sup:null});if(onClose)onClose();};
+    const goSup=(type=null)=>{setPage('supplier-list');setActiveCatId({mat:null,prod:null,out:null,sup:type});if(onClose)onClose();};
     const go=p=>{setPage(p);if(onClose)onClose();};
 
     const SI=({label,isActive,onNav})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span></div>);
@@ -3134,8 +3143,13 @@ function Sidebar({user,page,setPage,matCats,prodCats,outCats,onAddMatCat,onDelMa
                 </div>
             </div>
 
-            <div className={`nav-row ${page==='supplier-list'?'active':''}`}>
-                <div className="nav-label" onClick={()=>go('supplier-list')}><span className="nav-icon">🏢</span>공급사 관리</div>
+            <div className={`nav-row ${activeGroup==='supplier'?'active':''} ${open==='supplier'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('supplier')}><span className="nav-icon">🏢</span>공급사 관리<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='supplier'?'open':''}`}>
+                <SI label="전체 공급사" isActive={page==='supplier-list'&&!activeCatId?.sup} onNav={()=>goSup(null)}/>
+                <SI label="📦 자재업체" isActive={page==='supplier-list'&&activeCatId?.sup==='material'} onNav={()=>goSup('material')}/>
+                <SI label="🛠 외주업체" isActive={page==='supplier-list'&&activeCatId?.sup==='outsourcing'} onNav={()=>goSup('outsourcing')}/>
             </div>
 
             <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
@@ -3219,7 +3233,7 @@ function App(){
     const[editMatCat,setEditMatCat]=useState(null); // 수정 대상 자재분류
     const[editProdCat,setEditProdCat]=useState(null); // 수정 대상 상품카테고리
     const[editOutCat,setEditOutCat]=useState(null); // 수정 대상 외주분류
-    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null,out:null});
+    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null,out:null,sup:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
     const[userProfile,setUserProfile]=useState(null); // 담당자 프로필
@@ -3332,7 +3346,7 @@ function App(){
     const renderPage=()=>{
         switch(page){
             case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat}/>;
-            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats}/>;
+            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats} initialFilter={activeCatId.sup}/>;
             case 'out-list':return<OutsourcingList sb={sb} outCats={outCats} suppliers={suppliers} onAddOutCat={()=>setAddOutModal(true)} initialCatId={activeCatId.out}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;

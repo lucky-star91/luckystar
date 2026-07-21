@@ -1306,7 +1306,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
         </table>
         <div class="footer">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면</div>
         <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        const w=window.open('','_blank','width=800,height=600');
+        const w=window.open('','_blank');
         if(w){w.document.write(html);w.document.close();}
     };
 
@@ -2285,7 +2285,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div></div>`:''}
         <div class="ft">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | ${new Date().toLocaleDateString('ko-KR')} 기준</div>
         <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        const w=window.open('','_blank','width=920,height=720');
+        const w=window.open('','_blank');
         if(w){w.document.write(html);w.document.close();}
     };
 

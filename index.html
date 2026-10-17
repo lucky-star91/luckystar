@@ -596,6 +596,23 @@ td{padding:9px 14px;vertical-align:middle;}
     .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .modal-box.lg{width:96vw!important;}
 }
+/* ════════ 리스트 페이지: 상단 고정 + 목록만 스크롤 (PC/태블릿) ════════ */
+@media(min-width:768px){
+    .list-page{display:flex;flex-direction:column;height:calc(100vh - 64px);height:calc(100dvh - 64px);}
+    .list-page>*{flex:none;}
+    .list-page>.list-body,.list-page>.list-body-grid{flex:1 1 auto;min-height:0;}
+    .list-body{overflow:auto;padding-bottom:12px;}
+    .list-body .table-wrap,.list-body .est-list-wrap{overflow:visible!important;width:max-content;min-width:100%;}
+    .list-body thead th{position:sticky;top:0;z-index:5;background:var(--navy);}
+    .list-body-grid{grid-template-rows:minmax(0,1fr);align-items:stretch;}
+    .col-scroll{overflow:auto;min-height:0;padding-bottom:12px;}
+    .col-scroll .table-wrap{overflow:visible!important;width:max-content;min-width:100%;}
+    .col-scroll thead th{position:sticky;top:0;z-index:5;background:var(--navy);}
+    .list-page .dash-card{padding:8px 12px;}
+    .list-page .dash-card-num{font-size:24px;}
+    .list-page .dash-grid{margin-bottom:8px!important;}
+}
+@media print{.list-page{display:block!important;height:auto!important;}.list-body,.list-body-grid,.col-scroll{overflow:visible!important;}}
 @media print{.sidebar,.btn-row,.del-btn,.no-print{display:none!important;}.main{margin-left:0;padding:20px;}}
 </style>
 </head>
@@ -1094,7 +1111,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
     const catNames=(ids,list)=>{let arr=[];try{arr=typeof ids==='string'?JSON.parse(ids||'[]'):(ids||[]);}catch{}return arr.map(id=>(list||[]).find(c=>c.id===id)?.name).filter(Boolean);};
     const filteredSuppliers=koSort(suppliers.filter(s=>!filter||(filter==='material'?s.is_material_supplier:filter==='outsourcing'?s.is_outsourcing_supplier:true)),'name');
 
-    return(<div>
+    return(<div className="list-page">
         {showModal&&<SupplierModal sb={sb} matCats={matCats||[]} outCats={outCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🏢 공급사 관리</h1><p>거래 공급업체 정보 · 자재별 공급사 현황</p></div>
@@ -1110,9 +1127,9 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
             <div className={`cat-tab ${filter==='outsourcing'?'active':''}`} onClick={()=>setFilter('outsourcing')}>🛠 외주업체 <span className="cnt">{suppliers.filter(s=>s.is_outsourcing_supplier).length}</span></div>
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20,alignItems:'start'}}>
+        <div className="list-body-grid" style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20}}>
             {/* 공급사 카드 목록 */}
-            <div>
+            <div className="col-scroll">
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({filteredSuppliers.length})</div>
                 {filteredSuppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">{filter?'해당 조건의 공급사가 없습니다.':'등록된 공급사가 없습니다.'}</div></div>
                 :<div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -1148,7 +1165,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
             </div>
 
             {/* 선택된 공급사의 자재 목록 */}
-            {activeSup&&<div>
+            {activeSup&&<div className="col-scroll">
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>
                     {activeSup.name} 자재 ({supMaterials.length}개)
                 </div>
@@ -1372,7 +1389,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     };
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div>
+    return(<div className="list-page">
         {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📦 자재 관리</h1><p>자재 등록 · 단가 · 재고 · 이름순 정렬</p></div>
@@ -1494,6 +1511,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
             </div>
         </div>)}
 
+        <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">{search?'검색 결과가 없습니다.':'자재가 없습니다.'}</div></div>
         :<div className="table-wrap"><table style={{minWidth:900}}>
             <thead><tr>
@@ -1544,6 +1562,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
                 </tr>
             ))}</tbody>
         </table></div>}
+        </div>
     </div>);
 }
 
@@ -1632,7 +1651,7 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
             (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div>
+    return(<div className="list-page">
         {showModal&&<OutsourcingModal sb={sb} outCats={outCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🛠 외주 관리</h1><p>외주 품목 등록 · 분류별 단가 관리</p></div>
@@ -1652,6 +1671,7 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
                 style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
+        <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛠</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 외주 품목이 없습니다.'}</div></div>
         :<div className="table-wrap"><table style={{minWidth:820}}>
             <thead><tr>
@@ -1692,6 +1712,7 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
                 </tr>
             ))}</tbody>
         </table></div>}
+        </div>
     </div>);
 }
 
@@ -1874,7 +1895,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
             (p.description||'').toLowerCase().includes(search.toLowerCase())),'name');
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div>
+    return(<div className="list-page">
         {showModal&&<ProductModal sb={sb} matCats={matCats} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🛍 상품 관리</h1><p>카테고리별 상품 등록 · 필요 자재 연동</p></div>
@@ -1893,6 +1914,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
+        <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛍</div><div className="empty-text">{search?'검색 결과가 없습니다.':'상품이 없습니다.'}</div></div>
         :<div className="prod-grid">
             {filtered.map(prod=>(
@@ -1911,6 +1933,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 </div>
             ))}
         </div>}
+        </div>
     </div>);
 }
 
@@ -2818,7 +2841,7 @@ function Portfolio({sb, prodCats}){
     const filtered=koSort(filterCat?items.filter(x=>getCats(x).includes(filterCat)):items,'title');
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
-    return(<div>
+    return(<div className="list-page">
         {showModal&&<PortfolioModal sb={sb} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🖼 포트폴리오</h1><p>작업 이미지 관리 · 견적서에 첨부 가능</p></div>
@@ -2828,6 +2851,7 @@ function Portfolio({sb, prodCats}){
             <div className={`cat-tab ${!filterCat?'active':''}`} onClick={()=>setFilterCat(null)}>전체 <span className="cnt">{items.length}</span></div>
             {prodCats.map(c=><div key={c.id} className={`cat-tab ${filterCat===c.id?'active':''}`} onClick={()=>setFilterCat(c.id)}>{c.name} <span className="cnt">{items.filter(x=>getCats(x).includes(c.id)).length}</span></div>)}
         </div>
+        <div className="list-body">
         {filtered.length===0
             ?<div className="empty-state"><div className="empty-icon">🖼</div><div className="empty-text">포트폴리오가 없습니다.<br/>+ 포트폴리오 추가 버튼으로 시작하세요.</div></div>
             :<div className="port-grid">
@@ -2848,6 +2872,7 @@ function Portfolio({sb, prodCats}){
                     </div>);
                 })}
             </div>}
+        </div>
     </div>);
 }
 
@@ -2897,7 +2922,7 @@ function EstimateList({sb,onEdit,onNew}){
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
-    return(<div>
+    return(<div className="list-page">
         <div className="page-header">
             <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>카드 클릭으로 필터링 · 상태 변경 가능</p></div>
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
@@ -2942,6 +2967,7 @@ function EstimateList({sb,onEdit,onNew}){
             </div>
         )}
 
+        <div className="list-body">
         {estimates.length===0
             ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.</div></div>
             :filtered.length===0
@@ -2983,6 +3009,7 @@ function EstimateList({sb,onEdit,onNew}){
                     })}
                 </tbody>
             </table></div>}
+        </div>
     </div>);
 }
 

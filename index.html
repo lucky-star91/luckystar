@@ -641,16 +641,44 @@ const uploadImg = async (sb, file, folder='uploads') => {
 
 function ImgUpload({sb,folder='uploads',value,onChange}){
     const[busy,setBusy]=useState(false);
-    const pick=async e=>{
-        const f=e.target.files[0];if(!f)return;
+    const upload=async f=>{
         setBusy(true);
         try{const url=await uploadImg(sb,f,folder);onChange(url);}
         finally{setBusy(false);}
     };
+    const pick=async e=>{
+        const f=e.target.files[0];if(!f)return;
+        e.target.value='';
+        await upload(f);
+    };
+    // ★ Ctrl+V 붙여넣기 (캡처 이미지/복사한 이미지) — 창이 열려 있는 동안 동작
+    const upRef=React.useRef(upload);
+    upRef.current=upload;
+    useEffect(()=>{
+        const onPaste=e=>{
+            const items=e.clipboardData&&e.clipboardData.items;
+            if(!items)return;
+            for(const it of items){
+                if(it.kind==='file'&&it.type.indexOf('image/')===0){
+                    const f=it.getAsFile();
+                    if(f){
+                        e.preventDefault();
+                        const ext=(f.type.split('/')[1]||'png').replace('jpeg','jpg');
+                        const named=new File([f],'paste_'+Date.now()+'.'+ext,{type:f.type});
+                        upRef.current(named);
+                        toast('📋 붙여넣은 이미지 업로드 중...');
+                    }
+                    return; // 이미지가 아닌 텍스트 붙여넣기는 그대로 통과
+                }
+            }
+        };
+        document.addEventListener('paste',onPaste);
+        return()=>document.removeEventListener('paste',onPaste);
+    },[]);
     return(<label className="img-area" style={{display:'block',cursor:'pointer'}}>
         {busy?<div className="img-placeholder"><span style={{fontSize:28}}>⏳</span>업로드 중...</div>:
          value?<img src={value} alt="" style={{maxHeight:130,maxWidth:'100%',borderRadius:8,objectFit:'cover'}}/>:
-         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드</div>}
+         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드<div style={{fontSize:11,marginTop:4,color:'var(--blue)'}}>또는 캡처 후 Ctrl+V 로 붙여넣기</div></div>}
         <input type="file" accept="image/*" style={{display:'none'}} onChange={pick}/>
     </label>);
 }

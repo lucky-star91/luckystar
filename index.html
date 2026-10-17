@@ -602,6 +602,8 @@ td{padding:9px 14px;vertical-align:middle;}
 <body><div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect } = React;
+// ★ 가나다순 정렬 헬퍼 (한글 → 영문 → 숫자 섞여도 자연스럽게)
+const koSort=(arr,key)=>[...(arr||[])].sort((a,b)=>String(a[key]||'').localeCompare(String(b[key]||''),'ko',{numeric:true,sensitivity:'base'}));
 const fmt = n => (Number(n)||0).toLocaleString('ko-KR');
 const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
 const uid = () => Math.random().toString(36).substr(2,9);
@@ -1090,7 +1092,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
     // 선택된 공급사의 자재만 필터
     const supMaterials=activeSup?materials.filter(m=>m.supplier===activeSup.name):[];
     const catNames=(ids,list)=>{let arr=[];try{arr=typeof ids==='string'?JSON.parse(ids||'[]'):(ids||[]);}catch{}return arr.map(id=>(list||[]).find(c=>c.id===id)?.name).filter(Boolean);};
-    const filteredSuppliers=suppliers.filter(s=>!filter||(filter==='material'?s.is_material_supplier:filter==='outsourcing'?s.is_outsourcing_supplier:true));
+    const filteredSuppliers=koSort(suppliers.filter(s=>!filter||(filter==='material'?s.is_material_supplier:filter==='outsourcing'?s.is_outsourcing_supplier:true)),'name');
 
     return(<div>
         {showModal&&<SupplierModal sb={sb} matCats={matCats||[]} outCats={outCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
@@ -1114,7 +1116,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({filteredSuppliers.length})</div>
                 {filteredSuppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">{filter?'해당 조건의 공급사가 없습니다.':'등록된 공급사가 없습니다.'}</div></div>
                 :<div style={{display:'flex',flexDirection:'column',gap:10}}>
-                    {filteredSuppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>{
+                    {filteredSuppliers.map(s=>{
                         const mNames=catNames(s.material_category_ids,matCats);
                         const oNames=catNames(s.outsourcing_category_ids,outCats);
                         return(
@@ -1159,7 +1161,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
                         <th className="tr">단가(원)</th>
                         <th className="tr">재고</th>
                     </tr></thead>
-                    <tbody>{supMaterials.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(m=>(
+                    <tbody>{koSort(supMaterials,'name').map(m=>(
                         <tr key={m.id}>
                             <td style={{fontWeight:700}}>{m.name}</td>
                             <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
@@ -1304,11 +1306,11 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     };
 
     // ★ 필터 + 검색 + 정렬(이름순)
-    const filtered=materials
+    const filtered=koSort(materials
         .filter(m=>!activeCat||m.category_id===activeCat)
         .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
             (m.specification||'').toLowerCase().includes(search.toLowerCase())||
-            (m.supplier||'').toLowerCase().includes(search.toLowerCase()));
+            (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
 
     // ★ 발주서 출력
     const printOrder=(supName,items)=>{
@@ -1623,11 +1625,11 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
 `CREATE TABLE IF NOT EXISTS outsourcing_items (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES outsourcing_categories(id) ON DELETE SET NULL,\n  name TEXT,\n  specification TEXT,\n  unit_price NUMERIC DEFAULT 0,\n  supplier TEXT,\n  category_extra TEXT,\n  purchase_link TEXT,\n  image_url TEXT,\n  memo TEXT,\n  quote_file_url TEXT,\n  quote_file_name TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n`+
 `ALTER TABLE outsourcing_items DISABLE ROW LEVEL SECURITY;`);
 
-    const filtered=items
+    const filtered=koSort(items
         .filter(m=>!activeCat||m.category_id===activeCat)
         .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
             (m.specification||'').toLowerCase().includes(search.toLowerCase())||
-            (m.supplier||'').toLowerCase().includes(search.toLowerCase()));
+            (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
@@ -1866,10 +1868,10 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
     };
 
     const catName=id=>prodCats.find(c=>c.id===id)?.name||'미분류';
-    const filtered=products
+    const filtered=koSort(products
         .filter(p=>!activeCat||p.category_id===activeCat)
         .filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||
-            (p.description||'').toLowerCase().includes(search.toLowerCase()));
+            (p.description||'').toLowerCase().includes(search.toLowerCase())),'name');
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
@@ -1922,7 +1924,7 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
     },[sb]);
 
     const toggle=prod=>setPicked(p=>p.find(x=>x.id===prod.id)?p.filter(x=>x.id!==prod.id):[...p,prod]);
-    const filtered=activeCat?products.filter(p=>p.category_id===activeCat):products;
+    const filtered=koSort(activeCat?products.filter(p=>p.category_id===activeCat):products,'name');
 
     const confirm=()=>{
         if(picked.length===0){toast('상품을 선택하세요');return;}
@@ -2702,7 +2704,7 @@ function PortPickModal({sb, portItems, setPortItems, onClose}){
                 {loading?<div style={{textAlign:'center',padding:40}}>로딩 중...</div>
                 :all.length===0?<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>등록된 포트폴리오가 없습니다.<br/>먼저 포트폴리오 메뉴에서 추가하세요.</div>
                 :<div className="port-pick-grid" style={{maxHeight:'60vh',overflowY:'auto',padding:'4px 2px'}}>
-                    {all.map(item=>(
+                    {koSort(all,'title').map(item=>(
                         <div key={item.id} className={`port-pick-card ${sel.includes(item.id)?'selected':''}`} onClick={()=>toggle(item)}>
                             {item.image_url?<img src={item.image_url} alt=""/>:<div className="port-pick-card-ph">🖼</div>}
                             <div className="port-pick-info">
@@ -2813,7 +2815,7 @@ function Portfolio({sb, prodCats}){
         toast('🗑 삭제됨');
     };
 
-    const filtered=filterCat?items.filter(x=>getCats(x).includes(filterCat)):items;
+    const filtered=koSort(filterCat?items.filter(x=>getCats(x).includes(filterCat)):items,'title');
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
     return(<div>
@@ -2889,7 +2891,7 @@ function EstimateList({sb,onEdit,onNew}){
         if(statusFilter&&(e.status||'가견적발송')!==statusFilter)return false;
         if(payFilter&&(e.payment_status||'입금전')!==payFilter)return false;
         return true;
-    });
+    }).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)); // 등록일 최신순
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
 

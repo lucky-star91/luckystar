@@ -1,0 +1,35 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # 매일 03:00, 15:00 (UTC) = 한국시간 12:00, 00:00
+    - cron: '0 3,15 * * *'
+  workflow_dispatch: {}   # Actions 탭에서 수동 실행 가능
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -e
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "SUPABASE_URL 또는 SUPABASE_KEY 시크릿이 설정되지 않았습니다."
+            exit 1
+          fi
+
+          STATUS=$(curl -s -o response.json -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/materials?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY")
+
+          echo "HTTP status: $STATUS"
+          cat response.json
+
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "Supabase 호출 실패"
+            exit 1
+          fi

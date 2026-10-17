@@ -656,8 +656,11 @@ function ImgUpload({sb,folder='uploads',value,onChange}){
     upRef.current=upload;
     useEffect(()=>{
         const onPaste=e=>{
-            const items=e.clipboardData&&e.clipboardData.items;
-            if(!items)return;
+            const cd=e.clipboardData;
+            if(!cd||!cd.items)return;
+            // 텍스트가 함께 들어있으면(워드·엑셀·웹페이지 복사 등) 일반 텍스트 붙여넣기로 통과
+            if((cd.getData('text/plain')||'').length>0)return;
+            const items=cd.items;
             for(const it of items){
                 if(it.kind==='file'&&it.type.indexOf('image/')===0){
                     const f=it.getAsFile();

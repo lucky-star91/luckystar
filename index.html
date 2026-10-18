@@ -1453,12 +1453,14 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
 /* ═══════════════════════════════════════
    ★ 상품 관리
 ═══════════════════════════════════════ */
-function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
+function ProductModal({sb,matCats,prodCats,toolCats,initial,onClose,onSave}){
     const blank={category_id:'',name:'',description:'',price:0,image_url:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const[mats,setMats]=useState([]);
-    const[prep,setPrep]=useState(()=>parseJSON(initial?.prep_items,[]).map(x=>({id:x.id||uid(),type:x.type||'tool',name:x.name||'',qty:x.qty||1})));
+    const[prep,setPrep]=useState(()=>parseJSON(initial?.prep_items,[]).map(x=>({id:x.id||uid(),type:x.type||'tool',tool_id:x.tool_id||'',name:x.name||'',qty:x.qty||1})));
+    const[allTools,setAllTools]=useState([]); // 공구/부자재 관리 목록
     const updPrep=(id,k,v)=>setPrep(p=>p.map(x=>x.id===id?{...x,[k]:v}:x));
+    const updPrepBatch=(id,obj)=>setPrep(p=>p.map(x=>x.id===id?{...x,...obj}:x));
     const[allMaterials,setAllMaterials]=useState([]); // category_id 포함
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
@@ -1469,6 +1471,8 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
             const{data:allMatsData}=await sb.from('materials')
                 .select('id,name,specification,unit_price,category_id').order('name');
             if(allMatsData) setAllMaterials(allMatsData);
+            const{data:toolsData}=await sb.from('tools').select('id,name,specification,category_id').order('name');
+            if(toolsData) setAllTools(toolsData);
 
             if(!initial?.id) return;
             const{data:pmData}=await sb.from('product_materials')
@@ -1507,7 +1511,7 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
             quantity:Number(m.quantity)||1,
             total:(Number(m.unit_price)||0)*(Number(m.quantity)||1),
         }));
-        const cleanPrep=prep.filter(x=>(x.name||'').trim()).map(x=>({type:x.type,name:x.name.trim(),qty:Number(x.qty)||1}));
+        const cleanPrep=prep.filter(x=>(x.name||'').trim()).map(x=>({type:x.type,tool_id:x.tool_id||null,name:x.name.trim(),qty:Number(x.qty)||1}));
         onSave({form:{...form,prep_items:JSON.stringify(cleanPrep)},mats:cleanMats});
     };
 
@@ -1571,22 +1575,48 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                 ))}
                 {mats.length===0&&<p style={{fontSize:12,color:'var(--muted)',margin:'8px 0'}}>자재 추가 버튼으로 필요 자재를 등록하세요.</p>}
             </div>
-            {/* 공구 / 부자재 (시공 체크리스트용) */}
+            {/* 공구 / 부자재 (시공 체크리스트용) — 필요 자재와 같은 방식: 분류 → 품명 → 수량 */}
             {[['tool','🔧 공구'],['supply','📎 부자재']].map(([type,label])=>{
                 const rows=prep.filter(x=>x.type===type);
-                return(<div key={type} style={{marginTop:18}}>
+                const GRID={display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.4fr) 64px 32px',gap:6,minWidth:480};
+                return(<div key={type} style={{marginTop:18,overflowX:'auto'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <span style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1,textTransform:'uppercase'}}>{label} <span style={{fontWeight:400,textTransform:'none'}}>(시공 체크리스트)</span></span>
-                        <button className="btn btn-outline btn-sm" onClick={()=>setPrep(p=>[...p,{id:uid(),type,name:'',qty:1}])}>＋ 추가</button>
+                        <button className="btn btn-outline btn-sm" onClick={()=>setPrep(p=>[...p,{id:uid(),type,tool_id:'',name:'',qty:1}])}>＋ {type==='tool'?'공구':'부자재'} 추가</button>
                     </div>
-                    {rows.length===0&&<p style={{fontSize:12,color:'var(--muted)',margin:'4px 0'}}>등록된 항목이 없습니다.</p>}
-                    {rows.map(x=>(
-                        <div key={x.id} style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) 80px 36px',gap:6,marginBottom:6,alignItems:'center'}}>
-                            <input className="mi" style={{fontSize:12}} value={x.name} placeholder={type==='tool'?'공구명 (예: 임팩드라이버)':'부자재명 (예: 피스 50mm)'} onChange={e=>updPrep(x.id,'name',e.target.value)}/>
+                    {rows.length>0&&<div style={{...GRID,marginBottom:4}}>
+                        <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>분류</span>
+                        <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>품명</span>
+                        <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1,textAlign:'center'}}>수량</span>
+                        <span></span>
+                    </div>}
+                    {rows.length===0&&<p style={{fontSize:12,color:'var(--muted)',margin:'4px 0'}}>추가 버튼으로 {label}를 등록하세요. (공구/부자재 관리에 등록된 항목에서 선택)</p>}
+                    {rows.map(x=>{
+                        const catId=x._catId!==undefined?x._catId:(allTools.find(t=>t.id===x.tool_id)?.category_id||'');
+                        const legacy=!x.tool_id&&x.name;
+                        return(<div key={x.id} style={{...GRID,marginBottom:6,alignItems:'center'}}>
+                            <select className="mi" style={{fontSize:12}} value={catId||''} onChange={e=>updPrep(x.id,'_catId',e.target.value)}>
+                                <option value="">── 분류 선택 ──</option>
+                                {toolCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <select className="mi" style={{fontSize:12}} value={x.tool_id||(legacy?'__legacy__':'')}
+                                onChange={e=>{
+                                    const v=e.target.value;
+                                    if(v==='__legacy__')return;
+                                    const t=allTools.find(y=>y.id===v);
+                                    if(t)updPrepBatch(x.id,{_catId:t.category_id||'',tool_id:t.id,name:t.name});
+                                    else updPrepBatch(x.id,{tool_id:'',name:''});
+                                }}>
+                                <option value="">{catId?'── 품명 선택 ──':'← 분류 먼저 선택'}</option>
+                                {legacy&&<option value="__legacy__">{x.name} (저장됨)</option>}
+                                {allTools.filter(t=>!catId||t.category_id===catId).map(t=>(
+                                    <option key={t.id} value={t.id}>{t.name}{t.specification?' ('+t.specification+')':''}</option>
+                                ))}
+                            </select>
                             <input className="mi" type="number" min="1" style={{fontSize:12,textAlign:'right'}} value={x.qty} onChange={e=>updPrep(x.id,'qty',e.target.value)}/>
                             <button className="btn-icon" onClick={()=>setPrep(p=>p.filter(y=>y.id!==x.id))}>🗑</button>
-                        </div>
-                    ))}
+                        </div>);
+                    })}
                 </div>);
             })}
             <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
@@ -1594,7 +1624,7 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
     </div>);
 }
 
-function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
+function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
     const[products,setProducts]=useState([]);const[loading,setLoading]=useState(true);
     const[activeCat,setActiveCat]=useState(initialCatId||null);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
@@ -1676,7 +1706,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
-        {showModal&&<ProductModal sb={sb} matCats={matCats} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        {showModal&&<ProductModal sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🛍 상품 관리</h1><p>카테고리별 상품 등록 · 필요 자재 연동</p></div>
             <div className="btn-row">
@@ -3560,7 +3590,7 @@ function App(){
             case 'tool-list':return<ToolList sb={sb} toolCats={toolCats} onAddToolCat={()=>setAddToolModal(true)} initialCatId={activeCatId.tool}/>;
             case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
-            case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
+            case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
             case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
             case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;

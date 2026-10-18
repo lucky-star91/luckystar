@@ -605,6 +605,7 @@ const fmt = n => (Number(n)||0).toLocaleString('ko-KR');
 const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
 const uid = () => Math.random().toString(36).substr(2,9);
 const parseJSON = (v,d) => { try{ return typeof v==='string' ? JSON.parse(v||JSON.stringify(d)) : (v||d); }catch(e){ return d; } };
+const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories DISABLE ROW LEVEL SECURITY;\nALTER TABLE tools DISABLE ROW LEVEL SECURITY;";
 const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';";
 // 공구/부자재 컬럼이 아직 없을 때: 해당 필드만 빼고 재시도 (나머지 데이터는 정상 저장)
 const prepSafe = async (run, payload) => {
@@ -2892,6 +2893,135 @@ function ChecklistPage({sb,estimateId,onNavigate}){
     </div>);
 }
 
+/* ═══════════════════════════════════════
+   ★ 공구 / 부자재 관리
+═══════════════════════════════════════ */
+function ToolModal({sb,toolCats,initial,onClose,onSave}){
+    const blank={category_id:'',name:'',specification:'',category_extra:'',memo:'',image_url:''};
+    const[form,setForm]=useState(initial?{...blank,...initial}:blank);
+    const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+    const ok=()=>{
+        if(!(form.name||'').trim()){alert('품명을 입력하세요');return;}
+        onSave({category_id:form.category_id||null,name:form.name.trim(),specification:form.specification||'',category_extra:form.category_extra||'',memo:form.memo||'',image_url:form.image_url||''});
+    };
+    return(<div className="modal-overlay" onClick={onClose}>
+        <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><div className="modal-title">{initial?'공구/부자재 수정':'새 공구/부자재 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
+            <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="tools" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
+            <div className="modal-grid">
+                <div className="mf"><label className="ml">분류</label>
+                    <select className="mi" value={form.category_id||''} onChange={e=>set('category_id',e.target.value)}>
+                        <option value="">분류 선택</option>
+                        {toolCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select></div>
+                <div className="mf"><label className="ml">품명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="품명 입력" autoFocus/></div>
+                <div className="mf"><label className="ml">규격/재질</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 입력"/></div>
+                <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 전동, 소모품"/></div>
+                <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
+            </div>
+            <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
+        </div>
+    </div>);
+}
+
+function ToolList({sb,toolCats,onAddToolCat,initialCatId}){
+    const[tools,setTools]=useState([]);const[loading,setLoading]=useState(true);
+    const[dbErr,setDbErr]=useState('');
+    const[activeCat,setActiveCat]=useState(initialCatId||null);
+    const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
+    const[search,setSearch]=useState('');
+
+    useEffect(()=>{setActiveCat(initialCatId||null);},[initialCatId]);
+    useEffect(()=>{
+        if(!sb)return;
+        sb.from('tools').select('*').order('name',{ascending:true}).then(({data,error})=>{
+            if(error)setDbErr(error.message);else if(data)setTools(data);
+            setLoading(false);
+        });
+    },[sb]);
+
+    const fail=e=>alert('저장 실패: '+e.message+(/relation|does not exist|schema cache/.test(e.message)?'\n\nSupabase SQL Editor에서 아래를 실행하세요:\n\n'+SQL_TOOLS:''));
+    const save=async form=>{
+        if(editing){
+            const{data,error}=await sb.from('tools').update(form).eq('id',editing.id).select();
+            if(error){fail(error);return;}
+            if(data)setTools(p=>p.map(x=>x.id===editing.id?data[0]:x).sort((a,b)=>a.name.localeCompare(b.name,'ko')));
+            toast('✅ 수정됨');
+        }else{
+            const{data,error}=await sb.from('tools').insert([form]).select();
+            if(error){fail(error);return;}
+            if(data)setTools(p=>[...p,data[0]].sort((a,b)=>a.name.localeCompare(b.name,'ko')));
+            toast('✅ 등록됨');
+        }
+        setShowModal(false);setEditing(null);
+    };
+    const del=async id=>{if(!confirm('삭제?'))return;await sb.from('tools').delete().eq('id',id);setTools(p=>p.filter(x=>x.id!==id));toast('🗑 삭제됨');};
+    const catName=id=>toolCats.find(c=>c.id===id)?.name||'미분류';
+    const q=search.toLowerCase();
+    const filtered=tools
+        .filter(x=>!activeCat||x.category_id===activeCat)
+        .filter(x=>!q||(x.name||'').toLowerCase().includes(q)||(x.specification||'').toLowerCase().includes(q)||(x.category_extra||'').toLowerCase().includes(q)||(x.memo||'').toLowerCase().includes(q));
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    if(dbErr)return(<div>
+        <div className="page-header"><div className="page-title-wrap"><h1>🧰 공구/부자재 관리</h1><p>DB 테이블 설정이 필요합니다</p></div></div>
+        <div className="card">
+            <div className="card-title">⚙️ 먼저 한 번만 실행하세요</div>
+            <p style={{fontSize:13,color:'var(--muted)',marginBottom:10}}>Supabase → SQL Editor에 아래 내용을 붙여넣고 실행한 뒤 새로고침하세요.</p>
+            <pre style={{background:'var(--bg)',borderRadius:8,padding:14,fontSize:12,overflowX:'auto',whiteSpace:'pre-wrap'}}>{SQL_TOOLS}</pre>
+            <button className="btn btn-outline btn-sm" style={{marginTop:10}} onClick={()=>{navigator.clipboard?.writeText(SQL_TOOLS).then(()=>toast('📋 SQL 복사됨')).catch(()=>alert(SQL_TOOLS));}}>📋 SQL 복사</button>
+            <div style={{fontSize:11,color:'var(--muted)',marginTop:10}}>오류 내용: {dbErr}</div>
+        </div>
+    </div>);
+
+    return(<div>
+        {showModal&&<ToolModal sb={sb} toolCats={toolCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>🧰 공구/부자재 관리</h1><p>공구 · 부자재 등록 · 분류별 관리 · 이름순 정렬</p></div>
+            <div className="btn-row">
+                <button className="btn btn-outline" onClick={onAddToolCat}>＋ 분류 추가</button>
+                <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공구/부자재 등록</button>
+            </div>
+        </div>
+        <div className="cat-filter">
+            <div className={`cat-tab ${!activeCat?'active':''}`} onClick={()=>setActiveCat(null)}>전체 <span className="cnt">{tools.length}</span></div>
+            {toolCats.map(c=><div key={c.id} className={`cat-tab ${activeCat===c.id?'active':''}`} onClick={()=>setActiveCat(c.id)}>{c.name} <span className="cnt">{tools.filter(x=>x.category_id===c.id).length}</span></div>)}
+        </div>
+        <div style={{marginBottom:14}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품명 · 규격 · 기타구분 · 메모 검색..."
+                style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
+                onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+        </div>
+        {filtered.length===0
+            ?<div className="empty-state"><div className="empty-icon">🧰</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 공구/부자재가 없습니다.'}</div></div>
+            :<div className="table-wrap"><table style={{minWidth:700}}>
+                <thead><tr>
+                    <th style={{width:50}}>사진</th>
+                    <th style={{textAlign:'left'}}>품명</th>
+                    <th style={{textAlign:'left'}}>분류</th>
+                    <th style={{textAlign:'left'}}>규격/재질</th>
+                    <th style={{textAlign:'left'}}>기타구분</th>
+                    <th style={{textAlign:'left'}}>메모</th>
+                    <th style={{textAlign:'center',width:80}}>관리</th>
+                </tr></thead>
+                <tbody>{filtered.map(x=>(
+                    <tr key={x.id}>
+                        <td style={{textAlign:'center'}}>{x.image_url?<img src={x.image_url} style={{width:36,height:36,objectFit:'cover',borderRadius:5,border:'1px solid var(--border)'}} alt=""/>:<span style={{fontSize:18}}>🧰</span>}</td>
+                        <td style={{fontWeight:700}}>{x.name}</td>
+                        <td style={{fontSize:12,color:'var(--muted)'}}>{catName(x.category_id)}</td>
+                        <td style={{fontSize:12,color:'var(--muted)'}}>{x.specification||'-'}</td>
+                        <td style={{fontSize:12,color:'var(--muted)'}}>{x.category_extra||'-'}</td>
+                        <td style={{fontSize:12,color:'var(--muted)'}}>{x.memo||'-'}</td>
+                        <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
+                            <button className="btn-icon" onClick={()=>{setEditing(x);setShowModal(true);}}>✏️</button>
+                            <button className="btn-icon" onClick={()=>del(x.id)}>🗑</button>
+                        </td>
+                    </tr>
+                ))}</tbody>
+            </table></div>}
+    </div>);
+}
+
 function EstimateList({sb,onEdit,onNew,onChecklist}){
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
@@ -3162,16 +3292,17 @@ function Schedule({sb,onEditEst}){
 /* ═══════════════════════════════════════
    ★ 사이드바
 ═══════════════════════════════════════ */
-function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
-    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
-    const[openSub,setOpenSub]=useState({mat:true,prod:true});
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,toolCats,onAddToolCat,onDelToolCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
+    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
+    const[openSub,setOpenSub]=useState({mat:true,prod:true,tool:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
-    const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
     const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});if(onClose)onClose();};
     const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});if(onClose)onClose();};
+    const goTool=(catId=null)=>{setPage('tool-list');setActiveCatId({mat:null,prod:null,tool:catId});if(onClose)onClose();};
     const go=p=>{setPage(p);if(onClose)onClose();};
 
     const SI=({label,isActive,onNav})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span></div>);
@@ -3201,6 +3332,22 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onA
                 </div>
                 <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
                 <SI label="🏢 공급사 관리" isActive={page==='supplier-list'} onNav={()=>go('supplier-list')}/>
+            </div>
+
+            <div className={`nav-row ${activeGroup==='tool'?'active':''} ${open==='tool'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('tool')}><span className="nav-icon">🧰</span>공구/부자재<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='tool'?'open':''}`}>
+                <div className={`nav-grp-hd ${openSub.tool?'open':''}`} onClick={()=>toggleSub('tool')}>
+                    <span>📁 분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddToolCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.tool?'open':''}`}>
+                    <SSI label="전체 공구/부자재" isActive={page==='tool-list'&&(activeCatId?.tool??null)===null} onNav={()=>goTool(null)}/>
+                    {(toolCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='tool-list'&&activeCatId?.tool===c.id} onNav={()=>goTool(c.id)} onDel={()=>onDelToolCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddToolCat}>＋ 분류 추가</div>
+                </div>
             </div>
 
             <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
@@ -3284,6 +3431,8 @@ function App(){
     const[prodCats,setProdCats]=useState([]);
     const[addMatModal,setAddMatModal]=useState(false);
     const[addProdModal,setAddProdModal]=useState(false);
+    const[toolCats,setToolCats]=useState([]);
+    const[addToolModal,setAddToolModal]=useState(false);
     const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
@@ -3320,6 +3469,7 @@ function App(){
         sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
         sb.from('suppliers').select('*').order('name').then(({data})=>{if(data)setSuppliers(data);});
         sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
+        sb.from('tool_categories').select('*').order('display_order').then(({data})=>{if(data)setToolCats(data);});
         // ★ 담당자 프로필 로드 (오류 무시 - 핵심 기능 영향 없음)
         (async()=>{
             try{
@@ -3359,11 +3509,23 @@ function App(){
         await sb.from('product_categories').delete().eq('id',id);
         setProdCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
     };
+    const addToolCat=async name=>{
+        const{data,error}=await sb.from('tool_categories').insert([{name,display_order:toolCats.length}]).select();
+        if(error){alert('분류 추가 실패: '+error.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\n\n'+SQL_TOOLS);return;}
+        if(data)setToolCats(p=>[...p,data[0]]);
+        setAddToolModal(false);toast('📁 공구/부자재 분류 추가됨');
+    };
+    const delToolCat=async id=>{
+        if(!confirm('분류를 삭제하시겠습니까?\n(해당 분류의 품목은 "미분류"로 남습니다)'))return;
+        await sb.from('tool_categories').delete().eq('id',id);
+        setToolCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
+    };
     const handleLogout=async()=>{if(sb)await sb.auth.signOut();setUser(null);};
 
     const renderPage=()=>{
         switch(page){
             case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat} openMatId={openMatId} onOpened={()=>setOpenMatId(null)}/>;
+            case 'tool-list':return<ToolList sb={sb} toolCats={toolCats} onAddToolCat={()=>setAddToolModal(true)} initialCatId={activeCatId.tool}/>;
             case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
@@ -3393,8 +3555,9 @@ function App(){
         </div>
         <div className={`sb-overlay ${sbOpen?'active':''}`} onClick={()=>setSbOpen(false)}/>
         {addMatModal&&<AddNameModal title="자재 분류 추가" placeholder="분류명 입력" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
+        {addToolModal&&<AddNameModal title="공구/부자재 분류 추가" placeholder="분류명 입력 (예: 공구, 부자재)" onClose={()=>setAddToolModal(false)} onSave={addToolCat}/>}
         {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
+        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} toolCats={toolCats} onAddToolCat={()=>{setAddToolModal(true);setSbOpen(false);}} onDelToolCat={delToolCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

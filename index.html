@@ -133,9 +133,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .ssi-del{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
 .ssi:hover .ssi-del{color:rgba(255,255,255,.25);}
 .ssi-del:hover{color:var(--red) !important;}
-.ssi-edit{background:none;border:none;color:transparent;cursor:pointer;font-size:11px;padding:0 4px;line-height:1;flex-shrink:0;}
-.ssi:hover .ssi-edit{color:rgba(255,255,255,.3);}
-.ssi-edit:hover{color:var(--gold) !important;}
 .ssi-add{display:flex;align-items:center;gap:5px;padding:5px 12px 8px 62px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.25);transition:color .15s;}
 .ssi-add:hover{color:var(--gold);}
 .sb-footer{padding:14px 20px;border-top:1px solid rgba(255,255,255,.07);}
@@ -155,7 +152,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .modal-close{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;}
 .modal-close:hover{color:var(--text);}
 .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.mf{margin-bottom:14px;}.mf.full{grid-column:1/-1;}
+.mf{margin-bottom:14px;}.mf.full{grid-column:1/-1;}.mf.col2{grid-column:2;}
 .ml{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block;}
 .mi,.ms{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .15s,background .15s;background:#fff;color:var(--text);}
 .mi:focus,.ms:focus{border-color:var(--blue);background:#f0f6ff;}
@@ -560,6 +557,7 @@ td{padding:9px 14px;vertical-align:middle;}
     .modal-box.lg{width:100%!important;}
     .modal-grid{grid-template-columns:1fr!important;}
     .mf.full{grid-column:1!important;}
+    .mf.col2{grid-column:1!important;}
     /* 자재등록 추가 행 */
     .mat-add-row{grid-template-columns:1fr 1fr!important;}
     .mat-add-row>div:last-child{grid-column:1/-1;}
@@ -596,31 +594,12 @@ td{padding:9px 14px;vertical-align:middle;}
     .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .modal-box.lg{width:96vw!important;}
 }
-/* ════════ 리스트 페이지: 상단 고정 + 목록만 스크롤 (PC/태블릿) ════════ */
-@media(min-width:768px){
-    .list-page{display:flex;flex-direction:column;height:calc(100vh - 64px);height:calc(100dvh - 64px);}
-    .list-page>*{flex:none;}
-    .list-page>.list-body,.list-page>.list-body-grid{flex:1 1 auto;min-height:0;}
-    .list-body{overflow:auto;padding-bottom:12px;}
-    .list-body .table-wrap,.list-body .est-list-wrap{overflow:visible!important;width:max-content;min-width:100%;}
-    .list-body thead th{position:sticky;top:0;z-index:5;background:var(--navy);}
-    .list-body-grid{grid-template-rows:minmax(0,1fr);align-items:stretch;}
-    .col-scroll{overflow:auto;min-height:0;padding-bottom:12px;}
-    .col-scroll .table-wrap{overflow:visible!important;width:max-content;min-width:100%;}
-    .col-scroll thead th{position:sticky;top:0;z-index:5;background:var(--navy);}
-    .list-page .dash-card{padding:8px 12px;}
-    .list-page .dash-card-num{font-size:24px;}
-    .list-page .dash-grid{margin-bottom:8px!important;}
-}
-@media print{.list-page{display:block!important;height:auto!important;}.list-body,.list-body-grid,.col-scroll{overflow:visible!important;}}
 @media print{.sidebar,.btn-row,.del-btn,.no-print{display:none!important;}.main{margin-left:0;padding:20px;}}
 </style>
 </head>
 <body><div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect } = React;
-// ★ 가나다순 정렬 헬퍼 (한글 → 영문 → 숫자 섞여도 자연스럽게)
-const koSort=(arr,key)=>[...(arr||[])].sort((a,b)=>String(a[key]||'').localeCompare(String(b[key]||''),'ko',{numeric:true,sensitivity:'base'}));
 const fmt = n => (Number(n)||0).toLocaleString('ko-KR');
 const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
 const uid = () => Math.random().toString(36).substr(2,9);
@@ -660,47 +639,16 @@ const uploadImg = async (sb, file, folder='uploads') => {
 
 function ImgUpload({sb,folder='uploads',value,onChange}){
     const[busy,setBusy]=useState(false);
-    const upload=async f=>{
+    const pick=async e=>{
+        const f=e.target.files[0];if(!f)return;
         setBusy(true);
         try{const url=await uploadImg(sb,f,folder);onChange(url);}
         finally{setBusy(false);}
     };
-    const pick=async e=>{
-        const f=e.target.files[0];if(!f)return;
-        e.target.value='';
-        await upload(f);
-    };
-    // ★ Ctrl+V 붙여넣기 (캡처 이미지/복사한 이미지) — 창이 열려 있는 동안 동작
-    const upRef=React.useRef(upload);
-    upRef.current=upload;
-    useEffect(()=>{
-        const onPaste=e=>{
-            const cd=e.clipboardData;
-            if(!cd||!cd.items)return;
-            // 텍스트가 함께 들어있으면(워드·엑셀·웹페이지 복사 등) 일반 텍스트 붙여넣기로 통과
-            if((cd.getData('text/plain')||'').length>0)return;
-            const items=cd.items;
-            for(const it of items){
-                if(it.kind==='file'&&it.type.indexOf('image/')===0){
-                    const f=it.getAsFile();
-                    if(f){
-                        e.preventDefault();
-                        const ext=(f.type.split('/')[1]||'png').replace('jpeg','jpg');
-                        const named=new File([f],'paste_'+Date.now()+'.'+ext,{type:f.type});
-                        upRef.current(named);
-                        toast('📋 붙여넣은 이미지 업로드 중...');
-                    }
-                    return; // 이미지가 아닌 텍스트 붙여넣기는 그대로 통과
-                }
-            }
-        };
-        document.addEventListener('paste',onPaste);
-        return()=>document.removeEventListener('paste',onPaste);
-    },[]);
     return(<label className="img-area" style={{display:'block',cursor:'pointer'}}>
         {busy?<div className="img-placeholder"><span style={{fontSize:28}}>⏳</span>업로드 중...</div>:
          value?<img src={value} alt="" style={{maxHeight:130,maxWidth:'100%',borderRadius:8,objectFit:'cover'}}/>:
-         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드<div style={{fontSize:11,marginTop:4,color:'var(--blue)'}}>또는 캡처 후 Ctrl+V 로 붙여넣기</div></div>}
+         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드</div>}
         <input type="file" accept="image/*" style={{display:'none'}} onChange={pick}/>
     </label>);
 }
@@ -726,9 +674,9 @@ function FileUpload({sb,folder='files',value,fileName,onChange}){
         </label>
     );
 }
-function AddNameModal({title,placeholder,initial='',saveLabel='추가',onClose,onSave}){
-    const[name,setName]=useState(initial);
-    return(<div className="modal-overlay"><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onFocus={e=>e.target.select()} onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>{saveLabel}</button></div></div></div>);
+function AddNameModal({title,placeholder,onClose,onSave}){
+    const[name,setName]=useState('');
+    return(<div className="modal-overlay" onClick={onClose}><div className="modal-box sm" onClick={e=>e.stopPropagation()}><div className="modal-header"><div className="modal-title">{title}</div><button className="modal-close" onClick={onClose}>✕</button></div><div className="mf"><label className="ml">이름</label><input className="mi" value={name} onChange={e=>setName(e.target.value)} placeholder={placeholder} autoFocus onKeyDown={e=>e.key==='Enter'&&name.trim()&&onSave(name.trim())}/></div><div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={()=>name.trim()&&onSave(name.trim())}>추가</button></div></div></div>);
 }
 
 /* ── 설정/로그인 ── */
@@ -985,26 +933,12 @@ function LoginScreen({sb}){
 /* ═══════════════════════════════════════
    ★ 공급사 관리
 ═══════════════════════════════════════ */
-function SupplierModal({sb,matCats,outCats,initial,onClose,onSave}){
-    const blank={name:'',business_no:'',contact_person:'',phone:'',phone2:'',fax:'',address:'',order_to:'',main_items:'',website:'',is_material_supplier:false,is_outsourcing_supplier:false,card_image_url:''};
-    const[form,setForm]=useState(()=>{
-        if(!initial)return{...blank,_matIds:[],_outIds:[]};
-        let matIds=[];try{matIds=typeof initial.material_category_ids==='string'?JSON.parse(initial.material_category_ids||'[]'):(initial.material_category_ids||[]);}catch{}
-        let outIds=[];try{outIds=typeof initial.outsourcing_category_ids==='string'?JSON.parse(initial.outsourcing_category_ids||'[]'):(initial.outsourcing_category_ids||[]);}catch{}
-        return{...blank,...initial,_matIds:matIds,_outIds:outIds};
-    });
+function SupplierModal({initial,onClose,onSave}){
+    const blank={name:'',business_no:'',contact_person:'',phone:'',address:'',order_to:''};
+    const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-    const toggleMatCat=id=>setForm(p=>({...p,_matIds:p._matIds.includes(id)?p._matIds.filter(x=>x!==id):[...p._matIds,id]}));
-    const toggleOutCat=id=>setForm(p=>({...p,_outIds:p._outIds.includes(id)?p._outIds.filter(x=>x!==id):[...p._outIds,id]}));
-    const ok=()=>{
-        if(!form.name.trim()){alert('업체명을 입력하세요');return;}
-        const{_matIds,_outIds,...rest}=form;
-        onSave({...rest,
-            material_category_ids:JSON.stringify(form.is_material_supplier?_matIds:[]),
-            outsourcing_category_ids:JSON.stringify(form.is_outsourcing_supplier?_outIds:[])
-        });
-    };
-    return(<div className="modal-overlay">
+    const ok=()=>{if(!form.name.trim()){alert('업체명을 입력하세요');return;}onSave(form);};
+    return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
                 <div className="modal-title">{initial?'공급사 수정':'공급사 등록'}</div>
@@ -1015,75 +949,27 @@ function SupplierModal({sb,matCats,outCats,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">사업자등록번호</label><input className="mi" value={form.business_no||''} onChange={e=>set('business_no',e.target.value)} placeholder="000-00-00000"/></div>
                 <div className="mf"><label className="ml">담당자명</label><input className="mi" value={form.contact_person||''} onChange={e=>set('contact_person',e.target.value)} placeholder="담당자 이름"/></div>
                 <div className="mf"><label className="ml">연락처</label><input className="mi" value={form.phone||''} onChange={e=>set('phone',e.target.value)} placeholder="010-0000-0000"/></div>
-                <div className="mf"><label className="ml">연락처2</label><input className="mi" value={form.phone2||''} onChange={e=>set('phone2',e.target.value)} placeholder="010-0000-0000"/></div>
-                <div className="mf"><label className="ml">팩스</label><input className="mi" value={form.fax||''} onChange={e=>set('fax',e.target.value)} placeholder="02-000-0000"/></div>
-                <div className="mf full"><label className="ml">주거래품목</label><input className="mi" value={form.main_items||''} onChange={e=>set('main_items',e.target.value)} placeholder="예: 합판, 철물, 싱크대 자재"/></div>
                 <div className="mf full"><label className="ml">주소</label><input className="mi" value={form.address||''} onChange={e=>set('address',e.target.value)} placeholder="업체 주소"/></div>
-                <div className="mf full"><label className="ml">웹사이트 주소</label><input className="mi" value={form.website||''} onChange={e=>set('website',e.target.value)} placeholder="https://..."/></div>
                 <div className="mf full"><label className="ml">발주서 보낼 곳</label><input className="mi" value={form.order_to||''} onChange={e=>set('order_to',e.target.value)} placeholder="이메일, 팩스번호, 카카오 등"/></div>
-
-                <div className="mf full">
-                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-                        <input type="checkbox" checked={!!form.is_material_supplier} onChange={e=>set('is_material_supplier',e.target.checked)} style={{width:16,height:16,cursor:'pointer',accentColor:'var(--blue)'}}/>
-                        <span style={{fontSize:13,fontWeight:700,color:'var(--navy)'}}>📦 자재업체</span>
-                        <span style={{fontSize:11,color:'var(--muted)'}}>— 체크 시 공급 자재분류 선택</span>
-                    </label>
-                    {form.is_material_supplier&&(
-                        <div className="cat-check-grid">
-                            {matCats.map(c=>(
-                                <label key={c.id} className={`cat-check-item ${form._matIds.includes(c.id)?'checked':''}`} onClick={()=>toggleMatCat(c.id)}>
-                                    {form._matIds.includes(c.id)?'✅':'⬜'} {c.name}
-                                </label>
-                            ))}
-                            {matCats.length===0&&<span style={{fontSize:12,color:'var(--muted)'}}>등록된 자재분류가 없습니다.</span>}
-                        </div>
-                    )}
-                </div>
-
-                <div className="mf full">
-                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-                        <input type="checkbox" checked={!!form.is_outsourcing_supplier} onChange={e=>set('is_outsourcing_supplier',e.target.checked)} style={{width:16,height:16,cursor:'pointer',accentColor:'var(--purple)'}}/>
-                        <span style={{fontSize:13,fontWeight:700,color:'var(--navy)'}}>🛠 외주업체</span>
-                        <span style={{fontSize:11,color:'var(--muted)'}}>— 체크 시 담당 외주분류 선택</span>
-                    </label>
-                    {form.is_outsourcing_supplier&&(
-                        <div className="cat-check-grid">
-                            {(outCats||[]).map(c=>(
-                                <label key={c.id} className={`cat-check-item ${form._outIds.includes(c.id)?'checked':''}`} onClick={()=>toggleOutCat(c.id)}>
-                                    {form._outIds.includes(c.id)?'✅':'⬜'} {c.name}
-                                </label>
-                            ))}
-                            {(!outCats||outCats.length===0)&&<span style={{fontSize:12,color:'var(--muted)'}}>등록된 외주분류가 없습니다.</span>}
-                        </div>
-                    )}
-                </div>
-
-                <div className="mf full">
-                    <label className="ml">명함 이미지</label>
-                    <ImgUpload sb={sb} folder="supplier-cards" value={form.card_image_url} onChange={v=>set('card_image_url',v)}/>
-                </div>
             </div>
             <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
         </div>
     </div>);
 }
 
-function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter}){
+function SupplierList({sb,suppliers,setSuppliers}){
     const[materials,setMaterials]=useState([]);
     useEffect(()=>{if(!sb)return;sb.from('materials').select('id,name,specification,thickness,unit_price,stock_qty,supplier').order('name').then(({data})=>{if(data)setMaterials(data);});},[sb]);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[activeSup,setActiveSup]=useState(null);
-    const[filter,setFilter]=useState(initialFilter||null); // null | 'material' | 'outsourcing'
 
     const save=async form=>{
         setShowModal(false);setEditing(null);
         if(editing){
-            const{data,error}=await sb.from('suppliers').update(form).eq('id',editing.id).select();
-            if(error){alert('오류: '+error.message+'\n\n"⚙️ DB 안내" 버튼을 눌러 컬럼을 먼저 추가하세요.');return;}
+            const{data}=await sb.from('suppliers').update(form).eq('id',editing.id).select();
             if(data)setSuppliers(p=>p.map(s=>s.id===editing.id?data[0]:s));toast('✅ 수정됨');
         }else{
-            const{data,error}=await sb.from('suppliers').insert([form]).select();
-            if(error){alert('오류: '+error.message+'\n\n"⚙️ DB 안내" 버튼을 눌러 컬럼을 먼저 추가하세요.');return;}
+            const{data}=await sb.from('suppliers').insert([form]).select();
             if(data)setSuppliers(p=>[...p,data[0]]);toast('✅ 공급사 등록됨');
         }
     };
@@ -1095,77 +981,40 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
         toast('🗑 삭제됨');
     };
 
-    const showSqlGuide=()=>alert(`📋 공급사 필드 추가 Supabase 안내\n\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone2 TEXT;\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS fax TEXT;\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_material_supplier BOOLEAN DEFAULT FALSE;\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS material_category_ids TEXT DEFAULT '[]';\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_outsourcing_supplier BOOLEAN DEFAULT FALSE;\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS outsourcing_category_ids TEXT DEFAULT '[]';\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS card_image_url TEXT;\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS main_items TEXT DEFAULT '';\n`+
-`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website TEXT DEFAULT '';`);
-
     // 선택된 공급사의 자재만 필터
     const supMaterials=activeSup?materials.filter(m=>m.supplier===activeSup.name):[];
-    const catNames=(ids,list)=>{let arr=[];try{arr=typeof ids==='string'?JSON.parse(ids||'[]'):(ids||[]);}catch{}return arr.map(id=>(list||[]).find(c=>c.id===id)?.name).filter(Boolean);};
-    const filteredSuppliers=koSort(suppliers.filter(s=>!filter||(filter==='material'?s.is_material_supplier:filter==='outsourcing'?s.is_outsourcing_supplier:true)),'name');
 
-    return(<div className="list-page">
-        {showModal&&<SupplierModal sb={sb} matCats={matCats||[]} outCats={outCats||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+    return(<div>
+        {showModal&&<SupplierModal initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🏢 공급사 관리</h1><p>거래 공급업체 정보 · 자재별 공급사 현황</p></div>
-            <div className="btn-row">
-                <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
-                <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공급사 등록</button>
-            </div>
+            <div className="btn-row"><button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공급사 등록</button></div>
         </div>
 
-        <div className="cat-filter">
-            <div className={`cat-tab ${!filter?'active':''}`} onClick={()=>setFilter(null)}>전체 <span className="cnt">{suppliers.length}</span></div>
-            <div className={`cat-tab ${filter==='material'?'active':''}`} onClick={()=>setFilter('material')}>📦 자재업체 <span className="cnt">{suppliers.filter(s=>s.is_material_supplier).length}</span></div>
-            <div className={`cat-tab ${filter==='outsourcing'?'active':''}`} onClick={()=>setFilter('outsourcing')}>🛠 외주업체 <span className="cnt">{suppliers.filter(s=>s.is_outsourcing_supplier).length}</span></div>
-        </div>
-
-        <div className="list-body-grid" style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20}}>
+        <div style={{display:'grid',gridTemplateColumns:activeSup?'300px 1fr':'1fr',gap:20,alignItems:'start'}}>
             {/* 공급사 카드 목록 */}
-            <div className="col-scroll">
-                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({filteredSuppliers.length})</div>
-                {filteredSuppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">{filter?'해당 조건의 공급사가 없습니다.':'등록된 공급사가 없습니다.'}</div></div>
+            <div>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>업체 목록 ({suppliers.length})</div>
+                {suppliers.length===0?<div className="empty-state" style={{minHeight:120}}><div className="empty-icon">🏢</div><div className="empty-text">등록된 공급사가 없습니다.</div></div>
                 :<div style={{display:'flex',flexDirection:'column',gap:10}}>
-                    {filteredSuppliers.map(s=>{
-                        const mNames=catNames(s.material_category_ids,matCats);
-                        const oNames=catNames(s.outsourcing_category_ids,outCats);
-                        return(
+                    {suppliers.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(s=>(
                         <div key={s.id} className={`supplier-card ${activeSup?.id===s.id?'active':''}`} onClick={()=>setActiveSup(p=>p?.id===s.id?null:s)}>
-                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                                <div className="supplier-name">🏢 {s.name}</div>
-                                {s.card_image_url&&<a href={s.card_image_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}><button className="btn btn-outline btn-xs">🪪 명함</button></a>}
-                            </div>
-                            {(s.is_material_supplier||s.is_outsourcing_supplier)&&<div style={{display:'flex',gap:5,flexWrap:'wrap',margin:'4px 0 6px'}}>
-                                {s.is_material_supplier&&<span className="badge badge-blue">📦 자재업체{mNames.length>0?' · '+mNames.join(', '):''}</span>}
-                                {s.is_outsourcing_supplier&&<span className="badge" style={{background:'#ede9fe',color:'var(--purple)'}}>🛠 외주업체{oNames.length>0?' · '+oNames.join(', '):''}</span>}
-                            </div>}
-                            {s.main_items&&<div className="supplier-info-row"><span className="supplier-info-label">주거래품목</span><span style={{color:'var(--navy)',fontWeight:600}}>{s.main_items}</span></div>}
+                            <div className="supplier-name">🏢 {s.name}</div>
                             {s.business_no&&<div className="supplier-info-row"><span className="supplier-info-label">사업자번호</span><span>{s.business_no}</span></div>}
                             {s.contact_person&&<div className="supplier-info-row"><span className="supplier-info-label">담당자</span><span>{s.contact_person}</span></div>}
                             {s.phone&&<div className="supplier-info-row"><span className="supplier-info-label">연락처</span><span>{s.phone}</span></div>}
-                            {s.phone2&&<div className="supplier-info-row"><span className="supplier-info-label">연락처2</span><span>{s.phone2}</span></div>}
-                            {s.fax&&<div className="supplier-info-row"><span className="supplier-info-label">팩스</span><span>{s.fax}</span></div>}
-                            {s.website&&<div className="supplier-info-row"><span className="supplier-info-label">웹사이트</span><a href={/^https?:\/\//i.test(s.website)?s.website:'https://'+s.website} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'var(--blue)',textDecoration:'none',wordBreak:'break-all'}}>🔗 열기</a></div>}
                             {s.order_to&&<div className="supplier-info-row"><span className="supplier-info-label">발주처</span><span style={{color:'var(--blue)'}}>{s.order_to}</span></div>}
                             <div style={{display:'flex',gap:6,marginTop:10}}>
                                 <button className="btn btn-outline btn-sm" onClick={e=>{e.stopPropagation();setEditing(s);setShowModal(true);}}>✏️ 수정</button>
                                 <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={e=>{e.stopPropagation();del(s.id);}}>🗑</button>
                             </div>
                         </div>
-                        );
-                    })}
+                    ))}
                 </div>}
             </div>
 
             {/* 선택된 공급사의 자재 목록 */}
-            {activeSup&&<div className="col-scroll">
+            {activeSup&&<div>
                 <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>
                     {activeSup.name} 자재 ({supMaterials.length}개)
                 </div>
@@ -1178,7 +1027,7 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
                         <th className="tr">단가(원)</th>
                         <th className="tr">재고</th>
                     </tr></thead>
-                    <tbody>{koSort(supMaterials,'name').map(m=>(
+                    <tbody>{supMaterials.sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(m=>(
                         <tr key={m.id}>
                             <td style={{fontWeight:700}}>{m.name}</td>
                             <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
@@ -1198,7 +1047,7 @@ function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
     const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
     const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}onSave(form);};
-    return(<div className="modal-overlay">
+    return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title">{initial?'자재 수정':'새 자재 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
             <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="materials" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
@@ -1323,11 +1172,11 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     };
 
     // ★ 필터 + 검색 + 정렬(이름순)
-    const filtered=koSort(materials
+    const filtered=materials
         .filter(m=>!activeCat||m.category_id===activeCat)
         .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
             (m.specification||'').toLowerCase().includes(search.toLowerCase())||
-            (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
+            (m.supplier||'').toLowerCase().includes(search.toLowerCase()));
 
     // ★ 발주서 출력
     const printOrder=(supName,items)=>{
@@ -1370,7 +1219,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
         </table>
         <div class="footer">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면</div>
         <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        const w=window.open('','_blank');
+        const w=window.open('','_blank','width=800,height=600');
         if(w){w.document.write(html);w.document.close();}
     };
 
@@ -1389,7 +1238,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
     };
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div className="list-page">
+    return(<div>
         {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📦 자재 관리</h1><p>자재 등록 · 단가 · 재고 · 이름순 정렬</p></div>
@@ -1419,7 +1268,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
         {/* ★ 수량입력 팝업 */}
-        {showOrderQty&&(<div className="modal-overlay">
+        {showOrderQty&&(<div className="modal-overlay" onClick={()=>setShowOrderQty(null)}>
             <div className="modal-box sm" style={{maxWidth:320}} onClick={e=>e.stopPropagation()}>
                 <div className="modal-header"><div className="modal-title">📋 발주서에 담기</div><button className="modal-close" onClick={()=>setShowOrderQty(null)}>✕</button></div>
                 <div style={{padding:'8px 0 16px'}}>
@@ -1445,7 +1294,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
         </div>)}
 
         {/* ★ 발주서 양식 */}
-        {showOrderForm&&(<div className="modal-overlay">
+        {showOrderForm&&(<div className="modal-overlay" onClick={()=>setShowOrderForm(false)}>
             <div className="modal-box lg" style={{maxWidth:900,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
                 <div className="modal-header">
                     <div className="modal-title">📋 발주서</div>
@@ -1511,7 +1360,6 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
             </div>
         </div>)}
 
-        <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">{search?'검색 결과가 없습니다.':'자재가 없습니다.'}</div></div>
         :<div className="table-wrap"><table style={{minWidth:900}}>
             <thead><tr>
@@ -1562,157 +1410,6 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId}){
                 </tr>
             ))}</tbody>
         </table></div>}
-        </div>
-    </div>);
-}
-
-/* ═══════════════════════════════════════
-   ★ 외주 관리 (자재분류와 동일 구조: 분류 + 품목)
-═══════════════════════════════════════ */
-function OutsourcingModal({sb,outCats,suppliers,initial,onClose,onSave}){
-    const blank={category_id:'',name:'',specification:'',unit_price:0,supplier:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
-    const[form,setForm]=useState(initial?{...initial}:blank);
-    const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-    const ok=()=>{if(!form.name.trim()){alert('품목명을 입력하세요');return;}onSave(form);};
-    return(<div className="modal-overlay">
-        <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">{initial?'외주 품목 수정':'새 외주 품목 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
-            <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="outsourcing" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
-            <div className="modal-grid">
-                <div className="mf"><label className="ml">분류</label><select className="mi" value={form.category_id||''} onChange={e=>set('category_id',e.target.value)}><option value="">분류 선택</option>{outCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                <div className="mf"><label className="ml">품목명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="외주 품목명 입력"/></div>
-                <div className="mf full"><label className="ml">규격/작업내용</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 또는 작업 내용"/></div>
-                <div className="mf"><label className="ml">단가(원)</label><input className="mi" type="number" value={form.unit_price||0} onChange={e=>set('unit_price',Number(e.target.value))} min="0"/></div>
-                <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 긴급, A업체 전용"/></div>
-                <div className="mf"><label className="ml">외주업체</label>
-                    <select className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)}>
-                        <option value="">외주업체 선택</option>
-                        {(suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
-                        <option value="__direct__">직접 입력...</option>
-                    </select>
-                    {form.supplier==='__direct__'&&<input className="mi" style={{marginTop:6}} placeholder="업체명 직접 입력" onChange={e=>set('supplier',e.target.value)}/>}
-                </div>
-                <div className="mf"><label className="ml">참고링크</label><input className="mi" value={form.purchase_link||''} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div>
-                <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
-                <div className="mf full"><label className="ml">견적서 파일</label><FileUpload sb={sb} folder="out-quotes" value={form.quote_file_url} fileName={form.quote_file_name} onChange={(url,name)=>{set('quote_file_url',url);set('quote_file_name',name);}}/></div>
-            </div>
-            <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
-        </div>
-    </div>);
-}
-
-function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
-    const[items,setItems]=useState([]);const[loading,setLoading]=useState(true);
-    const[activeCat,setActiveCat]=useState(initialCatId||null);
-    const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
-    const[search,setSearch]=useState('');
-
-    useEffect(()=>{
-        if(!sb)return;
-        sb.from('outsourcing_items').select('*').order('name',{ascending:true}).then(({data,error})=>{if(error)console.warn('outsourcing_items 로드 오류:',error.message);if(data)setItems(data);setLoading(false);});
-    },[sb]);
-
-    const save=async form=>{
-        setShowModal(false);setEditing(null);
-        if(editing){
-            const{data,error}=await sb.from('outsourcing_items').update(form).eq('id',editing.id).select();
-            if(error){toast('오류: '+error.message);return;}
-            if(data)setItems(p=>p.map(m=>m.id===editing.id?data[0]:m).sort((a,b)=>a.name.localeCompare(b.name,'ko')));toast('✅ 수정됨');
-        }else{
-            const{data,error}=await sb.from('outsourcing_items').insert([form]).select();
-            if(error){toast('오류: '+error.message);return;}
-            if(data)setItems(p=>[...p,data[0]].sort((a,b)=>a.name.localeCompare(b.name,'ko')));toast('✅ 외주 품목 등록됨');
-        }
-    };
-    const del=async id=>{if(!confirm('삭제?'))return;await sb.from('outsourcing_items').delete().eq('id',id);setItems(p=>p.filter(m=>m.id!==id));toast('🗑 삭제됨');};
-    const catName=id=>outCats.find(c=>c.id===id)?.name||'미분류';
-
-    const exportExcel=()=>{
-        const headers=['품목명','분류','규격/작업내용','단가(원)','외주업체','기타구분','메모','참고링크'];
-        const rows=items.map(m=>[m.name||'',catName(m.category_id),m.specification||'',m.unit_price||0,m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
-        const wb=XLSX.utils.book_new();
-        const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-        ws['!cols']=[{wch:22},{wch:12},{wch:24},{wch:10},{wch:14},{wch:12},{wch:18},{wch:30}];
-        XLSX.utils.book_append_sheet(wb,ws,'외주목록');
-        XLSX.writeFile(wb,'럭키스타_외주목록.xlsx');
-        toast('📊 엑셀 저장됨');
-    };
-
-    const showSqlGuide=()=>alert(`📋 외주관리 Supabase 테이블 생성 안내\n\n`+
-`CREATE TABLE IF NOT EXISTS outsourcing_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT,\n  display_order INT DEFAULT 0\n);\n`+
-`ALTER TABLE outsourcing_categories DISABLE ROW LEVEL SECURITY;\n\n`+
-`CREATE TABLE IF NOT EXISTS outsourcing_items (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES outsourcing_categories(id) ON DELETE SET NULL,\n  name TEXT,\n  specification TEXT,\n  unit_price NUMERIC DEFAULT 0,\n  supplier TEXT,\n  category_extra TEXT,\n  purchase_link TEXT,\n  image_url TEXT,\n  memo TEXT,\n  quote_file_url TEXT,\n  quote_file_name TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n`+
-`ALTER TABLE outsourcing_items DISABLE ROW LEVEL SECURITY;`);
-
-    const filtered=koSort(items
-        .filter(m=>!activeCat||m.category_id===activeCat)
-        .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
-            (m.specification||'').toLowerCase().includes(search.toLowerCase())||
-            (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
-
-    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div className="list-page">
-        {showModal&&<OutsourcingModal sb={sb} outCats={outCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
-        <div className="page-header">
-            <div className="page-title-wrap"><h1>🛠 외주 관리</h1><p>외주 품목 등록 · 분류별 단가 관리</p></div>
-            <div className="btn-row">
-                <button className="btn btn-outline" onClick={onAddOutCat}>＋ 분류 추가</button>
-                <button className="btn btn-outline" onClick={exportExcel}>📊 엑셀 저장</button>
-                <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
-                <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 외주 품목 등록</button>
-            </div>
-        </div>
-        <div className="cat-filter">
-            <div className={`cat-tab ${!activeCat?'active':''}`} onClick={()=>setActiveCat(null)}>전체 <span className="cnt">{items.length}</span></div>
-            {outCats.map(c=><div key={c.id} className={`cat-tab ${activeCat===c.id?'active':''}`} onClick={()=>setActiveCat(c.id)}>{c.name} <span className="cnt">{items.filter(m=>m.category_id===c.id).length}</span></div>)}
-        </div>
-        <div style={{marginBottom:14}}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품목명 · 규격 · 업체 검색..."
-                style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
-                onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
-        </div>
-        <div className="list-body">
-        {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛠</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 외주 품목이 없습니다.'}</div></div>
-        :<div className="table-wrap"><table style={{minWidth:820}}>
-            <thead><tr>
-                <th style={{width:50}}>사진</th>
-                <th style={{textAlign:'left'}}>품목명</th>
-                <th style={{textAlign:'left'}}>분류</th>
-                <th style={{textAlign:'left'}}>규격/작업내용</th>
-                <th className="tr">단가(원)</th>
-                <th style={{textAlign:'left'}}>외주업체</th>
-                <th style={{textAlign:'left'}}>기타구분</th>
-                <th style={{textAlign:'center',width:70}}>링크</th>
-                <th style={{textAlign:'center',width:70}}>견적서</th>
-                <th style={{textAlign:'center',width:70}}>관리</th>
-            </tr></thead>
-            <tbody>{filtered.map(m=>(
-                <tr key={m.id}>
-                    <td style={{textAlign:'center'}}>{m.image_url?<img src={m.image_url} style={{width:36,height:36,objectFit:'cover',borderRadius:5,border:'1px solid var(--border)'}} alt=""/>:<span style={{fontSize:18}}>🛠</span>}</td>
-                    <td style={{fontWeight:700}}>{m.name}</td>
-                    <td style={{fontSize:12,color:'var(--muted)'}}>{catName(m.category_id)}</td>
-                    <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
-                    <td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price||0)}</td>
-                    <td style={{fontSize:12}}>{m.supplier||'-'}</td>
-                    <td style={{fontSize:12,color:'var(--muted)'}}>{m.category_extra||'-'}</td>
-                    <td style={{textAlign:'center'}}>
-                        {m.purchase_link?<a href={m.purchase_link} target="_blank" rel="noreferrer">
-                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>🔗 열기</button>
-                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
-                    </td>
-                    <td style={{textAlign:'center'}}>
-                        {m.quote_file_url?<a href={m.quote_file_url} target="_blank" rel="noreferrer" title={m.quote_file_name||'견적서'}>
-                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>📄 보기</button>
-                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
-                    </td>
-                    <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
-                        <button className="btn-icon" onClick={()=>{setEditing(m);setShowModal(true);}}>✏️</button>
-                        <button className="btn-icon" onClick={()=>del(m.id)}>🗑</button>
-                    </td>
-                </tr>
-            ))}</tbody>
-        </table></div>}
-        </div>
     </div>);
 }
 
@@ -1745,9 +1442,9 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                         _catId:found?.category_id||'',
                         material_id:m.material_id||'',
                         material_name:m.material_name||'',
-                        unit_price:Number(m.unit_price)||0,
+                        unit_price:Number(found?.unit_price??m.unit_price)||0,
                         quantity:Number(m.quantity)||1,
-                        total:Number(m.total)||0,
+                        total:(Number(found?.unit_price??m.unit_price)||0)*(Number(m.quantity)||1),
                     };
                 }));
             }
@@ -1757,6 +1454,8 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
     const addMat=()=>setMats(p=>[...p,{_catId:'',material_id:'',material_name:'',unit_price:0,quantity:1,total:0}]);
     const updMat=(i,k,v)=>setMats(p=>p.map((m,j)=>{if(j!==i)return m;const nm=k==='__batch__'?{...m,...v}:{...m,[k]:v};nm.total=(Number(nm.unit_price)||0)*(Number(nm.quantity)||1);return nm;}));
     const delMat=i=>setMats(p=>p.filter((_,j)=>j!==i));
+    const matTotal=mats.filter(m=>m.material_id||m.material_name).reduce((s,m)=>s+(Number(m.unit_price)||0)*(Number(m.quantity)||1),0);
+    const matCount=mats.filter(m=>m.material_id||m.material_name).length;
 
     // ★ 저장 시 DB 전용 필드만 추출 (id, product_id 제외)
     const ok=()=>{
@@ -1772,7 +1471,7 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
         onSave({form,mats:cleanMats});
     };
 
-    return(<div className="modal-overlay">
+    return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title">{initial?'상품 수정':'새 상품 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
             <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="products" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
@@ -1781,21 +1480,26 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">상품명 *</label><input className="mi" value={form.name} onChange={e=>set('name',e.target.value)} placeholder="상품명 입력"/></div>
                 <div className="mf"><label className="ml">설명</label><input className="mi" value={form.description||''} onChange={e=>set('description',e.target.value)} placeholder="상품 설명"/></div>
                 <div className="mf"><label className="ml">판매가(원)</label><input className="mi" type="number" value={form.price} onChange={e=>set('price',Number(e.target.value))} min="0"/></div>
+                <div className="mf col2"><label className="ml">자재 합계(원) · {matCount}종</label>
+                    <div style={{padding:'10px 14px',border:'1.5px solid var(--border)',borderRadius:8,background:'var(--bg)',fontSize:15,fontWeight:800,color:'var(--purple)',textAlign:'right'}}>{fmt(matTotal)}원</div>
+                </div>
             </div>
-            <div style={{marginTop:14}}>
+            <div style={{marginTop:14,overflowX:'auto'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                     <span style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1,textTransform:'uppercase'}}>필요 자재</span>
                     <button className="btn btn-outline btn-sm" onClick={addMat}>＋ 자재 추가</button>
                 </div>
                 {/* 컬럼 헤더 */}
-                {mats.length>0&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px 36px',gap:6,marginBottom:4}}>
+                {mats.length>0&&<div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.4fr) 64px 84px 96px 32px',minWidth:600,gap:6,marginBottom:4}}>
                     <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 분류</span>
                     <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 품명</span>
                     <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1,textAlign:'center'}}>수량</span>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1,textAlign:'right'}}>단가</span>
+                    <span style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1,textAlign:'right'}}>금액</span>
                     <span></span>
                 </div>}
                 {mats.map((m,i)=>(
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px 36px',gap:6,marginBottom:6,alignItems:'center'}}>
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1.4fr) 64px 84px 96px 32px',minWidth:600,gap:6,marginBottom:6,alignItems:'center'}}>
                         {/* 1. 자재 분류 선택 */}
                         <select className="mi" style={{fontSize:12}} value={m._catId||''}
                             onChange={e=>updMat(i,'_catId',e.target.value)}>
@@ -1820,6 +1524,8 @@ function ProductModal({sb,matCats,prodCats,initial,onClose,onSave}){
                         {/* 3. 수량 */}
                         <input className="mi" type="number" value={m.quantity||1} min="1" style={{fontSize:12,textAlign:'right'}}
                             onChange={e=>updMat(i,'quantity',Number(e.target.value)||1)}/>
+                        <div style={{fontSize:12,textAlign:'right',color:'var(--muted)'}}>{fmt(m.unit_price||0)}</div>
+                        <div style={{fontSize:13,textAlign:'right',fontWeight:700,color:'var(--navy)'}}>{fmt((Number(m.unit_price)||0)*(Number(m.quantity)||1))}</div>
                         <button className="btn-icon" onClick={()=>delMat(i)}>🗑</button>
                     </div>
                 ))}
@@ -1835,9 +1541,25 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
     const[activeCat,setActiveCat]=useState(initialCatId||null);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');
+    const[matTotals,setMatTotals]=useState({}); // 상품별 자재합계
+    const loadMatTotals=async()=>{
+        if(!sb)return;
+        const[{data:pm},{data:ms}]=await Promise.all([
+            sb.from('product_materials').select('product_id,material_id,unit_price,quantity'),
+            sb.from('materials').select('id,unit_price')
+        ]);
+        const priceMap={};(ms||[]).forEach(x=>{priceMap[x.id]=Number(x.unit_price)||0;});
+        const t={};
+        (pm||[]).forEach(r=>{
+            const p=(r.material_id&&priceMap[r.material_id]!==undefined)?priceMap[r.material_id]:(Number(r.unit_price)||0);
+            t[r.product_id]=(t[r.product_id]||0)+p*(Number(r.quantity)||1);
+        });
+        setMatTotals(t);
+    };
 
     useEffect(()=>{
         if(!sb)return;
+        loadMatTotals();
         sb.from('products').select('*').order('name',{ascending:true}).then(({data})=>{if(data)setProducts(data);setLoading(false);});
     },[sb]);
 
@@ -1865,7 +1587,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 }
                 setProducts(p=>p.map(x=>x.id===editing.id?data[0]:x));
             }
-            toast('수정됨 (자재 '+mats.length+'종)');
+            loadMatTotals();toast('수정됨 (자재 '+mats.length+'종)');
         }else{
             const{data,error:e1}=await sb.from('products').insert([form]).select();
             if(e1){toast('오류: '+e1.message);return;}
@@ -1878,7 +1600,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 }
                 setProducts(p=>[...p,data[0]]);
             }
-            toast('등록됨 (자재 '+mats.length+'종)');
+            loadMatTotals();toast('등록됨 (자재 '+mats.length+'종)');
         }
     };
     const del=async id=>{
@@ -1889,13 +1611,13 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
     };
 
     const catName=id=>prodCats.find(c=>c.id===id)?.name||'미분류';
-    const filtered=koSort(products
+    const filtered=products
         .filter(p=>!activeCat||p.category_id===activeCat)
         .filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||
-            (p.description||'').toLowerCase().includes(search.toLowerCase())),'name');
+            (p.description||'').toLowerCase().includes(search.toLowerCase()));
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    return(<div className="list-page">
+    return(<div>
         {showModal&&<ProductModal sb={sb} matCats={matCats} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🛍 상품 관리</h1><p>카테고리별 상품 등록 · 필요 자재 연동</p></div>
@@ -1914,7 +1636,6 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
-        <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛍</div><div className="empty-text">{search?'검색 결과가 없습니다.':'상품이 없습니다.'}</div></div>
         :<div className="prod-grid">
             {filtered.map(prod=>(
@@ -1925,6 +1646,7 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                         <div className="prod-card-name">{prod.name}</div>
                         {prod.description&&<div className="prod-card-desc">{prod.description}</div>}
                         {prod.price>0&&<div className="prod-card-price">{fmt(prod.price)}원</div>}
+                        <div style={{fontSize:11,color:'var(--purple)',fontWeight:700,marginTop:3}}>자재합계 {fmt(matTotals[prod.id]||0)}원</div>
                         <div className="prod-card-actions">
                             <button className="btn btn-outline btn-sm" onClick={()=>{setEditing(prod);setShowModal(true);}}>✏️ 수정</button>
                             <button className="btn btn-sm" style={{background:'#fee2e2',color:'var(--red)',border:'none'}} onClick={()=>del(prod.id)}>🗑</button>
@@ -1933,7 +1655,6 @@ function ProductList({sb,matCats,prodCats,onAddProdCat,initialCatId}){
                 </div>
             ))}
         </div>}
-        </div>
     </div>);
 }
 
@@ -1947,7 +1668,7 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
     },[sb]);
 
     const toggle=prod=>setPicked(p=>p.find(x=>x.id===prod.id)?p.filter(x=>x.id!==prod.id):[...p,prod]);
-    const filtered=koSort(activeCat?products.filter(p=>p.category_id===activeCat):products,'name');
+    const filtered=activeCat?products.filter(p=>p.category_id===activeCat):products;
 
     const confirm=()=>{
         if(picked.length===0){toast('상품을 선택하세요');return;}
@@ -1960,7 +1681,7 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
         toast('✅ '+picked.length+'개 상품 추가됨');
     };
 
-    return(<div className="modal-overlay">
+    return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title">🛍 상품 선택</div><button className="modal-close" onClick={onClose}>✕</button></div>
             {loading?<div style={{textAlign:'center',padding:40}}>로딩 중...</div>
@@ -1991,6 +1712,8 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
    ★ 소요자재 카드 (상품별 + 합산)
 ═══════════════════════════════════════ */
 function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
+    const[showAdd,setShowAdd]=useState(false);
+    const[nm,setNm]=useState({name:'',qty:1,price:0});
     // 상품별 그룹 (itemName 있는 것)
     const byItem = {};
     estMaterials.forEach(m => {
@@ -2005,21 +1728,35 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
     estMaterials.forEach(m => {
         const key = m.material_id || m.name;
         if(!key) return;
-        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, unit_price:m.unit_price||0, qty:0};
+        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, unit_price:m.unit_price||0, qty:0, amount:0};
         sumMap[key].qty += Number(m.qty) || 0;
+        sumMap[key].amount += (Number(m.unit_price)||0) * (Number(m.qty)||0);
     });
     const sumList = Object.values(sumMap).filter(m => m.qty > 0);
+    const matGrandTotal = sumList.reduce((s, m) => s + m.amount, 0);
 
     const removeByKey = key => setEstMaterials(p => p.filter(x => (x.material_id || x.name) !== key));
-    const addBlank = () => setEstMaterials(p => [...p, {id:uid(), name:'', qty:1, unit_price:0, material_id:null}]);
+    const addManual = () => {
+        const name = nm.name.trim();
+        if(!name){ alert('자재명을 입력하세요'); return; }
+        setEstMaterials(p => [...p, {id:uid(), name, qty:Number(nm.qty)||1, unit_price:Number(nm.price)||0, material_id:null}]);
+        setNm({name:'',qty:1,price:0});
+        setShowAdd(false);
+    };
+    // 자재 단가 수정 (같은 자재 전체 행에 적용, 견적서에만 반영되고 자재관리 단가는 변하지 않음)
+    const updateSumPrice = (key, price) => setEstMaterials(prev => prev.map(x => (x.material_id || x.name) === key ? {...x, unit_price:price} : x));
 
     // ★ 합산수량 직접 편집: 해당 자재의 모든 항목을 하나로 통합
     const updateSumQty = (key, newQty) => {
         setEstMaterials(prev => {
             const sample = prev.find(x => (x.material_id || x.name) === key);
             if(!sample) return prev;
+            const olds = prev.filter(x => (x.material_id || x.name) === key);
+            const oq = olds.reduce((s, x) => s + (Number(x.qty)||0), 0);
+            const oa = olds.reduce((s, x) => s + (Number(x.unit_price)||0) * (Number(x.qty)||0), 0);
+            const avg = oq > 0 ? Math.round(oa / oq) : (sample.unit_price || 0);
             const filtered = prev.filter(x => (x.material_id || x.name) !== key);
-            if(newQty > 0) filtered.push({id:uid(), name:sample.name, material_id:sample.material_id||null, unit_price:sample.unit_price||0, qty:newQty});
+            if(newQty > 0) filtered.push({id:uid(), name:sample.name, material_id:sample.material_id||null, unit_price:avg, qty:newQty});
             return filtered;
         });
     };
@@ -2027,7 +1764,7 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
     return(
         <div className="card">
             <div className="card-title">🔧 소요 자재
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감)</span>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감 · 단가는 상품을 담은 시점 기준으로 고정)</span>
             </div>
 
             {/* ① 상품별 필요자재 - itemName 있을 때만 표시 */}
@@ -2036,7 +1773,10 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
                     <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>상품별 필요자재</div>
                     {itemGroups.map(([itemName, mats]) => (
                         <div key={itemName} style={{marginBottom:10}}>
-                            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:5}}>📦 {itemName}</div>
+                            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:5,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                                <span>📦 {itemName}</span>
+                                <span style={{fontSize:11,color:'var(--purple)'}}>자재합계 {fmt(mats.reduce((s,m)=>s+(Number(m.unit_price)||0)*(Number(m.qty)||0),0))}원</span>
+                            </div>
                             <div style={{display:'flex',flexWrap:'wrap',gap:5,paddingLeft:16}}>
                                 {mats.map((m, i) => (
                                     <span key={i} style={{fontSize:11,background:'#e0f2fe',color:'#0369a1',padding:'3px 10px',borderRadius:12,fontWeight:600}}>
@@ -2062,6 +1802,8 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
                             <tr>
                                 <th style={{textAlign:'left'}}>자재명</th>
                                 <th className="tr" style={{width:100}}>합산수량</th>
+                                <th className="tr" style={{width:90}}>단가(원)</th>
+                                <th className="tr" style={{width:110}}>금액(원)</th>
                                 <th style={{width:36}}></th>
                             </tr>
                         </thead>
@@ -2076,15 +1818,38 @@ function SoyoJaeCard({estMaterials, setEstMaterials, uid}){
                                             onFocus={e=>e.target.style.borderColor='var(--blue)'}
                                             onBlur={e=>e.target.style.borderColor='var(--border)'}/>
                                     </td>
+                                    <td className="tr" style={{padding:'4px 8px'}}>
+                                        <input type="number" min="0" value={m.qty>0?Math.round(m.amount/m.qty):0}
+                                            style={{width:80,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontWeight:700,textAlign:'right'}}
+                                            onChange={e=>updateSumPrice(m.material_id||m.name, Number(e.target.value)||0)}/>
+                                    </td>
+                                    <td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(m.amount)}</td>
                                     <td style={{textAlign:'center'}}>
                                         <button className="btn-icon" onClick={() => removeByKey(m.material_id || m.name)}>✕</button>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
+                        <tfoot><tr style={{background:'#f8faff',borderTop:'2px solid var(--border)'}}>
+                            <td colSpan={3} className="tr" style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 합계</td>
+                            <td className="tr" style={{fontWeight:900,color:'var(--purple)',fontSize:15}}>{fmt(matGrandTotal)}원</td>
+                            <td/>
+                        </tr></tfoot>
                     </table>
                 </div>}
-            <button className="btn btn-outline btn-sm" onClick={addBlank}>＋ 자재 직접 추가</button>
+            {!showAdd
+                ? <button className="btn btn-outline btn-sm" onClick={() => setShowAdd(true)}>＋ 자재 직접 추가</button>
+                : <div style={{background:'var(--bg)',borderRadius:10,padding:12}}>
+                    <div style={{display:'grid',gridTemplateColumns:'minmax(0,2fr) 70px 110px',gap:8,marginBottom:8}}>
+                        <div><label className="ml">자재명</label><input className="mi" value={nm.name} autoFocus placeholder="자재명 입력" onChange={e=>setNm(p=>({...p,name:e.target.value}))}/></div>
+                        <div><label className="ml">수량</label><input className="mi" type="number" min="1" value={nm.qty} style={{textAlign:'right'}} onChange={e=>setNm(p=>({...p,qty:e.target.value}))}/></div>
+                        <div><label className="ml">단가(원)</label><input className="mi" type="number" min="0" value={nm.price} style={{textAlign:'right'}} onChange={e=>setNm(p=>({...p,price:e.target.value}))} onKeyDown={e=>{if(e.key==='Enter')addManual();}}/></div>
+                    </div>
+                    <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                        <button className="btn btn-outline btn-sm" onClick={() => setShowAdd(false)}>취소</button>
+                        <button className="btn btn-primary btn-sm" onClick={addManual}>추가</button>
+                    </div>
+                </div>}
         </div>
     );
 }
@@ -2286,11 +2051,14 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         if(prod.id&&sb){
             const{data:pm}=await sb.from('product_materials').select('*').eq('product_id',prod.id);
             if(pm&&pm.length>0){
+                const _ids=pm.map(m=>m.material_id).filter(Boolean);
+                const _pr={};
+                if(_ids.length){const{data:_ms}=await sb.from('materials').select('id,unit_price').in('id',_ids);(_ms||[]).forEach(x=>{_pr[x.id]=Number(x.unit_price)||0;});}
                 const newMats=pm.map(m=>({
                     id:uid(),
                     name:m.material_name||'',
                     qty:Number(m.quantity)||1,
-                    unit_price:Number(m.unit_price)||0,
+                    unit_price:(m.material_id&&_pr[m.material_id]!==undefined)?_pr[m.material_id]:(Number(m.unit_price)||0),
                     material_id:m.material_id||null,
                     itemId:actualItemId,  // edit모드에선 DB id, new모드에선 uid
                     itemName:prod.name,
@@ -2355,7 +2123,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div></div>`:''}
         <div class="ft">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | ${new Date().toLocaleDateString('ko-KR')} 기준</div>
         <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        const w=window.open('','_blank');
+        const w=window.open('','_blank','width=920,height=720');
         if(w){w.document.write(html);w.document.close();}
     };
 
@@ -2718,7 +2486,7 @@ function PortPickModal({sb, portItems, setPortItems, onClose}){
     };
 
     return(
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={onClose}>
             <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
                 <div className="modal-header">
                     <div className="modal-title">🖼 포트폴리오 선택</div>
@@ -2727,7 +2495,7 @@ function PortPickModal({sb, portItems, setPortItems, onClose}){
                 {loading?<div style={{textAlign:'center',padding:40}}>로딩 중...</div>
                 :all.length===0?<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>등록된 포트폴리오가 없습니다.<br/>먼저 포트폴리오 메뉴에서 추가하세요.</div>
                 :<div className="port-pick-grid" style={{maxHeight:'60vh',overflowY:'auto',padding:'4px 2px'}}>
-                    {koSort(all,'title').map(item=>(
+                    {all.map(item=>(
                         <div key={item.id} className={`port-pick-card ${sel.includes(item.id)?'selected':''}`} onClick={()=>toggle(item)}>
                             {item.image_url?<img src={item.image_url} alt=""/>:<div className="port-pick-card-ph">🖼</div>}
                             <div className="port-pick-info">
@@ -2771,7 +2539,7 @@ function PortfolioModal({sb, prodCats, initial, onClose, onSave}){
         onSave({...rest,categories:JSON.stringify(_cats)});
     };
     return(
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={onClose}>
             <div className="modal-box" onClick={e=>e.stopPropagation()}>
                 <div className="modal-header">
                     <div className="modal-title">{initial?'포트폴리오 수정':'포트폴리오 추가'}</div>
@@ -2838,10 +2606,10 @@ function Portfolio({sb, prodCats}){
         toast('🗑 삭제됨');
     };
 
-    const filtered=koSort(filterCat?items.filter(x=>getCats(x).includes(filterCat)):items,'title');
+    const filtered=filterCat?items.filter(x=>getCats(x).includes(filterCat)):items;
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
-    return(<div className="list-page">
+    return(<div>
         {showModal&&<PortfolioModal sb={sb} prodCats={prodCats} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>🖼 포트폴리오</h1><p>작업 이미지 관리 · 견적서에 첨부 가능</p></div>
@@ -2851,7 +2619,6 @@ function Portfolio({sb, prodCats}){
             <div className={`cat-tab ${!filterCat?'active':''}`} onClick={()=>setFilterCat(null)}>전체 <span className="cnt">{items.length}</span></div>
             {prodCats.map(c=><div key={c.id} className={`cat-tab ${filterCat===c.id?'active':''}`} onClick={()=>setFilterCat(c.id)}>{c.name} <span className="cnt">{items.filter(x=>getCats(x).includes(c.id)).length}</span></div>)}
         </div>
-        <div className="list-body">
         {filtered.length===0
             ?<div className="empty-state"><div className="empty-icon">🖼</div><div className="empty-text">포트폴리오가 없습니다.<br/>+ 포트폴리오 추가 버튼으로 시작하세요.</div></div>
             :<div className="port-grid">
@@ -2872,7 +2639,6 @@ function Portfolio({sb, prodCats}){
                     </div>);
                 })}
             </div>}
-        </div>
     </div>);
 }
 
@@ -2916,13 +2682,13 @@ function EstimateList({sb,onEdit,onNew}){
         if(statusFilter&&(e.status||'가견적발송')!==statusFilter)return false;
         if(payFilter&&(e.payment_status||'입금전')!==payFilter)return false;
         return true;
-    }).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)); // 등록일 최신순
+    });
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
-    return(<div className="list-page">
+    return(<div>
         <div className="page-header">
             <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>카드 클릭으로 필터링 · 상태 변경 가능</p></div>
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
@@ -2967,7 +2733,6 @@ function EstimateList({sb,onEdit,onNew}){
             </div>
         )}
 
-        <div className="list-body">
         {estimates.length===0
             ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.</div></div>
             :filtered.length===0
@@ -3009,7 +2774,6 @@ function EstimateList({sb,onEdit,onNew}){
                     })}
                 </tbody>
             </table></div>}
-        </div>
     </div>);
 }
 
@@ -3100,7 +2864,7 @@ function Schedule({sb,onEditEst}){
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
     return(<div>
-        {popup&&(<div className="modal-overlay">
+        {popup&&(<div className="modal-overlay" onClick={()=>setPopup(null)}>
             <div className="modal-box sm" onClick={e=>e.stopPropagation()}>
                 <div className="modal-header"><div className="modal-title">📋 {popup.client_name||'고객'} 견적서</div><button className="modal-close" onClick={()=>setPopup(null)}>✕</button></div>
                 <div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px'}}>
@@ -3151,22 +2915,20 @@ function Schedule({sb,onEditEst}){
 /* ═══════════════════════════════════════
    ★ 사이드바
 ═══════════════════════════════════════ */
-function Sidebar({user,page,setPage,matCats,prodCats,outCats,onAddMatCat,onDelMatCat,onEditMatCat,onAddProdCat,onDelProdCat,onEditProdCat,onAddOutCat,onDelOutCat,onEditOutCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
-    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
-    const[openSub,setOpenSub]=useState({mat:true,prod:true,out:true});
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onAddProdCat,onDelProdCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
+    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
+    const[openSub,setOpenSub]=useState({mat:true,prod:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
-    const activeGroup=page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
-    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null,out:null,sup:null});if(onClose)onClose();};
-    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId,out:null,sup:null});if(onClose)onClose();};
-    const goOut=(catId=null)=>{setPage('out-list');setActiveCatId({mat:null,prod:null,out:catId,sup:null});if(onClose)onClose();};
-    const goSup=(type=null)=>{setPage('supplier-list');setActiveCatId({mat:null,prod:null,out:null,sup:type});if(onClose)onClose();};
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});if(onClose)onClose();};
+    const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});if(onClose)onClose();};
     const go=p=>{setPage(p);if(onClose)onClose();};
 
     const SI=({label,isActive,onNav})=>(<div className={`nav-sub-item ${isActive?'active':''}`} onClick={onNav}><span className="nav-sub-dot"/><span className="nav-sub-label">{label}</span></div>);
-    const SSI=({label,isActive,onNav,onEdit,onDel})=>(<div className={`ssi ${isActive?'active':''}`} onClick={onNav}><span className="ssi-dot"/><span className="ssi-label">{label}</span>{onEdit&&<button className="ssi-edit" onClick={e=>{e.stopPropagation();onEdit();}} title="이름 수정">✏️</button>}{onDel&&<button className="ssi-del" onClick={e=>{e.stopPropagation();onDel();}} title="삭제">✕</button>}</div>);
+    const SSI=({label,isActive,onNav,onDel})=>(<div className={`ssi ${isActive?'active':''}`} onClick={onNav}><span className="ssi-dot"/><span className="ssi-label">{label}</span>{onDel&&<button className="ssi-del" onClick={e=>{e.stopPropagation();onDel();}}>✕</button>}</div>);
 
     return(<aside className={`sidebar ${sbOpen?'sb-open':''}`} onClick={e=>e.stopPropagation()}>
         <div className="sb-header"><div className="sb-logo">LUCKY<span>STAR</span></div><div className="sb-sub">CARAVAN MANAGER v2.0</div></div>
@@ -3187,35 +2949,11 @@ function Sidebar({user,page,setPage,matCats,prodCats,outCats,onAddMatCat,onDelMa
                 </div>
                 <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
                     <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
-                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
+                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onDel={()=>onDelMatCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
                 </div>
                 <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
-            </div>
-
-            <div className={`nav-row ${activeGroup==='outsourcing'?'active':''} ${open==='outsourcing'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('outsourcing')}><span className="nav-icon">🛠</span>외주관리<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='outsourcing'?'open':''}`}>
-                <div className={`nav-grp-hd ${openSub.out?'open':''}`} onClick={()=>toggleSub('out')}>
-                    <span>📁 외주분류</span>
-                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddOutCat();}}>＋</button>
-                    <span className="nav-grp-arrow">▶</span>
-                </div>
-                <div className={`nav-sub-sub ${openSub.out?'open':''}`}>
-                    <SSI label="전체 외주" isActive={page==='out-list'&&activeCatId?.out===null} onNav={()=>goOut(null)}/>
-                    {outCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='out-list'&&activeCatId?.out===c.id} onNav={()=>goOut(c.id)} onEdit={()=>onEditOutCat(c)} onDel={()=>onDelOutCat(c.id)}/>)}
-                    <div className="ssi-add" onClick={onAddOutCat}>＋ 분류 추가</div>
-                </div>
-            </div>
-
-            <div className={`nav-row ${activeGroup==='supplier'?'active':''} ${open==='supplier'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('supplier')}><span className="nav-icon">🏢</span>공급사 관리<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='supplier'?'open':''}`}>
-                <SI label="전체 공급사" isActive={page==='supplier-list'&&!activeCatId?.sup} onNav={()=>goSup(null)}/>
-                <SI label="📦 자재업체" isActive={page==='supplier-list'&&activeCatId?.sup==='material'} onNav={()=>goSup('material')}/>
-                <SI label="🛠 외주업체" isActive={page==='supplier-list'&&activeCatId?.sup==='outsourcing'} onNav={()=>goSup('outsourcing')}/>
+                <SI label="🏢 공급사 관리" isActive={page==='supplier-list'} onNav={()=>go('supplier-list')}/>
             </div>
 
             <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
@@ -3229,7 +2967,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,outCats,onAddMatCat,onDelMa
                 </div>
                 <div className={`nav-sub-sub ${openSub.prod?'open':''}`}>
                     <SSI label="전체 상품" isActive={page==='prod-list'&&activeCatId?.prod===null} onNav={()=>goProd(null)}/>
-                    {prodCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onEdit={()=>onEditProdCat(c)} onDel={()=>onDelProdCat(c.id)}/>)}
+                    {prodCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='prod-list'&&activeCatId?.prod===c.id} onNav={()=>goProd(c.id)} onDel={()=>onDelProdCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddProdCat}>＋ 카테고리 추가</div>
                 </div>
             </div>
@@ -3292,14 +3030,9 @@ function App(){
     const[editEstId,setEditEstId]=useState(null);
     const[matCats,setMatCats]=useState([]);
     const[prodCats,setProdCats]=useState([]);
-    const[outCats,setOutCats]=useState([]);
     const[addMatModal,setAddMatModal]=useState(false);
     const[addProdModal,setAddProdModal]=useState(false);
-    const[addOutModal,setAddOutModal]=useState(false);
-    const[editMatCat,setEditMatCat]=useState(null); // 수정 대상 자재분류
-    const[editProdCat,setEditProdCat]=useState(null); // 수정 대상 상품카테고리
-    const[editOutCat,setEditOutCat]=useState(null); // 수정 대상 외주분류
-    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null,out:null,sup:null});
+    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
     const[userProfile,setUserProfile]=useState(null); // 담당자 프로필
@@ -3335,7 +3068,6 @@ function App(){
         sb.from('material_categories').select('*').order('display_order').then(({data})=>{if(data)setMatCats(data);});
         sb.from('suppliers').select('*').order('name').then(({data})=>{if(data)setSuppliers(data);});
         sb.from('product_categories').select('*').order('display_order').then(({data})=>{if(data)setProdCats(data);});
-        sb.from('outsourcing_categories').select('*').order('display_order').then(({data,error})=>{if(error)console.warn('outsourcing_categories 로드 실패 (테이블 미생성 가능):',error.message);if(data)setOutCats(data);});
         // ★ 담당자 프로필 로드 (오류 무시 - 핵심 기능 영향 없음)
         (async()=>{
             try{
@@ -3365,13 +3097,6 @@ function App(){
         await sb.from('material_categories').delete().eq('id',id);
         setMatCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
     };
-    const renameMatCat=async name=>{
-        const id=editMatCat.id;
-        const{error}=await sb.from('material_categories').update({name}).eq('id',id);
-        if(error){toast('오류: '+error.message);return;}
-        setMatCats(p=>p.map(c=>c.id===id?{...c,name}:c));
-        setEditMatCat(null);toast('✏️ 분류명 수정됨');
-    };
     const addProdCat=async name=>{
         const{data}=await sb.from('product_categories').insert([{name,display_order:prodCats.length}]).select();
         if(data)setProdCats(p=>[...p,data[0]]);
@@ -3382,38 +3107,12 @@ function App(){
         await sb.from('product_categories').delete().eq('id',id);
         setProdCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
     };
-    const renameProdCat=async name=>{
-        const id=editProdCat.id;
-        const{error}=await sb.from('product_categories').update({name}).eq('id',id);
-        if(error){toast('오류: '+error.message);return;}
-        setProdCats(p=>p.map(c=>c.id===id?{...c,name}:c));
-        setEditProdCat(null);toast('✏️ 카테고리명 수정됨');
-    };
-    const addOutCat=async name=>{
-        const{data,error}=await sb.from('outsourcing_categories').insert([{name,display_order:outCats.length}]).select();
-        if(error){alert('오류: '+error.message+'\n\n외주관리 페이지의 "⚙️ DB 안내" 버튼을 눌러 먼저 테이블을 생성하세요.');return;}
-        if(data)setOutCats(p=>[...p,data[0]]);
-        setAddOutModal(false);toast('📁 외주분류 추가됨');
-    };
-    const delOutCat=async id=>{
-        if(!confirm('분류를 삭제하시겠습니까?'))return;
-        await sb.from('outsourcing_categories').delete().eq('id',id);
-        setOutCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
-    };
-    const renameOutCat=async name=>{
-        const id=editOutCat.id;
-        const{error}=await sb.from('outsourcing_categories').update({name}).eq('id',id);
-        if(error){toast('오류: '+error.message);return;}
-        setOutCats(p=>p.map(c=>c.id===id?{...c,name}:c));
-        setEditOutCat(null);toast('✏️ 외주분류명 수정됨');
-    };
     const handleLogout=async()=>{if(sb)await sb.auth.signOut();setUser(null);};
 
     const renderPage=()=>{
         switch(page){
             case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat}/>;
-            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats} initialFilter={activeCatId.sup}/>;
-            case 'out-list':return<OutsourcingList sb={sb} outCats={outCats} suppliers={suppliers} onAddOutCat={()=>setAddOutModal(true)} initialCatId={activeCatId.out}/>;
+            case 'supplier-list':return<SupplierList sb={sb} suppliers={suppliers} setSuppliers={setSuppliers}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
@@ -3441,12 +3140,8 @@ function App(){
         </div>
         <div className={`sb-overlay ${sbOpen?'active':''}`} onClick={()=>setSbOpen(false)}/>
         {addMatModal&&<AddNameModal title="자재 분류 추가" placeholder="분류명 입력" onClose={()=>setAddMatModal(false)} onSave={addMatCat}/>}
-        {editMatCat&&<AddNameModal title="자재 분류 수정" placeholder="분류명 입력" initial={editMatCat.name} saveLabel="저장" onClose={()=>setEditMatCat(null)} onSave={renameMatCat}/>}
         {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        {editProdCat&&<AddNameModal title="상품 카테고리 수정" placeholder="카테고리명 입력" initial={editProdCat.name} saveLabel="저장" onClose={()=>setEditProdCat(null)} onSave={renameProdCat}/>}
-        {addOutModal&&<AddNameModal title="외주 분류 추가" placeholder="분류명 입력" onClose={()=>setAddOutModal(false)} onSave={addOutCat}/>}
-        {editOutCat&&<AddNameModal title="외주 분류 수정" placeholder="분류명 입력" initial={editOutCat.name} saveLabel="저장" onClose={()=>setEditOutCat(null)} onSave={renameOutCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} outCats={outCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={cat=>{setEditMatCat(cat);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} onEditProdCat={cat=>{setEditProdCat(cat);setSbOpen(false);}} onAddOutCat={()=>{setAddOutModal(true);setSbOpen(false);}} onDelOutCat={delOutCat} onEditOutCat={cat=>{setEditOutCat(cat);setSbOpen(false);}} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
+        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

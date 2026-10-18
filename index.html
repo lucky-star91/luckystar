@@ -2261,7 +2261,6 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'항목 수정은 실시간 저장 · 저장 버튼으로 마무리'}</p></div>
             <div className="btn-row no-print">
                 <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
-                <button className="btn btn-green" onClick={()=>setShowPick(true)}>🛍 상품 선택</button>
                 <button className="btn btn-gold" onClick={exportExcel}>📊 엑셀</button>
                 <button className="btn btn-outline" onClick={printEstimate}>🖨 인쇄</button>
                 <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
@@ -2337,7 +2336,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
         {/* 카테고리 버튼 */}
         <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}} className="no-print">
-            <button className="btn btn-outline btn-sm" onClick={addCat}>＋ 기타상품추가</button>
+            <button className="btn btn-green" onClick={()=>setShowPick(true)}>🛍 상품 선택</button>
+            <button className="btn btn-outline" onClick={addCat}>＋ 기타상품추가</button>
         </div>
 
         {/* 품목 테이블 */}

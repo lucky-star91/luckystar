@@ -294,6 +294,13 @@ td{padding:9px 14px;vertical-align:middle;}
 .cal-event-label{font-weight:600;display:block;}
 .cal-event-client{display:block;opacity:.85;}
 .status-row:last-child{border-bottom:none;}
+/* 진행상태 관리: 상단 고정 */
+.status-sticky{position:sticky;top:0;z-index:60;padding:12px 16px!important;margin-bottom:18px!important;box-shadow:0 6px 18px rgba(15,25,35,.12);}
+.status-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;}
+.status-cell{border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:#fff;}
+.status-cell.current{border-color:var(--blue);background:#f0f6ff;}
+.status-cell.done{border-color:#bbf7d0;background:#f0fdf4;}
+.status-cell .status-dt-input{width:100%;font-size:11px;padding:5px 6px;}
 .status-row-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .2s;}
 .status-row-icon.done{background:var(--green);box-shadow:0 2px 8px rgba(34,197,94,.3);}
 .status-row-icon.current{background:var(--blue);box-shadow:0 2px 8px rgba(30,111,217,.3);}
@@ -551,6 +558,9 @@ td{padding:9px 14px;vertical-align:middle;}
     .cal-header{gap:8px;}
     .cal-title{font-size:14px;}
     .cal-nav{padding:5px 10px;font-size:12px;}
+    .status-sticky{top:54px;}
+    .status-strip{display:flex;overflow-x:auto;gap:8px;padding-bottom:4px;}
+    .status-cell{min-width:172px;flex-shrink:0;}
     /* 상태 타임라인 */
     .status-row{grid-template-columns:32px 1fr;gap:8px;}
     .status-row>div:nth-child(3),.status-row>div:nth-child(4){grid-column:2;display:flex;gap:8px;align-items:center;}
@@ -599,7 +609,7 @@ td{padding:9px 14px;vertical-align:middle;}
     .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .modal-box.lg{width:96vw!important;}
 }
-@media print{.sidebar,.btn-row,.del-btn,.no-print{display:none!important;}.main{margin-left:0;padding:20px;}}
+@media print{.sidebar,.mobile-header,.sb-overlay,.btn-row,.del-btn,.no-print{display:none!important;}.status-sticky{position:static;box-shadow:none;}.main{margin-left:0;padding:20px;}}
 </style>
 </head>
 <body><div id="root"></div>
@@ -1132,6 +1142,7 @@ function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
 function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,onOpened}){
     const[materials,setMaterials]=useState([]);const[loading,setLoading]=useState(true);
     const[activeCat,setActiveCat]=useState(initialCatId||null);
+    useEffect(()=>{setActiveCat(initialCatId||null);},[initialCatId]); // 사이드바 분류 클릭 시 목록 갱신
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');const[importing,setImporting]=useState(false);
     const[orderCart,setOrderCart]=useState([]); // 발주서 카트
@@ -1643,6 +1654,7 @@ function ProductModal({sb,matCats,prodCats,toolCats,initial,onClose,onSave}){
 function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
     const[products,setProducts]=useState([]);const[loading,setLoading]=useState(true);
     const[activeCat,setActiveCat]=useState(initialCatId||null);
+    useEffect(()=>{setActiveCat(initialCatId||null);},[initialCatId]); // 사이드바 분류 클릭 시 목록 갱신
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');
     const[matTotals,setMatTotals]=useState({}); // 상품별 자재합계
@@ -1996,29 +2008,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const[portItems,setPortItems]=useState([]);   // 첨부 포트폴리오
     const[estMaterials,setEstMaterials]=useState([]); // 소요 자재
     const[estPrep,setEstPrep]=useState([]); // 공구·부자재
-    // ★ 수정 모드: 소요자재/공구·부자재 변경은 즉시 DB 저장 (품목은 원래 즉시 저장되므로 함께 맞춤)
-    const savedMatsRef=useRef('[]');const savedPrepRef=useRef('[]');const prepColBad=useRef(false);
-    useEffect(()=>{
-        if(mode!=='edit'||!estimateId||!sb)return;
-        const js=JSON.stringify(estMaterials);
-        if(js===savedMatsRef.current)return;
-        const t=setTimeout(async()=>{
-            const{error}=await sb.from('estimates').update({est_materials:js}).eq('id',estimateId);
-            if(!error)savedMatsRef.current=js;else console.warn('소요자재 자동저장 실패:',error.message);
-        },250);
-        return()=>clearTimeout(t);
-    },[estMaterials]);
-    useEffect(()=>{
-        if(mode!=='edit'||!estimateId||!sb||prepColBad.current)return;
-        const js=JSON.stringify(estPrep);
-        if(js===savedPrepRef.current)return;
-        const t=setTimeout(async()=>{
-            const{error}=await sb.from('estimates').update({est_prep:js}).eq('id',estimateId);
-            if(!error)savedPrepRef.current=js;
-            else{console.warn('공구/부자재 자동저장 실패:',error.message);if(/est_prep/.test(error.message||'')){prepColBad.current=true;alert('⚠️ 공구/부자재가 저장되지 않았습니다.\n\nSupabase SQL Editor에서 아래를 실행한 뒤 다시 시도하세요:\n\n'+SQL_PREP);}}
-        },250);
-        return()=>clearTimeout(t);
-    },[estPrep]);
+    // ★ 수정 모드: 화면 변경은 저장 버튼을 누를 때만 DB에 반영 (불러온 시점의 ID를 기억해 두었다가 저장 시 비교)
+    const origCatIds=useRef(new Set());const origItemIds=useRef(new Set());const origChecked=useRef({});
+    const catsRef=useRef([]);catsRef.current=cats;
+    const[statusOpen,setStatusOpen]=useState(()=>typeof window==='undefined'||window.innerWidth>=768);
     const[showPortPick,setShowPortPick]=useState(false);
 
     // ★ 신규 견적 시 담당자명 + 연락처 자동 설정
@@ -2058,10 +2051,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
                 setPortItems(pi);
                 let em=[];try{em=typeof est.est_materials==='string'?JSON.parse(est.est_materials||'[]'):(est.est_materials||[]);}catch{}
-                const _ep=parseJSON(est.est_prep,[]);savedMatsRef.current=JSON.stringify(em);savedPrepRef.current=JSON.stringify(_ep);setEstMaterials(em);setEstPrep(_ep);}
+                const _ep=parseJSON(est.est_prep,[]);origChecked.current=sc;setEstMaterials(em);setEstPrep(_ep);}
             const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
-            const mc=(cd||[]).map(c=>({id:c.id,name:c.name,order:c.display_order}));setCats(mc);
-            if(mc.length>0){const{data:id_}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');setItems((id_||[]).map(i=>({id:i.id,catId:i.cat_id,name:i.name,spec:i.specification||'',qty:i.quantity||1,unitPrice:i.unit_price||0,laborCost:i.labor_cost||0,total:i.total_amount||0,imgUrl:i.image_url||''})));}
+            const mc=(cd||[]).map(c=>({id:c.id,name:c.name,order:c.display_order}));setCats(mc);origCatIds.current=new Set(mc.map(c=>c.id));
+            if(mc.length>0){const{data:id_}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');const _mi=(id_||[]).map(i=>({id:i.id,catId:i.cat_id,name:i.name,spec:i.specification||'',qty:i.quantity||1,unitPrice:i.unit_price||0,laborCost:i.labor_cost||0,total:i.total_amount||0,imgUrl:i.image_url||''}));setItems(_mi);origItemIds.current=new Set(_mi.map(i=>i.id));}
             setLoading(false);
         })();
     },[estimateId]);
@@ -2092,110 +2085,70 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     useEffect(()=>{onTotalChange&&onTotalChange(grandVat);},[items]);
     const catTotal=cid=>items.filter(i=>i.catId===cid).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
     const updClient=(k,v)=>setClient(p=>({...p,[k]:v}));
-
-    // ── 카테고리 CRUD ──
-    const addCat=async()=>{
-        const name='새 카테고리';
-        if(mode==='new'){setCats(p=>[...p,{id:uid(),name,order:p.length}]);}
-        else{const{data}=await sb.from('est_cats').insert([{estimate_id:estimateId,name,display_order:cats.length}]).select();if(data)setCats(p=>[...p,{id:data[0].id,name,order:data[0].display_order}]);}
+    // 저장하지 않고 다른 화면으로 이동할 때 확인
+    const leave=(page,id)=>{
+        if((mode==='edit'||items.length>0)&&!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이동하시겠습니까?'))return;
+        onNavigate(page,id);
     };
-    const updCat=async(id,name)=>{setCats(p=>p.map(c=>c.id===id?{...c,name}:c));if(mode==='edit')await sb.from('est_cats').update({name}).eq('id',id);};
-    const delCat=async id=>{
+
+    // ── 카테고리 / 품목 CRUD ── (화면에만 반영, 💾 저장 버튼을 눌러야 DB에 저장됩니다)
+    const addCat=()=>{setCats(p=>[...p,{id:uid(),name:'새 카테고리',order:p.length}]);};
+    const updCat=(id,name)=>setCats(p=>p.map(c=>c.id===id?{...c,name}:c));
+    // 삭제된 품목에 딸린 소요자재/공구·부자재 정리 (itemId 우선, 없거나 어긋난 옛 데이터는 상품명으로 보완)
+    const dropRowsOfItems=(delIds,delNames)=>{
+        const stale=r=>!r.itemId||!items.some(x=>x.id===r.itemId);
+        const gone=r=>(r.itemId&&delIds.includes(r.itemId))||(r.itemName&&stale(r)&&delNames.includes(r.itemName));
+        setEstMaterials(p=>p.filter(r=>!gone(r)));
+        setEstPrep(p=>p.filter(r=>!gone(r)));
+    };
+    const delCat=id=>{
         if(!confirm('카테고리와 품목 모두 삭제?'))return;
-        // 삭제될 품목 id 목록 수집
-        const delItemIds=items.filter(i=>i.catId===id).map(i=>i.id);
-        const delItemNames=items.filter(i=>i.catId===id).map(i=>i.name);
+        const target=items.filter(i=>i.catId===id);
         setCats(p=>p.filter(c=>c.id!==id));
         setItems(p=>p.filter(i=>i.catId!==id));
-        setEstPrep(p=>p.filter(r=>!delItemIds.includes(r.itemId)));
-        // 해당 품목들의 자재 제거
-        setEstMaterials(p=>p.filter(m=>{
-            if(m.itemId&&delItemIds.includes(m.itemId)) return false;
-            if(!m.itemId&&m.itemName&&delItemNames.includes(m.itemName)) return false;
-            return true;
+        dropRowsOfItems(target.map(i=>i.id),target.map(i=>i.name));
+    };
+    const addItem=catId=>{
+        setItems(p=>[...p,{id:uid(),catId,name:'새 품목',spec:'',qty:1,unitPrice:0,laborCost:0,total:0,imgUrl:''}]);
+    };
+    const updItem=(id,field,value)=>{
+        setItems(prev=>prev.map(item=>{
+            if(item.id!==id)return item;
+            const ni={...item,[field]:value};
+            if(!['imgUrl','name','spec'].includes(field)){ni.total=(parseFloat(ni.qty)||0)*(parseFloat(ni.unitPrice)||0)+(parseFloat(ni.laborCost)||0);}
+            return ni;
         }));
-        if(mode==='edit'){await sb.from('est_items').delete().eq('cat_id',id);await sb.from('est_cats').delete().eq('id',id);}
     };
-
-    // ── 품목 CRUD ──
-    const addItem=async catId=>{
-        const ni={id:uid(),catId,name:'새 품목',spec:'',qty:1,unitPrice:0,laborCost:0,total:0,imgUrl:''};
-        if(mode==='new'){setItems(p=>[...p,ni]);}
-        else{const{data}=await sb.from('est_items').insert([{cat_id:catId,name:'새 품목',quantity:1,unit_price:0,labor_cost:0,total_amount:0,display_order:items.filter(i=>i.catId===catId).length}]).select();if(data)setItems(p=>[...p,{...ni,id:data[0].id}]);}
-    };
-    const updItem=async(id,field,value)=>{
-        const updated=items.map(item=>{if(item.id!==id)return item;const ni={...item,[field]:value};if(!['imgUrl','name','spec'].includes(field)){ni.total=(parseFloat(ni.qty)||0)*(parseFloat(ni.unitPrice)||0)+(parseFloat(ni.laborCost)||0);}return ni;});
-        setItems(updated);
-        if(mode==='edit'){const t=updated.find(i=>i.id===id);await sb.from('est_items').update({name:t.name,specification:t.spec,quantity:t.qty,unit_price:t.unitPrice,labor_cost:t.laborCost,total_amount:t.total,image_url:t.imgUrl}).eq('id',id);}
-    };
-    const delItem=async id=>{
+    const delItem=id=>{
         if(!confirm('삭제?'))return;
         const target=items.find(i=>i.id===id);
         setItems(p=>p.filter(i=>i.id!==id));
-        setEstPrep(p=>p.filter(r=>r.itemId!==id));
-        // itemId(정확) 또는 itemName(폴백) 기준으로 자재 제거
-        setEstMaterials(p=>p.filter(m=>{
-            if(m.itemId===id) return false; // itemId 일치 → 제거
-            if(!m.itemId&&target&&m.itemName&&m.itemName===target.name) return false; // itemName 폴백
-            return true;
-        }));
-        if(mode==='edit')await sb.from('est_items').delete().eq('id',id);
+        dropRowsOfItems([id],target?[target.name]:[]);
     };
     const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
 
-    // ★ 상태 날짜 수정 (edit mode)
-    const updStatusDate=async(status,datetime)=>{
+    // ★ 상태 날짜 수정 (저장 버튼을 눌러야 DB에 반영)
+    const updStatusDate=(status,datetime)=>{
         const nd={...statusDates,[status]:datetime};setStatusDates(nd);
         const latestStatus=STATUS_LIST.filter(s=>nd[s]).pop()||currentStatus;
         setCurrentStatus(latestStatus);
-        if(mode==='edit')await sb.from('estimates').update({status_dates:JSON.stringify(nd),status:latestStatus}).eq('id',estimateId);
     };
 
-    // ★ 진행상태 완료 체크
-    const updStatusChecked=async(status,checked)=>{
-        const nc={...statusChecked,[status]:checked};
-        setStatusChecked(nc);
-        if(mode==='edit')await sb.from('estimates').update({status_checked:JSON.stringify(nc)}).eq('id',estimateId);
-        // ★ 설치완료 체크 시 합산 기준으로 자재 재고 차감
-        if(status==='설치완료'&&checked&&estMaterials.length>0){
-            // material_id 기준으로 합산
-            const sumMap={};
-            estMaterials.forEach(m=>{
-                if(!m.material_id||!m.qty) return;
-                if(!sumMap[m.material_id]) sumMap[m.material_id]={material_id:m.material_id,name:m.name,qty:0};
-                sumMap[m.material_id].qty+=Number(m.qty)||0;
-            });
-            const sumList=Object.values(sumMap).filter(m=>m.qty>0);
-            if(sumList.length>0&&window.confirm('소요된 자재를 재고에서 차감하시겠습니까? ('+sumList.length+'종)')){
-                for(const m of sumList){
-                    const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
-                    const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);
-                    await sb.from('materials').update({stock_qty:newQty}).eq('id',m.material_id);
-                }
-                toast('재고 차감 완료 ('+sumList.length+'종)');
-            }
-        }
-    };
+    // ★ 진행상태 완료 체크 (저장 버튼을 눌러야 DB에 반영 · 설치완료 재고 차감도 저장 시 처리)
+    const updStatusChecked=(status,checked)=>setStatusChecked(p=>({...p,[status]:checked}));
 
     // ★ 상품 선택 → 견적 추가
     const addProductToEst=async(prod,prodCatName,targetCatId)=>{
         let estCat;
-        if(targetCatId){estCat=cats.find(c=>c.id===targetCatId);}
+        if(targetCatId){estCat=catsRef.current.find(c=>c.id===targetCatId);}
         if(!estCat){
-            const n=prodCatName||'상품';estCat=cats.find(c=>c.name===n);
-            if(!estCat){if(mode==='new'){estCat={id:uid(),name:n,order:cats.length};setCats(p=>[...p,estCat]);}
-            else{const{data}=await sb.from('est_cats').insert([{estimate_id:estimateId,name:n,display_order:cats.length}]).select();if(data){estCat={id:data[0].id,name:n,order:data[0].display_order};setCats(p=>[...p,estCat]);}}}
+            const n=prodCatName||'상품';estCat=catsRef.current.find(c=>c.name===n);
+            if(!estCat){estCat={id:uid(),name:n,order:catsRef.current.length};catsRef.current=[...catsRef.current,estCat];setCats(p=>[...p,estCat]);}
         }
-        if(!estCat)return;
         const ni={id:uid(),catId:estCat.id,name:prod.name,spec:prod.description||'',qty:1,unitPrice:Number(prod.price)||0,laborCost:0,total:Number(prod.price)||0,imgUrl:prod.image_url||''};
-        let actualItemId=ni.id; // 실제 사용할 itemId
-        if(mode==='new'){setItems(p=>[...p,ni]);}
-        else{
-            const{data,error:_ie}=await sb.from('est_items').insert([{cat_id:estCat.id,name:prod.name,specification:prod.description||'',quantity:1,unit_price:prod.price||0,labor_cost:0,total_amount:prod.price||0,image_url:prod.image_url||''}]).select();
-            if(_ie){alert('품목 추가 실패: '+_ie.message);return;}
-            if(data){actualItemId=data[0].id;setItems(p=>[...p,{...ni,id:actualItemId}]);}
-        }
-        toast('✅ '+prod.name+' 추가됨');
+        const actualItemId=ni.id;
+        setItems(p=>[...p,ni]);
+        toast('✅ '+prod.name+' 추가됨 (저장 버튼을 눌러야 반영됩니다)');
         {
             const pi=parseJSON(prod.prep_items,[]);
             if(pi.length>0) setEstPrep(p=>[...p,...pi.map(x=>({id:uid(),type:x.type,name:x.name,qty:Number(x.qty)||1,itemId:actualItemId,itemName:prod.name,checked:false}))]);
@@ -2370,7 +2323,45 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 toast('✅ 견적서가 저장되었습니다');
                 onNavigate('est-list');
             } else {
-                // ── 수정 저장 ──
+                // ── 수정 저장 ── (화면에서 변경한 카테고리·품목·자재 등을 이 시점에 한꺼번에 DB에 반영)
+                const catIdMap={};
+                for(let i=0;i<cats.length;i++){
+                    const c=cats[i];
+                    if(origCatIds.current.has(c.id)){
+                        const{error:ec}=await sb.from('est_cats').update({name:c.name,display_order:i}).eq('id',c.id);
+                        if(ec) throw new Error('[est_cats] '+ec.message);
+                        catIdMap[c.id]=c.id;
+                    }else{
+                        const{data:cd,error:ec}=await sb.from('est_cats').insert([{estimate_id:estimateId,name:c.name,display_order:i}]).select();
+                        if(ec||!cd||!cd[0]) throw new Error('[est_cats] '+(ec?ec.message:'데이터 없음'));
+                        catIdMap[c.id]=cd[0].id;
+                    }
+                }
+                const itemIdMap={};
+                for(let i=0;i<items.length;i++){
+                    const it=items[i];const cid=catIdMap[it.catId];
+                    if(!cid)continue;
+                    const row={cat_id:cid,name:it.name,specification:it.spec||'',quantity:Number(it.qty)||0,unit_price:Number(it.unitPrice)||0,labor_cost:Number(it.laborCost)||0,total_amount:Number(it.total)||0,image_url:it.imgUrl||'',display_order:i};
+                    if(origItemIds.current.has(it.id)){
+                        const{error:ei}=await sb.from('est_items').update(row).eq('id',it.id);
+                        if(ei) throw new Error('[est_items] '+ei.message);
+                    }else{
+                        const{data:idt,error:ei}=await sb.from('est_items').insert([row]).select();
+                        if(ei||!idt||!idt[0]) throw new Error('[est_items] '+(ei?ei.message:'데이터 없음'));
+                        itemIdMap[it.id]=idt[0].id;
+                    }
+                }
+                // 화면에서 삭제한 품목/카테고리 정리
+                const goneItems=[...origItemIds.current].filter(id=>!items.some(x=>x.id===id));
+                if(goneItems.length){const{error:ed1}=await sb.from('est_items').delete().in('id',goneItems);if(ed1)throw new Error('[est_items 삭제] '+ed1.message);}
+                const goneCats=[...origCatIds.current].filter(id=>!cats.some(c=>c.id===id));
+                if(goneCats.length){
+                    await sb.from('est_items').delete().in('cat_id',goneCats);
+                    const{error:ed2}=await sb.from('est_cats').delete().in('id',goneCats);
+                    if(ed2)throw new Error('[est_cats 삭제] '+ed2.message);
+                }
+                // 새로 추가한 품목의 임시 ID → DB ID로 교체하여 자재/공구 연결 유지
+                const remap=r=>(r.itemId&&itemIdMap[r.itemId])?{...r,itemId:itemIdMap[r.itemId]}:r;
                 const _upd={
                     client_name:client.name||'',client_phone:client.phone||'',
                     client_address:client.address||'',client_model:client.model||'',
@@ -2386,12 +2377,30 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     balance_paid:balancePaid,
                     status_checked:JSON.stringify(statusChecked),
                     portfolio_items:JSON.stringify(portItems),
-                    est_materials:JSON.stringify(estMaterials),
+                    est_materials:JSON.stringify(estMaterials.map(remap)),
                     updated_at:now,
-                    est_prep:JSON.stringify(estPrep)
+                    est_prep:JSON.stringify(estPrep.map(remap))
                 };
                 const{error:e4}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId),_upd);
                 if(e4) throw new Error('[estimates update] '+e4.message);
+                // ★ 설치완료를 새로 체크하고 저장한 경우에만 소요 자재 재고 차감 (중복 차감 방지)
+                if(statusChecked['설치완료']&&!origChecked.current['설치완료']){
+                    const sumMap={};
+                    estMaterials.forEach(m=>{
+                        if(!m.material_id||!m.qty) return;
+                        if(!sumMap[m.material_id]) sumMap[m.material_id]={material_id:m.material_id,name:m.name,qty:0};
+                        sumMap[m.material_id].qty+=Number(m.qty)||0;
+                    });
+                    const sumList=Object.values(sumMap).filter(m=>m.qty>0);
+                    if(sumList.length>0&&window.confirm('설치완료로 저장되었습니다.\n소요된 자재를 재고에서 차감하시겠습니까? ('+sumList.length+'종)')){
+                        for(const m of sumList){
+                            const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
+                            const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);
+                            await sb.from('materials').update({stock_qty:newQty}).eq('id',m.material_id);
+                        }
+                        toast('재고 차감 완료 ('+sumList.length+'종)');
+                    }
+                }
                 toast('✅ 견적서가 수정되었습니다');
                 onNavigate('est-list');
             }
@@ -2417,12 +2426,12 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     return(<div>
         {showPick&&<ProductPickModal sb={sb} prodCats={prodCats} cats={cats} onAddProduct={addProductToEst} onClose={()=>setShowPick(false)}/>}
         <div className="page-header">
-            <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'항목 수정은 실시간 저장 · 저장 버튼으로 마무리'}</p></div>
+            <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'변경 내용은 💾 저장 버튼을 눌러야 DB에 반영됩니다'}</p></div>
             <div className="btn-row no-print">
-                <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
+                <button className="btn btn-outline" onClick={()=>leave('est-list')}>← 목록으로</button>
                 <button className="btn btn-gold" onClick={exportExcel}>📊 엑셀</button>
                 <button className="btn btn-outline" onClick={printEstimate}>🖨 인쇄</button>
-                {mode==='edit'&&<button className="btn btn-outline" onClick={()=>onNavigate('est-checklist',estimateId)}>✅ 시공 체크리스트</button>}
+                {mode==='edit'&&<button className="btn btn-outline" onClick={()=>leave('est-checklist',estimateId)}>✅ 시공 체크리스트</button>}
                 <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
                 <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'저장 중...':'💾 저장'}</button>
             </div>
@@ -2433,44 +2442,45 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             {[['견적번호',<span className="est-badge-num">{mode==='new'?estNo:estimateId?.substr(0,8).toUpperCase()}</span>],['작성일',<span style={{color:'#fff',fontSize:14,fontWeight:600}}>{new Date().toLocaleDateString('ko-KR')}</span>],['상태',<StatusBadge status={currentStatus}/>]].map(([l,v],i)=><React.Fragment key={l}>{i>0&&<div className="est-badge-sep"/>}<div><div className="est-badge-label">{l}</div>{v}</div></React.Fragment>)}
         </div>
 
-        {/* ★ 수정 모드: 진행 상태 타임라인 */}
+        {/* ★ 수정 모드: 진행 상태 관리 (스크롤해도 상단 고정) */}
         {mode==='edit'&&(
-            <div className="status-timeline-card">
-                <div className="status-timeline-title" style={{color:'var(--navy)'}}>📊 진행 상태 관리</div>
-                {STATUS_LIST.map(s=>{
-                    const hasDate=!!statusDates[s];
-                    const isChecked=!!statusChecked[s];
-                    const isCurrent=currentStatus===s;
-                    const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate||isChecked;
-                    const cls=isChecked?'done':isCurrent?'current':isDone?'done':'pending';
-                    return(
-                        <div key={s} className={`status-row ${isChecked?'status-check-done':''}`}>
-                            <div className={`status-row-icon ${cls}`}>{STATUS_ICON[s]}</div>
-                            <div className="status-row-info">
-                                <div className={`status-row-label ${cls}`}>{s}
-                                    {isCurrent&&!isChecked&&<span style={{fontSize:10,marginLeft:6,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 8px',borderRadius:10}}>현재</span>}
-                                    {isChecked&&<span style={{fontSize:10,marginLeft:6,background:'#dcfce7',color:'#16a34a',padding:'1px 8px',borderRadius:10}}>완료</span>}
+            <div className="status-timeline-card status-sticky">
+                <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
+                    📊 진행 상태 관리 <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
+                </div>
+                {statusOpen
+                    ?<div className="status-strip">
+                        {STATUS_LIST.map(s=>{
+                            const hasDate=!!statusDates[s];
+                            const isChecked=!!statusChecked[s];
+                            const isCurrent=currentStatus===s;
+                            const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate||isChecked;
+                            const cls=isChecked?'done':isCurrent?'current':isDone?'done':'pending';
+                            return(
+                                <div key={s} className={`status-cell ${cls}`}>
+                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                        <div className={`status-row-icon ${cls}`} style={{width:28,height:28,fontSize:13}}>{STATUS_ICON[s]}</div>
+                                        <div className={`status-row-label ${cls}`} style={{flex:1,fontSize:12,minWidth:0}}>{s}
+                                            {isCurrent&&!isChecked&&<span style={{fontSize:9,marginLeft:4,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 6px',borderRadius:10}}>현재</span>}
+                                        </div>
+                                        <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
+                                            <input type="checkbox" className="status-check" checked={isChecked} onChange={e=>updStatusChecked(s,e.target.checked)}/>
+                                            <span style={{fontSize:10,color:'var(--muted)'}}>완료</span>
+                                        </label>
+                                    </div>
+                                    <input type="datetime-local" className={`status-dt-input ${hasDate?'has-value':''}`}
+                                        value={statusDates[s]?statusDates[s].slice(0,16):''}
+                                        onChange={e=>updStatusDate(s,e.target.value)} title={s+' 날짜/시간'}/>
                                 </div>
-                                {statusDates[s]&&<div className="status-row-time">{new Date(statusDates[s]).toLocaleString('ko-KR')}</div>}
-                            </div>
-                            {/* 날짜/시간 입력 */}
-                            <div>
-                                <input type="datetime-local" className={`status-dt-input ${statusDates[s]?'has-value':''}`}
-                                    value={statusDates[s]?statusDates[s].slice(0,16):''}
-                                    onChange={e=>updStatusDate(s,e.target.value)}
-                                    title={s+' 날짜/시간'}/>
-                            </div>
-                            {/* 완료 체크박스 */}
-                            <div style={{display:'flex',alignItems:'center',gap:5}}>
-                                <input type="checkbox" className="status-check"
-                                    checked={isChecked}
-                                    onChange={e=>updStatusChecked(s,e.target.checked)}
-                                    title="완료"/>
-                                <span style={{fontSize:10,color:'var(--muted)',whiteSpace:'nowrap'}}>완료</span>
-                            </div>
-                        </div>
-                    );
-                })}
+                            );
+                        })}
+                    </div>
+                    :<div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+                        {STATUS_LIST.map(s=>{
+                            const chk=!!statusChecked[s];const cur=currentStatus===s;
+                            return<span key={s} className="status-badge" style={{background:chk?'#dcfce7':cur?STATUS_BG[s]:'#f1f5f9',color:chk?'#16a34a':cur?STATUS_COLOR[s]:'#94a3b8',fontSize:11,padding:'3px 10px'}}>{chk?'✅':STATUS_ICON[s]} {s}</span>;
+                        })}
+                    </div>}
             </div>
         )}
 
@@ -3125,7 +3135,152 @@ function ToolList({sb,toolCats,onAddToolCat,initialCatId}){
     </div>);
 }
 
-function EstimateList({sb,onEdit,onNew,onChecklist}){
+/* ═══════════════════════════════════════
+   ★ 견적서 보기 (읽기 전용)
+═══════════════════════════════════════ */
+function EstimateView({sb,estimateId,onNavigate}){
+    const[est,setEst]=useState(null);
+    const[cats,setCats]=useState([]);
+    const[items,setItems]=useState([]);
+    const[loading,setLoading]=useState(true);
+
+    useEffect(()=>{
+        if(!sb||!estimateId){setLoading(false);return;}
+        (async()=>{
+            const{data}=await sb.from('estimates').select('*').eq('id',estimateId).single();
+            if(data)setEst(data);
+            const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
+            const mc=cd||[];setCats(mc);
+            if(mc.length>0){
+                const{data:idt}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');
+                setItems(idt||[]);
+            }
+            setLoading(false);
+        })();
+    },[sb,estimateId]);
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    if(!est)return<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">견적서를 찾을 수 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>onNavigate('est-list')}>목록으로</button></div></div>;
+
+    const sd=parseJSON(est.status_dates,{});
+    const sc=parseJSON(est.status_checked,{});
+    const photos=parseJSON(est.site_photos,[]);
+    const ports=parseJSON(est.portfolio_items,[]);
+    const rowTotal=i=>(Number(i.total_amount)||((Number(i.quantity)||0)*(Number(i.unit_price)||0)+(Number(i.labor_cost)||0)));
+    const totalMat=items.reduce((s,i)=>s+(Number(i.quantity)||0)*(Number(i.unit_price)||0),0);
+    const totalLab=items.reduce((s,i)=>s+(Number(i.labor_cost)||0),0);
+    const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
+    const dep=Number(est.deposit_amount)||0,mid=Number(est.mid_amount)||0;
+    const bal=est.balance_paid?0:Math.max(0,grandVat-dep-mid);
+    const tel=(est.client_phone||'').replace(/[^0-9+]/g,'');
+    const mtel=(est.manager_phone||'').replace(/[^0-9+]/g,'');
+    const PAY_ICON={'입금전':'⏳','계약':'📝','완료':'✅'};
+
+    return(<div>
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>📄 견적서 보기</h1><p>{est.client_name||'고객'} · {est.est_no||''}</p></div>
+            <div className="btn-row no-print">
+                <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
+                <button className="btn btn-outline" onClick={()=>onNavigate('est-checklist',estimateId)}>✅ 시공 체크리스트</button>
+                <button className="btn btn-outline" onClick={()=>window.print()}>🖨 인쇄</button>
+                <button className="btn btn-primary" onClick={()=>onNavigate('est-edit',estimateId)}>✏️ 견적 수정</button>
+            </div>
+        </div>
+
+        <div className="est-badge">
+            <div><div className="est-badge-label">견적번호</div><span className="est-badge-num">{est.est_no||estimateId.substr(0,8).toUpperCase()}</span></div>
+            <div className="est-badge-sep"/>
+            <div><div className="est-badge-label">작성일</div><span style={{color:'#fff',fontSize:14,fontWeight:600}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</span></div>
+            <div className="est-badge-sep"/>
+            <div><div className="est-badge-label">상태</div><StatusBadge status={est.status||'가견적발송'}/></div>
+        </div>
+
+        <div className="card"><div className="card-title">고객 정보</div>
+            <div className="info-grid">
+                {[['고객명',est.client_name||'-'],
+                  ['연락처',tel?<a href={'tel:'+tel} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {est.client_phone}</a>:'-'],
+                  ['주소/지역',est.client_address||'-'],
+                  ['담당자',est.client_manager||'-'],
+                  ['담당자연락처',mtel?<a href={'tel:'+mtel} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {est.manager_phone}</a>:'-']
+                ].map(([l,v])=>(
+                    <div className="info-field" key={l}><label>{l}</label><div style={{fontSize:14,fontWeight:600,color:'var(--navy)',padding:'4px 0'}}>{v}</div></div>
+                ))}
+            </div>
+            {est.client_address&&<div style={{marginTop:10,display:'flex',gap:6}} className="no-print">
+                <button className="nav-btn" onClick={()=>window.open('https://tmap.life/'+encodeURIComponent(est.client_address),'_blank')}>🗺T맵 길안내</button>
+                <button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(est.client_address),'_blank')}>🗺카카오 길안내</button>
+            </div>}
+        </div>
+
+        {cats.length===0&&<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">등록된 견적 품목이 없습니다.</div></div>}
+        {cats.map(cat=>{
+            const ci=items.filter(i=>i.cat_id===cat.id);
+            const sub=ci.reduce((s,i)=>s+rowTotal(i),0);
+            return(<div key={cat.id} className="cat-section">
+                <div className="cat-header"><div className="cat-header-left"><div className="cat-bar"/><span style={{fontSize:16,fontWeight:800,color:'var(--navy)'}}>{cat.name}</span><span className="cat-subtotal">소계 {fmt(sub)}원</span></div></div>
+                <div className="table-wrap"><table>
+                    <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left'}}>품목/부품명</th><th style={{textAlign:'left'}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:110}}>노무비(원)</th><th className="tr" style={{width:115}}>합계(원)</th></tr></thead>
+                    <tbody>
+                        {ci.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
+                        {ci.map(i=><tr key={i.id}>
+                            <td className="tc">{i.image_url?<img src={i.image_url} className="img-prev" alt=""/>:<div className="img-ph" style={{border:'none'}}>·</div>}</td>
+                            <td style={{fontWeight:700}}>{i.name}</td>
+                            <td style={{fontSize:12,color:'var(--muted)'}}>{i.specification||'-'}</td>
+                            <td className="tr">{i.quantity}</td>
+                            <td className="tr">{fmt(i.unit_price)}</td>
+                            <td className="tr">{fmt(i.labor_cost)}</td>
+                            <td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(rowTotal(i))}</td>
+                        </tr>)}
+                    </tbody>
+                </table></div>
+            </div>);
+        })}
+
+        {grand>0&&<div className="grand-card">
+            <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div><div className="grand-vat">공급가액 {fmt(grand)}원 + VAT {fmt(vat)}원</div></div>
+            <div className="grand-breakdown">{[['자재비',totalMat,false],['노무비',totalLab,false],['공급가액',grand,false],['VAT 10%',vat,true]].map(([l,v,g])=><div className="bd-item" key={l}><div className="bd-label">{l}</div><div className="bd-val" style={g?{color:'var(--gold)'}:{}}>{fmt(v)}원</div></div>)}</div>
+        </div>}
+
+        <div className="card" style={{marginTop:16}}>
+            <div className="card-title">💳 결제 정보</div>
+            <div className="pay-grid">
+                <div className="pay-field"><div className="pay-label">결제 상태</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{PAY_ICON[est.payment_status||'입금전']} {est.payment_status||'입금전'}</div></div>
+                <div className="pay-field"><div className="pay-label">계약금</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{fmt(dep)}원</div></div>
+                <div className="pay-field"><div className="pay-label">중도금</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{fmt(mid)}원</div></div>
+                <div className="pay-field"><div className="pay-label">잔금{est.balance_paid?' (입금 완료)':''}</div><div style={{fontSize:16,fontWeight:800,textAlign:'right',color:est.balance_paid?'var(--green)':'var(--navy)'}}>{fmt(bal)}원</div></div>
+            </div>
+        </div>
+
+        <div className="card">
+            <div className="card-title">📊 진행 상태</div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                {STATUS_LIST.map(s=>{
+                    const chk=!!sc[s];const cur=(est.status||'가견적발송')===s;
+                    return(<div key={s} className={'status-cell '+(chk?'done':cur?'current':'')} style={{minWidth:150,flex:'1 1 150px'}}>
+                        <div style={{fontSize:12,fontWeight:700,color:chk?'var(--green)':cur?'var(--blue)':'var(--muted)'}}>{chk?'✅':STATUS_ICON[s]} {s}</div>
+                        <div style={{fontSize:11,color:'var(--muted)'}}>{sd[s]?new Date(sd[s]).toLocaleString('ko-KR'):'-'}</div>
+                    </div>);
+                })}
+            </div>
+        </div>
+
+        {photos.length>0&&<div className="card">
+            <div className="card-title">📸 현장사진</div>
+            <div className="site-photos-grid">{photos.map((p,i)=><a key={i} href={p} target="_blank" rel="noreferrer" className="site-photo-item"><img src={p} className="site-photo-img" alt={'현장 '+(i+1)}/></a>)}</div>
+        </div>}
+
+        {ports.length>0&&<div className="card">
+            <div className="card-title">🖼 포트폴리오</div>
+            <div className="est-port-grid">{ports.map((p,i)=><div key={i} className="est-port-item">
+                {p.image_url?<img src={p.image_url} className="est-port-img" alt=""/>:<div className="est-port-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#94a3b8'}}>🖼</div>}
+                <div className="est-port-info">{p.title}</div></div>)}</div>
+        </div>}
+
+        <div style={{textAlign:'center',marginTop:18,fontSize:11,color:'#94a3b8',paddingBottom:40}}>★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | {new Date().toLocaleDateString('ko-KR')} 기준</div>
+    </div>);
+}
+
+function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
     const[statusFilter,setStatusFilter]=useState(null);
@@ -3233,8 +3388,8 @@ function EstimateList({sb,onEdit,onNew,onChecklist}){
                         const pst=PAY_STYLE[ps]||{};
                         return(<tr key={est.id}>
                             <td><div className="est-no">{est.est_no||est.id?.substr(0,8).toUpperCase()}</div></td>
-                            <td><div className="est-client">{est.client_name||'-'}</div></td>
-                            <td style={{fontSize:12,color:'var(--muted)'}}>{est.client_phone||'-'}</td>
+                            <td><div className="est-client" title="견적서 보기" style={onView?{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}:{}} onClick={()=>onView&&onView(est.id)}>{est.client_name||'-'}</div></td>
+                            <td style={{fontSize:12}}>{est.client_phone?<a href={'tel:'+est.client_phone.replace(/[^0-9+]/g,'')} title="전화 걸기" style={{color:'var(--blue)',textDecoration:'none',fontWeight:600,whiteSpace:'nowrap'}}>📞 {est.client_phone}</a>:<span style={{color:'var(--muted)'}}>-</span>}</td>
                             <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
                             <td>
                                 <select className="status-select" value={est.status||'가견적발송'}
@@ -3646,13 +3801,14 @@ function App(){
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
             case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
-            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
+            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)} onView={id=>navigate('est-view',id)}/>;
             case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
+            case 'est-view':return<EstimateView key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'est-checklist':return<ChecklistPage key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'sched-biweek':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>;
             case 'sched-month':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
-            default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
+            default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)} onView={id=>navigate('est-view',id)}/>;
         }
     };
 

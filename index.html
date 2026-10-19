@@ -1851,9 +1851,17 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
             const oq = olds.reduce((s, x) => s + (Number(x.qty)||0), 0);
             const oa = olds.reduce((s, x) => s + (Number(x.unit_price)||0) * (Number(x.qty)||0), 0);
             const avg = oq > 0 ? Math.round(oa / oq) : (sample.unit_price || 0);
-            const filtered = prev.filter(x => (x.material_id || x.name) !== key);
-            if(newQty > 0) filtered.push({id:uid(), name:sample.name, material_id:sample.material_id||null, unit_price:avg, qty:newQty});
-            return filtered;
+            // 같은 자재 행들을 첫 행 위치에 하나로 합쳐 순서 유지
+            let placed = false;
+            const out = [];
+            prev.forEach(x => {
+                if((x.material_id || x.name) !== key){ out.push(x); return; }
+                if(!placed && newQty > 0){
+                    out.push({id:sample.id||uid(), name:sample.name, material_id:sample.material_id||null, unit_price:avg, qty:newQty});
+                    placed = true;
+                }
+            });
+            return out;
         });
     };
 
@@ -2806,10 +2814,13 @@ function PrepCard({estPrep,setEstPrep,uid}){
         return Object.values(g);
     };
     const setQty=(g,q)=>setEstPrep(prev=>{
-        const first=prev.find(r=>(r.type+'|'+r.name)===g.key);
-        const rest=prev.filter(r=>(r.type+'|'+r.name)!==g.key);
-        if(q>0&&first)rest.push({...first,qty:q});
-        return rest;
+        let placed=false;
+        const out=[];
+        prev.forEach(r=>{
+            if((r.type+'|'+r.name)!==g.key){out.push(r);return;}
+            if(!placed&&q>0){out.push({...r,qty:q});placed=true;}
+        });
+        return out;
     });
     const del=g=>setEstPrep(prev=>prev.filter(r=>(r.type+'|'+r.name)!==g.key));
     const add=()=>{

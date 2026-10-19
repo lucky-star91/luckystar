@@ -609,6 +609,22 @@ const fmt = n => (Number(n)||0).toLocaleString('ko-KR');
 const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
 const uid = () => Math.random().toString(36).substr(2,9);
 const parseJSON = (v,d) => { try{ return typeof v==='string' ? JSON.parse(v||JSON.stringify(d)) : (v||d); }catch(e){ return d; } };
+// 소요자재/공구·부자재 행 → 담긴 상품(상품분류·상품명) 정보
+const prodInfoOf=(r,items,cats)=>{
+    const it=(items||[]).find(i=>i.id===r.itemId)||(r.itemName?(items||[]).find(i=>i.name===r.itemName):null);
+    const name=(it&&it.name)||r.itemName||'';
+    const cat=it?(((cats||[]).find(c=>c.id===it.catId)||{}).name||''):'';
+    return {key:(it&&it.id)||name,name,cat};
+};
+const collectProds=(rows,items,cats)=>{
+    const seen={},out=[];
+    rows.forEach(r=>{const p=prodInfoOf(r,items,cats);if(!p.name||seen[p.key])return;seen[p.key]=1;out.push(p);});
+    return out;
+};
+const prodTds=prods=>[
+    <td key="pc" style={{fontSize:12,color:'var(--muted)'}}>{prods.length?prods.map((p,i)=><div key={i}>{p.cat||'-'}</div>):'-'}</td>,
+    <td key="pn" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
+];
 const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories DISABLE ROW LEVEL SECURITY;\nALTER TABLE tools DISABLE ROW LEVEL SECURITY;";
 const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';";
 // 공구/부자재 컬럼이 아직 없을 때: 해당 필드만 빼고 재시도 (나머지 데이터는 정상 저장)
@@ -1799,7 +1815,7 @@ function ProductPickModal({sb,prodCats,cats,onAddProduct,onClose}){
 /* ═══════════════════════════════════════
    ★ 소요자재 카드 (상품별 + 합산)
 ═══════════════════════════════════════ */
-function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
+function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
     const[showAdd,setShowAdd]=useState(false);
     const[nm,setNm]=useState({name:'',qty:1,price:0});
     // 상품별 그룹 (itemName 있는 것)
@@ -1816,11 +1832,12 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
     estMaterials.forEach(m => {
         const key = m.material_id || m.name;
         if(!key) return;
-        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, unit_price:m.unit_price||0, qty:0, amount:0};
+        if(!sumMap[key]) sumMap[key] = {id:m.id, name:m.name, material_id:m.material_id, unit_price:m.unit_price||0, qty:0, amount:0, rows:[]};
+        sumMap[key].rows.push(m);
         sumMap[key].qty += Number(m.qty) || 0;
         sumMap[key].amount += (Number(m.unit_price)||0) * (Number(m.qty)||0);
     });
-    const sumList = Object.values(sumMap).filter(m => m.qty > 0);
+    const sumList = Object.values(sumMap).filter(m => m.qty > 0).map(m => ({...m, prods:collectProds(m.rows, items, cats)}));
     const matGrandTotal = sumList.reduce((s, m) => s + m.amount, 0);
 
     const removeByKey = key => setEstMaterials(p => p.filter(x => (x.material_id || x.name) !== key));
@@ -1842,26 +1859,20 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
     };
     const updateSumPrice = (key, price) => setEstMaterials(prev => prev.map(x => (x.material_id || x.name) === key ? {...x, unit_price:price} : x));
 
-    // ★ 합산수량 직접 편집: 해당 자재의 모든 항목을 하나로 통합
+    // ★ 합산수량 직접 편집: 행(상품 정보)은 유지한 채 마지막 행에서 증감분을 흡수
     const updateSumQty = (key, newQty) => {
         setEstMaterials(prev => {
-            const sample = prev.find(x => (x.material_id || x.name) === key);
-            if(!sample) return prev;
-            const olds = prev.filter(x => (x.material_id || x.name) === key);
-            const oq = olds.reduce((s, x) => s + (Number(x.qty)||0), 0);
-            const oa = olds.reduce((s, x) => s + (Number(x.unit_price)||0) * (Number(x.qty)||0), 0);
-            const avg = oq > 0 ? Math.round(oa / oq) : (sample.unit_price || 0);
-            // 같은 자재 행들을 첫 행 위치에 하나로 합쳐 순서 유지
-            let placed = false;
-            const out = [];
-            prev.forEach(x => {
-                if((x.material_id || x.name) !== key){ out.push(x); return; }
-                if(!placed && newQty > 0){
-                    out.push({id:sample.id||uid(), name:sample.name, material_id:sample.material_id||null, unit_price:avg, qty:newQty});
-                    placed = true;
-                }
+            const idxs = prev.map((x, i) => (x.material_id || x.name) === key ? i : -1).filter(i => i >= 0);
+            if(!idxs.length) return prev;
+            let remaining = newQty;
+            const next = prev.slice();
+            idxs.forEach((idx, n) => {
+                const orig = Number(prev[idx].qty) || 0;
+                const q = n === idxs.length - 1 ? remaining : Math.min(orig, remaining);
+                remaining -= q;
+                next[idx] = {...prev[idx], qty:q};
             });
-            return out;
+            return next.filter(x => !((x.material_id || x.name) === key && !(Number(x.qty) > 0)));
         });
     };
 
@@ -1894,10 +1905,12 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
             {sumList.length === 0
                 ? <p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
                 : <div className="table-wrap" style={{marginBottom:10}}>
-                    <table style={{minWidth:560}}>
+                    <table style={{minWidth:820}}>
                         <thead>
                             <tr>
                                 <th style={{textAlign:'left'}}>자재명</th>
+                                <th style={{textAlign:'left'}}>상품분류</th>
+                                <th style={{textAlign:'left'}}>상품명</th>
                                 <th className="tr" style={{width:100}}>합산수량</th>
                                 <th className="tr" style={{width:90}}>단가(원)</th>
                                 <th className="tc" style={{width:100}}>자재단가 수정</th>
@@ -1914,6 +1927,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
                                                 title="자재 수정 페이지 열기 (새 탭)" style={{color:'var(--blue)',textDecoration:'none'}}>{m.name} <span style={{fontSize:11}}>↗</span></a>
                                             : (m.name || '(자재명 없음)')}
                                     </td>
+                                    {prodTds(m.prods)}
                                     <td className="tr" style={{padding:'4px 8px'}}>
                                         <input type="number" min="0" value={m.qty}
                                             style={{width:70,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:15,fontWeight:900,fontFamily:'Bebas Neue,sans-serif',textAlign:'right',color:'var(--navy)',letterSpacing:1}}
@@ -1939,7 +1953,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid}){
                             ))}
                         </tbody>
                         <tfoot><tr style={{background:'#f8faff',borderTop:'2px solid var(--border)'}}>
-                            <td colSpan={4} className="tr" style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 합계</td>
+                            <td colSpan={6} className="tr" style={{fontSize:11,fontWeight:700,color:'var(--muted)',letterSpacing:1}}>자재 합계</td>
                             <td className="tr" style={{fontWeight:900,color:'var(--purple)',fontSize:15}}>{fmt(matGrandTotal)}원</td>
                             <td/>
                         </tr></tfoot>
@@ -2574,10 +2588,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div>
 
         {/* ★ 소요 자재 */}
-        <SoyoJaeCard sb={sb} estMaterials={estMaterials} setEstMaterials={setEstMaterials} uid={uid}/>
+        <SoyoJaeCard sb={sb} estMaterials={estMaterials} setEstMaterials={setEstMaterials} uid={uid} items={items} cats={cats}/>
 
         {/* ★ 공구 · 부자재 */}
-        <PrepCard estPrep={estPrep} setEstPrep={setEstPrep} uid={uid}/>
+        <PrepCard estPrep={estPrep} setEstPrep={setEstPrep} uid={uid} items={items} cats={cats}/>
 
 
         {/* ★ 포트폴리오 첨부 */}
@@ -2800,27 +2814,31 @@ function Portfolio({sb, prodCats}){
 ═══════════════════════════════════════ */
 const PREP_TYPES=[{key:'tool',label:'공구',icon:'🔧'},{key:'supply',label:'부자재',icon:'📎'}];
 
-function PrepCard({estPrep,setEstPrep,uid}){
+function PrepCard({estPrep,setEstPrep,uid,items,cats}){
     const[showAdd,setShowAdd]=useState(false);
     const[nf,setNf]=useState({type:'tool',name:'',qty:1});
     const groupsOf=type=>{
         const g={};
         estPrep.filter(r=>r.type===type).forEach(r=>{
             const k=r.type+'|'+r.name;
-            if(!g[k])g[k]={key:k,name:r.name,qty:0,from:[]};
+            if(!g[k])g[k]={key:k,name:r.name,qty:0,rows:[]};
             g[k].qty+=Number(r.qty)||0;
-            if(r.itemName&&!g[k].from.includes(r.itemName))g[k].from.push(r.itemName);
+            g[k].rows.push(r);
         });
-        return Object.values(g);
+        return Object.values(g).map(x=>({...x,prods:collectProds(x.rows,items,cats)}));
     };
     const setQty=(g,q)=>setEstPrep(prev=>{
-        let placed=false;
-        const out=[];
-        prev.forEach(r=>{
-            if((r.type+'|'+r.name)!==g.key){out.push(r);return;}
-            if(!placed&&q>0){out.push({...r,qty:q});placed=true;}
+        const idxs=prev.map((r,i)=>(r.type+'|'+r.name)===g.key?i:-1).filter(i=>i>=0);
+        if(!idxs.length)return prev;
+        let remaining=q;
+        const next=prev.slice();
+        idxs.forEach((idx,n)=>{
+            const orig=Number(prev[idx].qty)||0;
+            const v=n===idxs.length-1?remaining:Math.min(orig,remaining);
+            remaining-=v;
+            next[idx]={...prev[idx],qty:v};
         });
-        return out;
+        return next.filter(r=>!((r.type+'|'+r.name)===g.key&&!(Number(r.qty)>0)));
     });
     const del=g=>setEstPrep(prev=>prev.filter(r=>(r.type+'|'+r.name)!==g.key));
     const add=()=>{
@@ -2840,12 +2858,12 @@ function PrepCard({estPrep,setEstPrep,uid}){
                     <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>{t.icon} {t.label} ({list.length})</div>
                     {list.length===0
                         ?<p style={{fontSize:12,color:'var(--muted)'}}>항목이 없습니다.</p>
-                        :<div className="table-wrap"><table style={{minWidth:360}}>
-                            <thead><tr><th style={{textAlign:'left'}}>{t.label}명</th><th style={{textAlign:'left'}}>상품</th><th className="tr" style={{width:100}}>수량</th><th style={{width:36}}></th></tr></thead>
+                        :<div className="table-wrap"><table style={{minWidth:520}}>
+                            <thead><tr><th style={{textAlign:'left'}}>{t.label}명</th><th style={{textAlign:'left'}}>상품분류</th><th style={{textAlign:'left'}}>상품명</th><th className="tr" style={{width:100}}>수량</th><th style={{width:36}}></th></tr></thead>
                             <tbody>{list.map(g=>(
                                 <tr key={g.key}>
                                     <td style={{fontWeight:700}}>{g.name}</td>
-                                    <td style={{fontSize:11,color:'var(--muted)'}}>{g.from.join(', ')||'직접 추가'}</td>
+                                    {prodTds(g.prods)}
                                     <td className="tr" style={{padding:'4px 8px'}}>
                                         <input type="number" min="0" value={g.qty} onChange={e=>setQty(g,Number(e.target.value)||0)}
                                             style={{width:70,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:14,fontWeight:800,textAlign:'right'}}/>

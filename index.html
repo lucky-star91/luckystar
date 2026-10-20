@@ -632,6 +632,26 @@ function DecimalInput({value,onCommit,min=0.1,style,className}){
         }}
         onBlur={()=>setTxt(String(value))}/>);
 }
+// ★ 뒤로가기 지원: 화면 이동을 주소(#/페이지/ID)로 기록
+const ROUTE_PAGES=['mat-list','supplier-list','mat-stock','tool-list','prod-list','portfolio','est-new','est-list','est-edit','est-view','est-checklist','sched-biweek','sched-month','user-approval'];
+const EST_ID_PAGES=['est-edit','est-view','est-checklist'];
+const LIST_KEYS={'mat-list':'mat','prod-list':'prod','tool-list':'tool'};
+const buildHash=(page,estId,cat)=>{
+    if(EST_ID_PAGES.includes(page))return '#/'+page+(estId?'/'+estId:'');
+    const k=LIST_KEYS[page];
+    if(k){const c=cat&&cat[k];return '#/'+page+(c?'/'+c:'');}
+    return '#/'+page;
+};
+const parseHash=(hash,isAdmin)=>{
+    if(!hash||hash.indexOf('#/')!==0)return null; // Supabase 로그인 토큰(#access_token…)은 무시
+    const[page,id]=hash.slice(2).split('/');
+    if(!ROUTE_PAGES.includes(page))return null;
+    if(page==='user-approval'&&!isAdmin)return null;
+    if(EST_ID_PAGES.includes(page))return id?{page,estId:id}:null;
+    const k=LIST_KEYS[page];
+    if(k)return{page,listKey:k,catId:id||null};
+    return{page};
+};
 const parseJSON = (v,d) => { try{ return typeof v==='string' ? JSON.parse(v||JSON.stringify(d)) : (v||d); }catch(e){ return d; } };
 // 소요자재/공구·부자재 행 → 담긴 상품(상품분류·상품명) 정보
 const prodInfoOf=(r,items,cats)=>{
@@ -3565,6 +3585,8 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
     const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
     const[openSub,setOpenSub]=useState({mat:true,prod:true,tool:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
+    const _grp=page.startsWith('mat')?'material':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    useEffect(()=>{setOpen(_grp);},[_grp]);
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
@@ -3688,14 +3710,15 @@ function App(){
     const[user,setUser]=useState(null);
     const[authLoading,setAuthLoading]=useState(true);
     const[isApproved,setIsApproved]=useState(false);
+    const[initRoute]=useState(()=>{try{return parseHash(window.location.hash,false);}catch(e){return null;}});
     const[openMatId,setOpenMatId]=useState(()=>{
         try{const id=new URLSearchParams(window.location.search).get('mat');
             if(id)window.history.replaceState(null,'',window.location.pathname);
             return id||null;}catch(e){return null;}
     });
-    const[page,setPage]=useState(()=>openMatId?'mat-list':'sched-biweek'); // 첫 화면: 2주간 일정 (자재 링크로 열면 자재관리)
+    const[page,setPage]=useState(()=>openMatId?'mat-list':(initRoute?initRoute.page:'sched-biweek')); // 첫 화면: 2주간 일정 (자재 링크로 열면 자재관리)
     const[sbOpen,setSbOpen]=useState(false);
-    const[editEstId,setEditEstId]=useState(null);
+    const[editEstId,setEditEstId]=useState(()=>(initRoute&&initRoute.estId)||null);
     const[matCats,setMatCats]=useState([]);
     const[prodCats,setProdCats]=useState([]);
     const[addMatModal,setAddMatModal]=useState(false);
@@ -3705,7 +3728,7 @@ function App(){
     const[editMatCat,setEditMatCat]=useState(null);
     const[editToolCat,setEditToolCat]=useState(null);
     const[editProdCat,setEditProdCat]=useState(null);
-    const[activeCatId,setActiveCatId]=useState({mat:null,prod:null});
+    const[activeCatId,setActiveCatId]=useState(()=>initRoute&&initRoute.listKey?{mat:null,prod:null,tool:null,[initRoute.listKey]:initRoute.catId}:{mat:null,prod:null,tool:null});
     const[grandWithVat,setGrandWithVat]=useState(0);
     const[suppliers,setSuppliers]=useState([]); // 공급사 목록
     const[userProfile,setUserProfile]=useState(null); // 담당자 프로필
@@ -3758,6 +3781,29 @@ function App(){
             }catch(e){console.warn('프로필 로드 오류:',e);}
         })();
     },[sb,user]);
+
+    // 화면이 바뀌면 브라우저 기록에 추가 (같은 주소면 추가하지 않음)
+    const firstRoute=useRef(true);
+    useEffect(()=>{
+        if(!user||!isApproved)return;
+        const h=buildHash(page,editEstId,activeCatId);
+        if(window.location.hash===h){firstRoute.current=false;return;}
+        if(firstRoute.current){window.history.replaceState(null,'',h);firstRoute.current=false;}
+        else window.history.pushState(null,'',h);
+    },[page,editEstId,activeCatId,user,isApproved]);
+    // 뒤로가기/앞으로가기 시 해당 화면으로 복원
+    useEffect(()=>{
+        const onPop=()=>{
+            const r=parseHash(window.location.hash,user&&user.email===ADMIN_EMAIL);
+            if(!r)return;
+            setPage(r.page);
+            if(r.estId)setEditEstId(r.estId);
+            if(r.listKey)setActiveCatId({mat:null,prod:null,tool:null,[r.listKey]:r.catId});
+            setSbOpen(false);
+        };
+        window.addEventListener('popstate',onPop);
+        return()=>window.removeEventListener('popstate',onPop);
+    },[user]);
 
     const navigate=(p,id)=>{if(id)setEditEstId(id);setPage(p);setSbOpen(false);};
 

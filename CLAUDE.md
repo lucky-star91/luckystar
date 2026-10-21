@@ -12,6 +12,8 @@
 
 ## 백엔드
 - Supabase (DB, 구글 로그인, 파일 저장소). 접속 URL/키는 첫 실행 시 화면에서 입력 → `localStorage.supabase_config`
+- 환경설정(상호·견적서 공통내용): `app_settings` 테이블, key='estimate' 행에 JSON 저장 (`loadSettings`, `SQL_SETTINGS`)
+- 노무비(labor_cost)는 사용하지 않음 — DB 컬럼만 남아 있고 화면·인쇄·엑셀에서는 제외
 - 배포: GitHub `main` 브랜치 → Vercel
 
 ## 작업 규칙

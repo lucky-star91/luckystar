@@ -2181,7 +2181,9 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
 }
 
 // ★ 환경설정 (상호 · 견적서 공통내용) — app_settings 테이블의 key='estimate' 한 줄에 JSON으로 저장
-const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:'',holdDays:30};
+const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:'',holdDays:30,
+    // 방문 예약 추천 (카카오 JavaScript 키는 등록한 도메인에서만 동작하는 공개용 키)
+    kakaoKey:'7542fd0954e761a43a882196d3b2da3b',visitMin:60,installMin:240,bufferMin:30,workStart:'09:00',workEnd:'20:00',planDays:14,nearKm:15};
 const SQL_SETTINGS="CREATE TABLE IF NOT EXISTS app_settings (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE app_settings DISABLE ROW LEVEL SECURITY;";
 const loadSettings=async sb=>{
     try{
@@ -2191,6 +2193,60 @@ const loadSettings=async sb=>{
     }catch(e){return{...SETTINGS_DEFAULT,_error:String(e)};}
 };
 const escHtml=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ★ 방문 예약 추천: 카카오 지도로 주소 → 좌표, 직선거리로 같은 날 동선 묶기 */
+let _kakaoP=null;
+const loadKakao=key=>{
+    if(window.kakao&&window.kakao.maps&&window.kakao.maps.services)return Promise.resolve(window.kakao);
+    if(_kakaoP)return _kakaoP;
+    _kakaoP=new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+        s.onload=()=>{try{window.kakao.maps.load(()=>res(window.kakao));}catch(e){_kakaoP=null;rej(new Error('카카오 지도를 불러오지 못했습니다 (도메인 등록·카카오맵 사용 설정 확인)'));}};
+        s.onerror=()=>{_kakaoP=null;s.remove();rej(new Error('카카오 지도를 불러오지 못했습니다 (도메인 등록·카카오맵 사용 설정 확인)'));};
+        document.head.appendChild(s);
+    });
+    return _kakaoP;
+};
+const _geoMem={};
+const geocode=async(key,addr)=>{
+    addr=(addr||'').trim();if(!addr)return null;
+    if(_geoMem[addr]!==undefined)return _geoMem[addr];
+    try{const c=JSON.parse(localStorage.getItem('geo:'+addr)||'null');if(c){_geoMem[addr]=c;return c;}}catch(e){}
+    const kakao=await loadKakao(key);const S=kakao.maps.services;
+    const byAddr=q=>new Promise(r=>new S.Geocoder().addressSearch(q,(d,st)=>r(st===S.Status.OK&&d[0]?{lat:+d[0].y,lng:+d[0].x}:null)));
+    const byKeyword=q=>new Promise(r=>new S.Places().keywordSearch(q,(d,st)=>r(st===S.Status.OK&&d[0]?{lat:+d[0].y,lng:+d[0].x}:null)));
+    const short=addr.replace(/\(.*?\)/g,' ').replace(/\s\d+동\s*\d+호.*$|\s\d+호.*$/,'').trim(); // 동·호수 빼고 재시도
+    const r=await byAddr(addr)||(short!==addr&&await byAddr(short))||await byKeyword(short)||null;
+    _geoMem[addr]=r;
+    if(r)try{localStorage.setItem('geo:'+addr,JSON.stringify(r));}catch(e){}
+    return r;
+};
+const distKm=(a,b)=>{const R=6371,t=x=>x*Math.PI/180;const dLa=t(b.lat-a.lat),dLo=t(b.lng-a.lng);const h=Math.sin(dLa/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
+// 이동 시간 추정: 직선거리 × 1.3(도로) ÷ 평균 40km/h, 최소 여유 시간 이상 · 10분 단위
+const travelMin=(km,minBuf)=>Math.max(Number(minBuf)||0,Math.ceil(km*1.3/40*60/10)*10);
+const hm2min=s=>{const[h,m]=String(s||'0:0').split(':').map(Number);return(h||0)*60+(m||0);};
+const min2hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const WEEK=['일','월','화','수','목','금','토'];
+
+// t분에 시작하는 방문이 그날 일정들과 (이동 시간 포함) 겹치지 않는지
+const slotOk=(t,evs,st)=>{const visit=Number(st.visitMin)||60;return evs.every(e=>{const s=e.start.getHours()*60+e.start.getMinutes(),en=s+e.dur,tr=travelMin(e.dist,st.bufferMin);return t+visit+tr<=s||t>=en+tr;});};
+// 추천 계산: events [{start:Date,dur,kind,name,dist}] → 날짜별 {date,events,nearest,kind:'near'|'none'|'far',slots:[분]}
+const planVisitDays=(events,st,now=new Date())=>{
+    const visit=Number(st.visitMin)||60,ws=hm2min(st.workStart),we=hm2min(st.workEnd);
+    const days=[];
+    for(let i=0;i<(Number(st.planDays)||14);i++){
+        const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+i);
+        const evs=events.filter(e=>ymd(e.start)===ymd(d)).sort((a,b)=>a.start-b.start);
+        const earliest=i===0?Math.ceil((now.getHours()*60+now.getMinutes()+30)/30)*30:ws;
+        const slots=[];
+        for(let t=Math.max(ws,earliest);t+visit<=we;t+=30)if(slotOk(t,evs,st))slots.push(t);
+        const nearest=evs.length?Math.min(...evs.map(e=>e.dist)):Infinity;
+        days.push({date:d,events:evs,nearest,slots,kind:!evs.length?'none':nearest<=(Number(st.nearKm)||15)?'near':'far'});
+    }
+    return days;
+};
 
 // ★ 견적서 인쇄 팝업 (견적 수정 · 견적서 보기 공용)
 // items: {catId,name,spec,qty,unitPrice,total}
@@ -2277,6 +2333,90 @@ async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
     ${st.notes?`<div class="sec"><div class="sec-t">안내사항</div><div class="box"><div class="notes">${escHtml(st.notes)}</div></div></div>`:''}
     <script>window.onload=()=>{window.print();}<\/script></body></html>`;
     if(w){w.document.open();w.document.write(html);w.document.close();}
+}
+
+// ★ 방문 예약 추천 패널 (견적 수정 · 진행 상태 카드 아래)
+function VisitPlanner({sb,estimateId,address,value,onPick}){
+    const[open,setOpen]=useState(false);
+    const[busy,setBusy]=useState(false);
+    const[err,setErr]=useState('');
+    const[data,setData]=useState(null); // {st,target,days}
+
+    const load=async()=>{
+        setBusy(true);setErr('');
+        try{
+            const st=await loadSettings(sb);
+            if(!address)throw new Error('고객 주소를 먼저 입력하세요.');
+            const target=await geocode(st.kakaoKey,address);
+            if(!target)throw new Error('주소를 지도에서 찾지 못했습니다: '+address);
+            const{data:ests}=await sb.from('estimates').select('*');
+            const now=new Date();const until=new Date(now.getFullYear(),now.getMonth(),now.getDate()+(Number(st.planDays)||14));
+            const raw=[];
+            (ests||[]).forEach(e=>{
+                if(e.id===estimateId)return;
+                const{sd,sc}=estStageInfo(e,0);
+                [['방문상담 및 실측','방문',Number(st.visitMin)||60],['설치완료','설치',Number(st.installMin)||240]].forEach(([k,kind,dur])=>{
+                    if(!sd[k]||sc[k])return;const d=new Date(sd[k]);
+                    if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
+                    raw.push({start:d,dur,kind,name:e.client_name||'고객',address:e.client_address||''});
+                });
+            });
+            const events=[];
+            for(const ev of raw){const c=await geocode(st.kakaoKey,ev.address);events.push({...ev,dist:c?distKm(target,c):999,noGeo:!c});}
+            setData({st,days:planVisitDays(events,st,now)});
+        }catch(e){setErr(e.message||String(e));setData(null);}
+        finally{setBusy(false);}
+    };
+    // 주소가 바뀌면 다시 계산해야 함
+    useEffect(()=>{setData(null);},[address]);
+    // 방문 예정일을 고르면(직접 입력 포함) 그날 다른 지역 예약과 겹치는지 확인
+    useEffect(()=>{if(value&&address&&!data&&!busy)load();},[value,address]);
+
+    const pick=(d,t)=>onPick(ymd(d)+'T'+min2hm(t));
+    const km=n=>n>=999?'위치 미확인':n<1?Math.round(n*1000)+'m':n.toFixed(1)+'km';
+    const dayLabel=d=>`${d.getMonth()+1}/${d.getDate()}(${WEEK[d.getDay()]})`;
+
+    // 선택한 날짜 경고
+    let warn=null;
+    if(data&&value){
+        const v=new Date(value);const day=data.days.find(x=>ymd(x.date)===ymd(v));
+        if(day&&day.events.length){
+            const t=v.getHours()*60+v.getMinutes();
+            const clash=!isNaN(t)&&!slotOk(t,day.events,data.st);
+            const far=day.events.filter(e=>e.dist>(Number(data.st.nearKm)||15));
+            if(far.length||clash)warn=<div style={{marginTop:8,fontSize:12,fontWeight:700,color:'#b45309',background:'#fef3c7',border:'1.5px solid #fcd34d',borderRadius:8,padding:'6px 10px'}}>
+                ⚠ {dayLabel(v)} {far.length?`멀리 떨어진 예약이 있습니다: ${far.map(e=>`${e.name} ${km(e.dist)}`).join(', ')}`:''}{far.length&&clash?' · ':''}{clash?'다른 일정과 시간이 겹치거나 이동 시간이 부족합니다':''}</div>;
+        }
+    }
+
+    const DayRow=({day,tone})=>(<div style={{border:'1.5px solid '+(tone==='near'?'#86efac':tone==='far'?'#fcd34d':'var(--border)'),background:tone==='near'?'#f0fdf4':tone==='far'?'#fffbeb':'#fff',borderRadius:10,padding:'8px 12px'}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
+            <b style={{fontSize:13}}>{tone==='near'?'⭐':tone==='far'?'⚠':'○'} {dayLabel(day.date)}</b>
+            <span style={{fontSize:12,color:'var(--text)'}}>{day.events.length?`가장 가까운 예약 ${km(day.nearest)} · 예약 ${day.events.length}건`:'예약 없음'}</span>
+        </div>
+        {day.events.length>0&&<div style={{fontSize:12,color:'#334155',margin:'4px 0'}}>{day.events.map((e,i)=><span key={i} style={{marginRight:10,whiteSpace:'nowrap'}}>{min2hm(e.start.getHours()*60+e.start.getMinutes())} {e.kind} {e.name} ({km(e.dist)})</span>)}</div>}
+        {tone!=='far'&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:4}}>
+            {day.slots.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>빈 시간 없음</span>
+            :day.slots.slice(0,10).map(t=><button key={t} className="btn btn-outline btn-xs" onClick={()=>pick(day.date,t)}>{min2hm(t)}</button>)}
+        </div>}
+    </div>);
+
+    const near=data?data.days.filter(d=>d.kind==='near'&&d.slots.length).sort((a,b)=>a.nearest-b.nearest):[];
+    const free=data?data.days.filter(d=>d.kind==='none'&&d.slots.length).slice(0,3):[];
+    const far=data?data.days.filter(d=>d.kind==='far'):[];
+
+    return(<div style={{marginTop:10}}>
+        <button className="btn btn-outline btn-sm" disabled={busy} onClick={()=>{setOpen(o=>!o);if(!data&&!busy)load();}}>{busy?'📍 계산 중...':open?'📍 방문 추천 닫기':'📍 방문 추천 날짜 찾기'}</button>
+        {err&&<div style={{marginTop:8,fontSize:12,color:'var(--red)',fontWeight:700}}>⚠ {err}</div>}
+        {warn}
+        {open&&data&&<div style={{marginTop:10,display:'flex',flexDirection:'column',gap:8}}>
+            <div style={{fontSize:12,color:'var(--muted)'}}>앞으로 {data.st.planDays}일 · 방문 {data.st.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {data.st.bufferMin}분) · {data.st.nearKm}km 이내를 가까운 예약으로 봄 · 시간을 누르면 방문 예정에 입력됩니다</div>
+            {near.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#15803d'}}>⭐ 가까운 곳에 예약이 있는 날</div>{near.map(d=><DayRow key={ymd(d.date)} day={d} tone="near"/>)}</>}
+            {free.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'var(--navy)'}}>○ 예약이 없는 날</div>{free.map(d=><DayRow key={ymd(d.date)} day={d} tone="none"/>)}</>}
+            {far.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#b45309'}}>⚠ 피하면 좋은 날 (멀리 떨어진 예약)</div>{far.map(d=><DayRow key={ymd(d.date)} day={d} tone="far"/>)}</>}
+            {!near.length&&!free.length&&!far.length&&<div style={{fontSize:12,color:'var(--muted)'}}>추천할 날짜가 없습니다.</div>}
+        </div>}
+    </div>);
 }
 
 function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,userProfile}){
@@ -2728,6 +2868,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             {statusOpen&&<StatusTrack sd={statusDates} sc={statusChecked} stage={currentStage} hold={onHold} balancePaid={balancePaid} holdDays={holdDays}
                 editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={setBalancePaid}/>}
             {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🎉 설치 예정일은 일정표에 표시</div>}
+            {statusOpen&&!statusChecked['방문상담 및 실측']&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={statusDates['방문상담 및 실측']} onPick={v=>updStatusDate('방문상담 및 실측',v)}/>}
         </div>
 
 
@@ -3936,6 +4077,14 @@ function SettingsPage({sb}){
         <div className="card"><div className="card-title">진행 상태</div>
             <div className="field" style={{maxWidth:260}}><label>자동 보류 기간 (일)</label><input type="number" min="0" value={st.holdDays} onChange={e=>upd('holdDays',e.target.value)}/></div>
             <div style={{fontSize:12,color:'var(--muted)'}}>가견적·본견적을 발송한 뒤 이 기간 동안 방문 예정·재발송·계약금 입력이 없으면 견적이 자동으로 ⏸ 보류됩니다. 0이면 자동 보류를 쓰지 않습니다.</div>
+        </div>
+        <div className="card"><div className="card-title">📍 방문 예약 추천</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'0 14px'}}>
+                {[['visitMin','방문 소요 시간 (분)','number'],['installMin','설치 소요 시간 (분)','number'],['bufferMin','최소 이동 여유 (분)','number'],['workStart','방문 가능 시작','time'],['workEnd','방문 가능 종료','time'],['planDays','추천 기간 (일)','number'],['nearKm','가까운 거리 기준 (km)','number']].map(([k,l,t])=>
+                    <div className="field" key={k}><label>{l}</label><input type={t} min="0" value={st[k]} onChange={e=>upd(k,e.target.value)}/></div>)}
+            </div>
+            <div className="field"><label>카카오 JavaScript 키</label><input value={st.kakaoKey} onChange={e=>upd('kakaoKey',e.target.value)}/></div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>견적 수정의 🏠 방문 예정 아래 '📍 방문 추천 날짜 찾기'에서 사용합니다. 이동 시간은 주소 사이 직선거리로 추정하며, 최소 이동 여유보다 짧게 잡지 않습니다.</div>
         </div>
         <div className="card"><div className="card-title">견적서 공통내용 (하단 안내사항)</div>
             <textarea rows={10} style={ta} value={st.notes} onChange={e=>upd('notes',e.target.value)} placeholder={'예)\n· 입금 계좌: OO은행 000-0000-0000 (예금주)\n· 계약금 입금 후 제작이 시작됩니다.\n· 현장 상황에 따라 금액이 변동될 수 있습니다.'}/>

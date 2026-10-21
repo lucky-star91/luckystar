@@ -13,7 +13,9 @@
 ## 백엔드
 - Supabase (DB, 구글 로그인, 파일 저장소). 접속 URL/키는 첫 실행 시 화면에서 입력 → `localStorage.supabase_config`
 - 환경설정(상호·견적서 공통내용): `app_settings` 테이블, key='estimate' 행에 JSON 저장 (`loadSettings`, `SQL_SETTINGS`)
+- 진행 단계는 저장값이 아니라 `getStage`로 판정 (status_dates·status_checked·deposit_amount·balance_paid). 보류는 `isOnHold`로 계산(환경설정 holdDays). 옛 '견적예정' 키는 `normStatusObj`로 '본견적발송'으로 읽음
 - 노무비(labor_cost)는 사용하지 않음 — DB 컬럼만 남아 있고 화면·인쇄·엑셀에서는 제외
+- ⚠️ 모든 표 RLS 꺼짐 (비로그인도 공개 키로 데이터 접근 가능) — 보안 작업 보류 중. 사용자가 "RLS"라고 입력하면 작업 계획(정책 SQL·되돌리기 SQL·점검 체크리스트, 포트폴리오 공개 링크와 Storage 예외)을 다시 안내할 것
 - 배포: GitHub `main` 브랜치 → Vercel
 
 ## 작업 규칙

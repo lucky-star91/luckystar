@@ -725,16 +725,112 @@ const pfUrl = ids => window.location.origin + window.location.pathname + '?pf=' 
 let _tt; const toast = msg=>{const el=document.getElementById('__toast');if(!el)return;el.textContent=msg;el.style.display='block';clearTimeout(_tt);_tt=setTimeout(()=>el.style.display='none',2800);};
 
 // ★ 상태 목록
-const STATUS_LIST = ['가견적발송','방문상담 및 실측','견적예정','제작중','설치완료'];
-const STATUS_COLOR = {'가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','견적예정':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a'};
-const STATUS_BG    = {'가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','견적예정':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7'};
-const STATUS_ICON  = {'가견적발송':'📤','방문상담 및 실측':'🏠','견적예정':'✅','제작중':'🔧','설치완료':'🎉'};
+const STATUS_LIST = ['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료'];
+const STATUS_COLOR = {'작성중':'#475569','가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','본견적발송':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a','완료':'#15803d','보류':'#475569'};
+const STATUS_BG    = {'작성중':'#f1f5f9','가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','본견적발송':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7','완료':'#bbf7d0','보류':'#e2e8f0'};
+const STATUS_ICON  = {'작성중':'📝','가견적발송':'📤','방문상담 및 실측':'🏠','본견적발송':'📨','제작중':'🔧','설치완료':'🎉','완료':'✔','보류':'⏸'};
+const STATUS_TEXT  = {'설치완료':'설치완료 · 잔금대기'};
 
 const StatusBadge = ({status}) => (
     <span className="status-badge" style={{background:STATUS_BG[status]||'#f1f5f9',color:STATUS_COLOR[status]||'#64748b'}}>
-        {STATUS_ICON[status]||'•'} {status}
+        {STATUS_ICON[status]||'•'} {STATUS_TEXT[status]||status}
     </span>
 );
+
+/* ★ 진행 단계 판정 — 업무 흐름: 가견적발송 → 방문상담 및 실측 → 본견적발송 → 제작중 → 설치완료 → (잔금) 완료
+   status_dates 키별 의미: 가견적발송·본견적발송=발송일, 방문상담 및 실측·설치완료=예정일시, 제작중=계약금 입금일
+   status_checked: 방문상담 및 실측=방문함, 설치완료=설치함 / 잔금은 balance_paid */
+const normStatusObj = o => { const r={...(o||{})}; if('견적예정' in r){ if(!('본견적발송' in r)) r['본견적발송']=r['견적예정']; delete r['견적예정']; } return r; };
+const getStage = ({sd,sc,deposit,balancePaid}) => {
+    if(sc['설치완료']) return balancePaid ? '완료' : '설치완료';
+    if((Number(deposit)||0)>0 || sd['제작중']) return '제작중';
+    if(sd['본견적발송']) return '본견적발송';
+    if(sd['방문상담 및 실측']) return '방문상담 및 실측';
+    if(sd['가견적발송']) return '가견적발송';
+    return '작성중';
+};
+// 발송 후 고객 답을 기다리는 단계에서 holdDays 일 동안 진행이 없으면 보류 (계약금 입금·방문 예정이 있으면 보류 아님)
+const lastSentAt = sd => Math.max(...['가견적발송','본견적발송'].map(k=>sd[k]?new Date(sd[k]).getTime():0).filter(t=>!isNaN(t)),0);
+const isOnHold = (stage,sd,holdDays) => {
+    if(stage!=='가견적발송'&&stage!=='본견적발송') return false;
+    const days=Number(holdDays)||0; if(days<=0) return false;
+    const t=lastSentAt(sd); return t>0 && Date.now()-t > days*86400000;
+};
+// DB 견적 한 건 → {sd, sc, stage, hold, label}
+const estStageInfo = (est,holdDays) => {
+    const sd=normStatusObj(parseJSON(est.status_dates,{})), sc=normStatusObj(parseJSON(est.status_checked,{}));
+    const stage=getStage({sd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid});
+    const hold=isOnHold(stage,sd,holdDays);
+    return {sd,sc,stage,hold,label:hold?'보류':stage};
+};
+// 인쇄할 때 물어볼 발송 단계 (없으면 null)
+const sendStepOnPrint = (stage,sd,sc,hold) => {
+    if(hold) return sd['본견적발송']?'본견적발송':'가견적발송';
+    if(stage==='작성중') return '가견적발송';
+    if(stage==='방문상담 및 실측' && sc['방문상담 및 실측']) return '본견적발송';
+    return null;
+};
+const dtLocal = v => { if(!v) return ''; const d=new Date(v); if(isNaN(d)) return String(v).slice(0,16); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fmtDT = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
+const fmtD = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleDateString('ko-KR'); };
+
+// ★ 진행 상태 카드 (견적 수정: 편집 / 견적서 보기: 읽기 전용)
+// 칸 구성: [키, 제목, 날짜 이름, 날짜 형식, 체크 이름]
+const TRACK_STEPS = [
+    ['가견적발송','가견적발송','발송일','date',null],
+    ['방문상담 및 실측','방문상담 및 실측','방문 예정','datetime','방문함'],
+    ['본견적발송','본견적발송','발송일','date',null],
+    ['제작중','제작중','계약금 입금일','date',null],
+    ['설치완료','설치','설치 예정','datetime','설치함'],
+];
+function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCheck,onBalance}){
+    const order=['작성중',...STATUS_LIST,'완료'];
+    const si=order.indexOf(stage);
+    const cell=(key,title,dlabel,dkind,clabel)=>{
+        const ki=order.indexOf(key);
+        const val=sd[key];const chk=!!sc[key];
+        const isCur=stage===key;
+        const done=clabel?chk:!!val||(key==='제작중'&&si>=ki);
+        const skipped=!done&&!val&&si>ki;
+        const cls=done?'done':isCur?'current':'pending';
+        return(<div key={key} className={`status-cell ${cls}`}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div className={`status-row-icon ${cls}`} style={{width:28,height:28,fontSize:13}}>{STATUS_ICON[key]}</div>
+                <div className={`status-row-label ${cls}`} style={{flex:1,fontSize:12,minWidth:0}}>{title}
+                    {isCur&&!hold&&<span style={{fontSize:9,marginLeft:4,background:STATUS_BG[key],color:STATUS_COLOR[key],padding:'1px 6px',borderRadius:10}}>현재</span>}
+                    {isCur&&hold&&<span style={{fontSize:9,marginLeft:4,background:STATUS_BG['보류'],color:STATUS_COLOR['보류'],padding:'1px 6px',borderRadius:10}}>⏸ 보류</span>}
+                    {skipped&&<span style={{fontSize:9,marginLeft:4,background:'#f1f5f9',color:'#64748b',padding:'1px 6px',borderRadius:10}}>건너뜀</span>}
+                </div>
+                {clabel&&(editable
+                    ?<label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
+                        <input type="checkbox" className="status-check" checked={chk} onChange={e=>onCheck(key,e.target.checked)}/>
+                        <span style={{fontSize:10,color:'var(--text)'}}>{clabel}</span></label>
+                    :chk&&<span style={{fontSize:10,fontWeight:700,color:'var(--green)'}}>✅ {clabel}</span>)}
+            </div>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--muted)'}}>{dlabel}</div>
+            {editable
+                ?<input type={dkind==='date'?'date':'datetime-local'} className={`status-dt-input ${val?'has-value':''}`}
+                    value={dkind==='date'?dtLocal(val).slice(0,10):dtLocal(val)} onChange={e=>onDate(key,e.target.value)} title={title+' '+dlabel}/>
+                :<div style={{fontSize:12,fontWeight:600,color:val?'var(--navy)':'var(--muted)'}}>{val?(dkind==='date'?fmtD(val):fmtDT(val)):'-'}</div>}
+        </div>);
+    };
+    return(<><div className="status-strip" style={{gridTemplateColumns:'repeat(6,minmax(0,1fr))'}}>
+        {TRACK_STEPS.map(s=>cell(...s))}
+        <div className={`status-cell ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div className={`status-row-icon ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`} style={{width:28,height:28,fontSize:13}}>💰</div>
+                <div className={`status-row-label ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`} style={{flex:1,fontSize:12}}>잔금</div>
+            </div>
+            {editable
+                ?<label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:12,fontWeight:600}}>
+                    <input type="checkbox" className="status-check" checked={!!balancePaid} onChange={e=>onBalance(e.target.checked)}/>잔금 입금 확인</label>
+                :<div style={{fontSize:12,fontWeight:700,color:balancePaid?'var(--green)':'var(--muted)'}}>{balancePaid?'✅ 입금 확인':'미입금'}</div>}
+            {stage==='완료'&&<div style={{fontSize:11,fontWeight:800,color:'var(--green)'}}>✔ 모든 진행 완료</div>}
+        </div>
+    </div>
+    {hold&&<div style={{marginTop:8,fontSize:12,color:'#334155',background:'#f1f5f9',borderRadius:8,padding:'6px 10px'}}>⏸ 마지막 발송 후 {holdDays}일 동안 진행이 없어 <b>보류</b> 상태입니다. 방문 예정일 입력 · 견적 재발송 · 계약금 입력 시 자동으로 해제됩니다.</div>}
+    </>);
+}
 
 const FEATURES=[['📦','자재관리','분류별 자재·단가·공급업체'],['🛍','상품관리','카테고리별 상품+필요자재'],['📋','견적관리','저장·목록·진행상태 관리'],['📊','엑셀/인쇄','원클릭 견적서 저장']];
 
@@ -2085,7 +2181,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
 }
 
 // ★ 환경설정 (상호 · 견적서 공통내용) — app_settings 테이블의 key='estimate' 한 줄에 JSON으로 저장
-const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:''};
+const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:'',holdDays:30};
 const SQL_SETTINGS="CREATE TABLE IF NOT EXISTS app_settings (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE app_settings DISABLE ROW LEVEL SECURITY;";
 const loadSettings=async sb=>{
     try{
@@ -2188,7 +2284,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
     const[client,setClient]=useState({name:'',phone:'',address:'',manager:'',managerPhone:''});
     const[statusDates,setStatusDates]=useState({});
-    const[currentStatus,setCurrentStatus]=useState('가견적발송');
+    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
     const[loading,setLoading]=useState(mode==='edit');
     const[saving,setSaving]=useState(false);
     const[showPick,setShowPick]=useState(false);
@@ -2208,6 +2304,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const catsRef=useRef([]);catsRef.current=cats;
     const[statusOpen,setStatusOpen]=useState(()=>typeof window==='undefined'||window.innerWidth>=768);
     const[showPortPick,setShowPortPick]=useState(false);
+
+    useEffect(()=>{if(sb)loadSettings(sb).then(s=>setHoldDays(s.holdDays));},[sb]);
 
     // ★ 신규 견적 시 담당자명 + 연락처 자동 설정
     useEffect(()=>{
@@ -2233,7 +2331,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             if(est){setClient({name:est.client_name||'',phone:est.client_phone||'',address:est.client_address||'',model:est.client_model||'',caravan:est.client_caravan||'',manager:est.client_manager||'',managerPhone:est.manager_phone||''});
                 // status_dates: TEXT(JSON문자열) 또는 JSONB 모두 처리
                 let sd={};try{sd=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch(e){}
-                setStatusDates(sd);setCurrentStatus(est.status||'가견적발송');
+                setStatusDates(normStatusObj(sd));
                 // ★ 현장사진 & 결제 정보 로드
                 let sp=[];try{sp=typeof est.site_photos==='string'?JSON.parse(est.site_photos||'[]'):(est.site_photos||[]);}catch(e){}
                 setSitePhotos(sp);
@@ -2242,7 +2340,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 setMidAmount(est.mid_amount||'');
                 setBalancePaid(!!est.balance_paid);
                 let sc={};try{sc=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch(e){}
-                setStatusChecked(sc);
+                sc=normStatusObj(sc);setStatusChecked(sc);
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
                 setPortItems(pi);
                 let em=[];try{em=typeof est.est_materials==='string'?JSON.parse(est.est_materials||'[]'):(est.est_materials||[]);}catch{}
@@ -2261,6 +2359,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const totalLab=items.reduce((s,i)=>s+(parseFloat(i.laborCost)||0),0);
     const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
     const balanceAmount=grandVat-depositNum-midNum;
+    // ★ 진행 단계 (날짜·체크·계약금·잔금으로 자동 판정)
+    const currentStage=getStage({sd:statusDates,sc:statusChecked,deposit:depositNum,balancePaid});
+    const onHold=isOnHold(currentStage,statusDates,holdDays);
+    const currentStatus=onHold?'보류':currentStage;
 
     // ★ 계약금 입력 시 결제상태 자동 변경
     useEffect(()=>{
@@ -2323,11 +2425,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
 
     // ★ 상태 날짜 수정 (저장 버튼을 눌러야 DB에 반영)
-    const updStatusDate=(status,datetime)=>{
-        const nd={...statusDates,[status]:datetime};setStatusDates(nd);
-        const latestStatus=STATUS_LIST.filter(s=>nd[s]).pop()||currentStatus;
-        setCurrentStatus(latestStatus);
-    };
+    const updStatusDate=(status,datetime)=>setStatusDates(p=>{const nd={...p};if(datetime)nd[status]=datetime;else delete nd[status];return nd;});
 
     // ★ 진행상태 완료 체크 (저장 버튼을 눌러야 DB에 반영 · 설치완료 재고 차감도 저장 시 처리)
     const updStatusChecked=(status,checked)=>setStatusChecked(p=>({...p,[status]:checked}));
@@ -2370,7 +2468,19 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     };
 
     // ★ 인쇄 팝업
-    const printEstimate=()=>printEstimateDoc(sb,{no:mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase(),client,cats,items,portItems});
+    // 인쇄 시 현재 단계에 맞춰 '가견적발송 / 본견적발송 완료 처리'를 물어봄 (보류 중이면 재발송 처리)
+    const printEstimate=()=>{
+        const step=sendStepOnPrint(currentStage,statusDates,statusChecked,onHold);
+        if(step&&window.confirm(onHold?`⏸ 보류 중인 견적입니다.\n${step}을 다시 발송 처리하시겠습니까?`:`${step} 완료 처리하시겠습니까?`)){
+            const nd={...statusDates,[step]:new Date().toISOString()};
+            setStatusDates(nd);
+            if(mode==='edit'){
+                sb.from('estimates').update({status:getStage({sd:nd,sc:statusChecked,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd)}).eq('id',estimateId)
+                    .then(({error})=>toast(error?'⚠️ 상태 저장 실패: '+error.message:'📤 '+step+' 처리됨'));
+            }else toast('📤 '+step+' 처리됨 — 💾 저장을 눌러야 반영됩니다');
+        }
+        printEstimateDoc(sb,{no:mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase(),client,cats,items,portItems});
+    };
 
     // ★ DB 안내 팝업
     const showSqlGuide=()=>alert(`📋 Supabase 설정 가이드\n\n` +
@@ -2405,12 +2515,15 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         setSaving(true);
         try{
             const now=new Date().toISOString();
+            // 계약금이 처음 입력되면 그날을 제작중(계약금 입금일)으로 기록
+            const sdSave=depositNum>0&&!statusDates['제작중']?{...statusDates,'제작중':now}:statusDates;
+            const stageSave=getStage({sd:sdSave,sc:statusChecked,deposit:depositNum,balancePaid});
             if(mode==='new'){
                 // ── 1. 견적 헤더 저장 ──
                 const _ins={
                     est_no:estNo,
-                    status:'가견적발송',
-                    status_dates:JSON.stringify({'가견적발송':now}),
+                    status:stageSave,
+                    status_dates:JSON.stringify(sdSave),
                     client_name:client.name||'',
                     client_phone:client.phone||'',
                     client_address:client.address||'',
@@ -2505,8 +2618,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     client_name:client.name||'',client_phone:client.phone||'',
                     client_address:client.address||'',client_model:client.model||'',
                     client_caravan:client.caravan||'',client_manager:client.manager||'',manager_phone:client.managerPhone||'',
-                    status:currentStatus,
-                    status_dates:JSON.stringify(statusDates),
+                    status:stageSave,
+                    status_dates:JSON.stringify(sdSave),
                     total_supply:grand,total_vat:vat,total_amount:grandVat,
                     site_photos:JSON.stringify(sitePhotos),
                     payment_status:paymentStatus,
@@ -2607,47 +2720,15 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div></div>
         </div>
 
-        {/* ★ 수정 모드: 진행 상태 관리 */}
-        {mode==='edit'&&(
-            <div className="status-timeline-card">
-                <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
-                    📊 진행 상태 관리 <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
-                </div>
-                {statusOpen
-                    ?<div className="status-strip">
-                        {STATUS_LIST.map(s=>{
-                            const hasDate=!!statusDates[s];
-                            const isChecked=!!statusChecked[s];
-                            const isCurrent=currentStatus===s;
-                            const isDone=STATUS_LIST.indexOf(s)<STATUS_LIST.indexOf(currentStatus)||hasDate||isChecked;
-                            const cls=isChecked?'done':isCurrent?'current':isDone?'done':'pending';
-                            return(
-                                <div key={s} className={`status-cell ${cls}`}>
-                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                        <div className={`status-row-icon ${cls}`} style={{width:28,height:28,fontSize:13}}>{STATUS_ICON[s]}</div>
-                                        <div className={`status-row-label ${cls}`} style={{flex:1,fontSize:12,minWidth:0}}>{s}
-                                            {isCurrent&&!isChecked&&<span style={{fontSize:9,marginLeft:4,background:STATUS_BG[s],color:STATUS_COLOR[s],padding:'1px 6px',borderRadius:10}}>현재</span>}
-                                        </div>
-                                        <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',flexShrink:0}}>
-                                            <input type="checkbox" className="status-check" checked={isChecked} onChange={e=>updStatusChecked(s,e.target.checked)}/>
-                                            <span style={{fontSize:10,color:'var(--muted)'}}>완료</span>
-                                        </label>
-                                    </div>
-                                    <input type="datetime-local" className={`status-dt-input ${hasDate?'has-value':''}`}
-                                        value={statusDates[s]?statusDates[s].slice(0,16):''}
-                                        onChange={e=>updStatusDate(s,e.target.value)} title={s+' 날짜/시간'}/>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    :<div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-                        {STATUS_LIST.map(s=>{
-                            const chk=!!statusChecked[s];const cur=currentStatus===s;
-                            return<span key={s} className="status-badge" style={{background:chk?'#dcfce7':cur?STATUS_BG[s]:'#f1f5f9',color:chk?'#16a34a':cur?STATUS_COLOR[s]:'#94a3b8',fontSize:11,padding:'3px 10px'}}>{chk?'✅':STATUS_ICON[s]} {s}</span>;
-                        })}
-                    </div>}
+        {/* ★ 진행 상태 관리 */}
+        <div className="status-timeline-card">
+            <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
+                📊 진행 상태 관리 <StatusBadge status={currentStatus}/> <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
             </div>
-        )}
+            {statusOpen&&<StatusTrack sd={statusDates} sc={statusChecked} stage={currentStage} hold={onHold} balancePaid={balancePaid} holdDays={holdDays}
+                editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={setBalancePaid}/>}
+            {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🎉 설치 예정일은 일정표에 표시</div>}
+        </div>
 
 
         {/* 카테고리 버튼 */}
@@ -3357,6 +3438,8 @@ function EstimateView({sb,estimateId,onNavigate}){
     const[items,setItems]=useState([]);
     const[loading,setLoading]=useState(true);
     const[pfMap,setPfMap]=useState({}); // 상품명 → 연결된 포트폴리오 ID들
+    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
+    useEffect(()=>{if(sb)loadSettings(sb).then(s=>setHoldDays(s.holdDays));},[sb]);
 
     useEffect(()=>{
         if(!sb||!estimateId){setLoading(false);return;}
@@ -3379,8 +3462,7 @@ function EstimateView({sb,estimateId,onNavigate}){
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     if(!est)return<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">견적서를 찾을 수 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>onNavigate('est-list')}>목록으로</button></div></div>;
 
-    const sd=parseJSON(est.status_dates,{});
-    const sc=parseJSON(est.status_checked,{});
+    const{sd,sc,stage,hold,label:stageLabel}=estStageInfo(est,holdDays);
     const photos=parseJSON(est.site_photos,[]);
     const ports=parseJSON(est.portfolio_items,[]);
     const rowTotal=i=>(Number(i.total_amount)||((Number(i.quantity)||0)*(Number(i.unit_price)||0)+(Number(i.labor_cost)||0)));
@@ -3393,10 +3475,21 @@ function EstimateView({sb,estimateId,onNavigate}){
     const mtel=(est.manager_phone||'').replace(/[^0-9+]/g,'');
     const PAY_ICON={'입금전':'⏳','계약':'📝','완료':'✅'};
 
-    const printView=()=>printEstimateDoc(sb,{no:est.est_no||estimateId.substr(0,8).toUpperCase(),
-        client:{name:est.client_name,phone:est.client_phone,address:est.client_address,manager:est.client_manager,managerPhone:est.manager_phone},
-        cats,items:items.map(i=>({catId:i.cat_id,name:i.name,spec:i.specification,qty:i.quantity,unitPrice:i.unit_price,total:rowTotal(i)})),
-        portItems:ports});
+    const printView=()=>{
+        const step=sendStepOnPrint(stage,sd,sc,hold);
+        if(step&&window.confirm(hold?`⏸ 보류 중인 견적입니다.\n${step}을 다시 발송 처리하시겠습니까?`:`${step} 완료 처리하시겠습니까?`)){
+            const nd={...sd,[step]:new Date().toISOString()};
+            const upd={status:getStage({sd:nd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid}),status_dates:JSON.stringify(nd)};
+            sb.from('estimates').update(upd).eq('id',estimateId).then(({error})=>{
+                if(error){toast('⚠️ 상태 저장 실패: '+error.message);return;}
+                setEst(p=>({...p,...upd}));toast('📤 '+step+' 처리됨');
+            });
+        }
+        printEstimateDoc(sb,{no:est.est_no||estimateId.substr(0,8).toUpperCase(),
+            client:{name:est.client_name,phone:est.client_phone,address:est.client_address,manager:est.client_manager,managerPhone:est.manager_phone},
+            cats,items:items.map(i=>({catId:i.cat_id,name:i.name,spec:i.specification,qty:i.quantity,unitPrice:i.unit_price,total:rowTotal(i)})),
+            portItems:ports});
+    };
     const telLink=(t,label)=>t?<a href={'tel:'+t} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {label}</a>:'-';
     const infoField=([l,v])=><div className="info-field" key={l}><label>{l}</label><div style={{fontSize:14,fontWeight:600,color:'var(--navy)',padding:'4px 0'}}>{v}</div></div>;
 
@@ -3417,7 +3510,7 @@ function EstimateView({sb,estimateId,onNavigate}){
             <div className="est-badge-sep"/>
             <div><div className="est-badge-label">작성일</div><span style={{color:'#fff',fontSize:14,fontWeight:600}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</span></div>
             <div className="est-badge-sep"/>
-            <div><div className="est-badge-label">상태</div><StatusBadge status={est.status||'가견적발송'}/></div>
+            <div><div className="est-badge-label">상태</div><StatusBadge status={stageLabel}/></div>
         </div>
 
         <div className="card"><div className="view-info">
@@ -3482,15 +3575,7 @@ function EstimateView({sb,estimateId,onNavigate}){
 
         <div className="card">
             <div className="card-title">📊 진행 상태</div>
-            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {STATUS_LIST.map(s=>{
-                    const chk=!!sc[s];const cur=(est.status||'가견적발송')===s;
-                    return(<div key={s} className={'status-cell '+(chk?'done':cur?'current':'')} style={{minWidth:150,flex:'1 1 150px'}}>
-                        <div style={{fontSize:12,fontWeight:700,color:chk?'var(--green)':cur?'var(--blue)':'var(--muted)'}}>{chk?'✅':STATUS_ICON[s]} {s}</div>
-                        <div style={{fontSize:11,color:'var(--muted)'}}>{sd[s]?new Date(sd[s]).toLocaleString('ko-KR'):'-'}</div>
-                    </div>);
-                })}
-            </div>
+            <StatusTrack sd={sd} sc={sc} stage={stage} hold={hold} balancePaid={est.balance_paid} holdDays={holdDays}/>
         </div>
 
         {photos.length>0&&<div className="card">
@@ -3514,38 +3599,39 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
     const[loading,setLoading]=useState(true);
     const[statusFilter,setStatusFilter]=useState(null);
     const[payFilter,setPayFilter]=useState(null);
+    const[q,setQ]=useState('');
+    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
 
     useEffect(()=>{
         if(!sb)return;
         (async()=>{setLoading(true);const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});if(data)setEstimates(data);setLoading(false);})();
+        loadSettings(sb).then(s=>setHoldDays(s.holdDays));
     },[sb]);
-
-    const changeStatus=async(id,status)=>{
-        const est=estimates.find(e=>e.id===id);
-        let nd={};try{nd=typeof est?.status_dates==='string'?JSON.parse(est?.status_dates||'{}'):(est?.status_dates||{});}catch{}
-        if(!nd[status])nd[status]=new Date().toISOString();
-        await sb.from('estimates').update({status,status_dates:JSON.stringify(nd)}).eq('id',id);
-        setEstimates(p=>p.map(e=>e.id===id?{...e,status}:e));
-        toast('✅ 상태 변경: '+status);
-    };
+    const labelOf=e=>estStageInfo(e,holdDays).label;
     const del=async id=>{
         if(!confirm('견적서를 삭제하시겠습니까?'))return;
         await sb.from('estimates').delete().eq('id',id);
         setEstimates(p=>p.filter(e=>e.id!==id));toast('🗑 삭제됨');
     };
 
-    const STATUS_DASH=['가견적발송','방문상담 및 실측','견적예정','제작중'];
+    const STATUS_DASH=['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','보류'];
     const PAY_DASH=['입금전','계약'];
-    const sCount=s=>estimates.filter(e=>(e.status||'가견적발송')===s).length;
+    const labels=Object.fromEntries(estimates.map(e=>[e.id,labelOf(e)]));
+    const sCount=s=>estimates.filter(e=>labels[e.id]===s).length;
     const pCount=p=>estimates.filter(e=>(e.payment_status||'입금전')===p).length;
-    const STATUS_DASH_STYLE={'가견적발송':{color:STATUS_COLOR['가견적발송'],bg:STATUS_BG['가견적발송']},'방문상담 및 실측':{color:STATUS_COLOR['방문상담 및 실측'],bg:STATUS_BG['방문상담 및 실측']},'견적예정':{color:STATUS_COLOR['견적예정'],bg:STATUS_BG['견적예정']},'제작중':{color:STATUS_COLOR['제작중'],bg:STATUS_BG['제작중']}};
+    const STATUS_DASH_STYLE=Object.fromEntries(STATUS_DASH.map(s=>[s,{color:STATUS_COLOR[s],bg:STATUS_BG[s]}]));
     const PAY_STYLE={'입금전':{color:'#b91c1c',bg:'#fee2e2'},'계약':{color:'#854d0e',bg:'#fef9c3'}};
 
+    // 검색: 고객명·연락처·주소·견적번호 (검색 중에는 보류 견적도 표시)
+    const qs=q.trim().toLowerCase();const qd=qs.replace(/[^0-9]/g,'');
+    const matchQ=e=>!qs||[e.client_name,e.client_address,e.est_no].some(v=>(v||'').toLowerCase().includes(qs))||(qd.length>=3&&(e.client_phone||'').replace(/[^0-9]/g,'').includes(qd));
     const filtered=estimates.filter(e=>{
-        if(statusFilter&&(e.status||'가견적발송')!==statusFilter)return false;
+        if(statusFilter&&labels[e.id]!==statusFilter)return false;
+        if(!statusFilter&&!qs&&labels[e.id]==='보류')return false; // 보류는 기본으로 숨김
         if(payFilter&&(e.payment_status||'입금전')!==payFilter)return false;
-        return true;
+        return matchQ(e);
     });
+    const hiddenHold=!statusFilter&&!qs?sCount('보류'):0;
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
 
@@ -3553,8 +3639,14 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
 
     return(<div>
         <div className="page-header">
-            <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>카드 클릭으로 필터링 · 상태 변경 가능</p></div>
+            <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>카드 클릭으로 필터링 · 진행 상태는 견적서에서 자동으로 바뀝니다</p></div>
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
+        </div>
+
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:16}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 고객명 · 연락처 · 주소 · 견적번호 검색 (보류 견적 포함)"
+                style={{flex:1,maxWidth:520,border:'1.5px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",outline:'none',background:'#fff'}}/>
+            {q&&<button className="btn btn-outline btn-sm" onClick={()=>setQ('')}>✕ 지우기</button>}
         </div>
 
         <div className="dash-section-title">진행상태</div>
@@ -3566,7 +3658,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
                     onClick={()=>toggleSF(s)}>
                     <div className="dash-card-type">진행상태</div>
                     <div className="dash-card-num">{sCount(s)}</div>
-                    <div className="dash-card-label">{STATUS_ICON[s]} {s}</div>
+                    <div className="dash-card-label">{STATUS_ICON[s]} {STATUS_TEXT[s]||s}</div>
                 </div>);
             })}
         </div>
@@ -3588,7 +3680,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
         {(statusFilter||payFilter)&&(
             <div className="filter-active-bar">
                 <span>🔍 필터:</span>
-                {statusFilter&&<span style={{color:STATUS_COLOR[statusFilter]||'var(--navy)',fontWeight:800}}>{STATUS_ICON[statusFilter]} {statusFilter}</span>}
+                {statusFilter&&<span style={{color:STATUS_COLOR[statusFilter]||'var(--navy)',fontWeight:800}}>{STATUS_ICON[statusFilter]} {STATUS_TEXT[statusFilter]||statusFilter}</span>}
                 {statusFilter&&payFilter&&<span>+</span>}
                 {payFilter&&<span style={{color:PAY_STYLE[payFilter]?.color,fontWeight:800}}>{payFilter}</span>}
                 <span style={{marginLeft:'auto',color:'var(--muted)',fontSize:11}}>{filtered.length}건</span>
@@ -3596,10 +3688,11 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
             </div>
         )}
 
+        {hiddenHold>0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>⏸ 보류 견적 {hiddenHold}건은 숨겨져 있습니다 — 위의 '보류' 카드를 누르거나 검색하면 볼 수 있습니다.</div>}
         {estimates.length===0
             ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.</div></div>
             :filtered.length===0
-            ?<div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">해당 조건의 견적서가 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>{setStatusFilter(null);setPayFilter(null);}}>필터 초기화</button></div></div>
+            ?<div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">해당 조건의 견적서가 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>{setStatusFilter(null);setPayFilter(null);setQ('');}}>필터 초기화</button></div></div>
             :<div className="est-list-wrap" style={{overflowX:'auto'}}><table style={{minWidth:600}}>
                 <thead><tr>
                     <th style={{textAlign:'left'}}>견적번호</th>
@@ -3620,13 +3713,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
                             <td><div className="est-client" title="견적서 보기" style={onView?{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}:{}} onClick={()=>onView&&onView(est.id)}>{est.client_name||'-'}</div></td>
                             <td style={{fontSize:12}}>{est.client_phone?<a href={'tel:'+est.client_phone.replace(/[^0-9+]/g,'')} title="전화 걸기" style={{color:'var(--blue)',textDecoration:'none',fontWeight:600,whiteSpace:'nowrap'}}>📞 {est.client_phone}</a>:<span style={{color:'var(--muted)'}}>-</span>}</td>
                             <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
-                            <td>
-                                <select className="status-select" value={est.status||'가견적발송'}
-                                    onChange={e=>changeStatus(est.id,e.target.value)}
-                                    style={{fontWeight:700,color:STATUS_COLOR[est.status]||'#64748b',background:STATUS_BG[est.status]||'#f1f5f9',border:'1.5px solid #e2e8f0'}}>
-                                    {STATUS_LIST.map(s=><option key={s} value={s}>{STATUS_ICON[s]} {s}</option>)}
-                                </select>
-                            </td>
+                            <td><StatusBadge status={labels[est.id]}/></td>
                             <td><span style={{fontSize:11,fontWeight:700,color:pst.color,background:pst.bg,padding:'2px 8px',borderRadius:10,whiteSpace:'nowrap'}}>{ps==='입금전'?'⏳':ps==='계약'?'📝':'✅'} {ps}</span></td>
                             <td style={{fontSize:12,color:'var(--muted)'}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</td>
                             <td className="tc">
@@ -3645,7 +3732,8 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
 /* ═══════════════════════════════════════
    ★ 일정표
 ═══════════════════════════════════════ */
-const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'견적예정':{label:'견적예정',color:'#6d28d9',bg:'#ede9fe'},'제작중':{label:'설치예정',color:'#92400e',bg:'#fef9c3'}};
+// 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
+const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'설치',color:'#15803d',bg:'#dcfce7'}};
 
 function Schedule({sb,onEditEst}){
     const[view,setView]=useState('biweek');
@@ -3661,20 +3749,14 @@ function Schedule({sb,onEditEst}){
 
     const getEvents=()=>{
         const evts=[];
-        const schedOrder=['방문상담 및 실측','견적예정','제작중']; // 진행 순서
         estimates.forEach(est=>{
-            let dates={};try{dates=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch{}
-            let checked={};try{checked=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch{}
-            // 날짜+완료체크 모두 된 상태 중 가장 마지막(최종) 상태만 표시
-            let lastStatus=null;
-            schedOrder.forEach(status=>{
-                if(dates[status]&&checked[status]===true) lastStatus=status;
+            const{sd,sc}=estStageInfo(est,0);
+            // 예정일이 입력되면 바로 표시 (완료 체크된 일정은 ✓ 표시)
+            Object.keys(SCHED_MAP).forEach(key=>{
+                if(!sd[key])return;
+                const info=SCHED_MAP[key];const d=new Date(sd[key]);
+                if(!isNaN(d))evts.push({date:d,label:(sc[key]?'✓ ':'')+info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
             });
-            if(lastStatus){
-                const info=SCHED_MAP[lastStatus];
-                const d=new Date(dates[lastStatus]);
-                if(!isNaN(d))evts.push({date:d,label:info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
-            }
         });
         return evts;
     };
@@ -3738,7 +3820,7 @@ function Schedule({sb,onEditEst}){
                             <span style={{fontWeight:600,color:'var(--navy)'}}>{v}</span>
                         </div>
                     ))}
-                    <div style={{marginTop:4}}><StatusBadge status={popup.status||'가견적발송'}/></div>
+                    <div style={{marginTop:4}}><StatusBadge status={estStageInfo(popup,0).stage}/></div>
                 </div>
                 <div className="modal-btns">
                     <button className="modal-cancel" onClick={()=>setPopup(null)}>닫기</button>
@@ -3796,7 +3878,7 @@ function SettingsPage({sb}){
     const ta={width:'100%',border:'1.5px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",lineHeight:1.6,outline:'none',resize:'vertical'};
     return(<div style={{maxWidth:860}}>
         <div className="page-header">
-            <div className="page-title-wrap"><h1>🛠 환경설정</h1><p>견적서 인쇄에 들어가는 상호와 공통 문구를 관리합니다</p></div>
+            <div className="page-title-wrap"><h1>🛠 환경설정</h1><p>견적서 인쇄에 들어가는 상호·공통 문구와 진행 상태 설정을 관리합니다</p></div>
             <div className="btn-row"><button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'저장 중...':'💾 저장'}</button></div>
         </div>
         {st._error&&<div className="card" style={{borderColor:'#fca5a5',background:'#fef2f2'}}>
@@ -3808,6 +3890,10 @@ function SettingsPage({sb}){
             <div className="field"><label>상호</label><input value={st.company} onChange={e=>upd('company',e.target.value)} placeholder="LUCKYSTAR CARAVAN"/></div>
             <div className="field"><label>회사 정보 (상호 아래 표시)</label><textarea rows={3} style={ta} value={st.companyInfo} onChange={e=>upd('companyInfo',e.target.value)} placeholder={'주소 · 전화 · 사업자등록번호 등'}/></div>
             <div className="field" style={{maxWidth:200}}><label>견적 유효기간 (일)</label><input type="number" min="0" value={st.validDays} onChange={e=>upd('validDays',e.target.value)}/></div>
+        </div>
+        <div className="card"><div className="card-title">진행 상태</div>
+            <div className="field" style={{maxWidth:260}}><label>자동 보류 기간 (일)</label><input type="number" min="0" value={st.holdDays} onChange={e=>upd('holdDays',e.target.value)}/></div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>가견적·본견적을 발송한 뒤 이 기간 동안 방문 예정·재발송·계약금 입력이 없으면 견적이 자동으로 ⏸ 보류됩니다. 0이면 자동 보류를 쓰지 않습니다.</div>
         </div>
         <div className="card"><div className="card-title">견적서 공통내용 (하단 안내사항)</div>
             <textarea rows={10} style={ta} value={st.notes} onChange={e=>upd('notes',e.target.value)} placeholder={'예)\n· 입금 계좌: OO은행 000-0000-0000 (예금주)\n· 계약금 입금 후 제작이 시작됩니다.\n· 현장 상황에 따라 금액이 변동될 수 있습니다.'}/>

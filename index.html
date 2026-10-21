@@ -647,8 +647,8 @@ function DecimalInput({value,onCommit,min=0.1,style,className}){
         onBlur={()=>setTxt(String(value))}/>);
 }
 // ★ 뒤로가기 지원: 화면 이동을 주소(#/페이지/ID)로 기록
-const ROUTE_PAGES=['mat-list','supplier-list','mat-stock','tool-list','prod-list','portfolio','est-new','est-list','est-edit','est-view','est-checklist','sched-biweek','sched-month','user-approval','settings'];
-const EST_ID_PAGES=['est-edit','est-view','est-checklist'];
+const ROUTE_PAGES=['mat-list','supplier-list','mat-stock','tool-list','prod-list','portfolio','est-new','est-list','est-edit','est-checklist','sched-biweek','sched-month','user-approval','settings'];
+const EST_ID_PAGES=['est-edit','est-checklist'];
 const LIST_KEYS={'mat-list':'mat','prod-list':'prod','tool-list':'tool'};
 const buildHash=(page,estId,cat)=>{
     if(EST_ID_PAGES.includes(page))return '#/'+page+(estId?'/'+estId:'');
@@ -658,7 +658,8 @@ const buildHash=(page,estId,cat)=>{
 };
 const parseHash=(hash,isAdmin)=>{
     if(!hash||hash.indexOf('#/')!==0)return null; // Supabase 로그인 토큰(#access_token…)은 무시
-    const[page,id]=hash.slice(2).split('/');
+    let[page,id]=hash.slice(2).split('/');
+    if(page==='est-view')page='est-edit'; // 견적서 보기 화면은 없어짐 → 예전 주소는 견적 수정으로
     if(!ROUTE_PAGES.includes(page))return null;
     if(page==='user-approval'&&!isAdmin)return null;
     if(EST_ID_PAGES.includes(page))return id?{page,estId:id}:null;
@@ -769,10 +770,11 @@ const estStageInfo = (est,holdDays) => {
     return {sd,sc,stage,hold,label:hold?'보류':stage};
 };
 // 인쇄할 때 물어볼 발송 단계 (없으면 null)
+// 아직 발송 전이면 가견적발송, 가견적을 보낸 뒤(방문 여부 무관)·계약 전이면 본견적발송
 const sendStepOnPrint = (stage,sd,sc,hold) => {
     if(hold) return sd['본견적발송']?'본견적발송':'가견적발송';
     if(stage==='작성중') return '가견적발송';
-    if(stage==='방문상담 및 실측' && sc['방문상담 및 실측']) return '본견적발송';
+    if(!sd['본견적발송'] && (stage==='가견적발송'||stage==='방문상담 및 실측')) return '본견적발송';
     return null;
 };
 const dtLocal = v => { if(!v) return ''; const d=new Date(v); if(isNaN(d)) return String(v).slice(0,16); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -3636,182 +3638,7 @@ function PublicPortfolioPage({sb,ids}){
     </div>);
 }
 
-/* ═══════════════════════════════════════
-   ★ 견적서 보기 (읽기 전용)
-═══════════════════════════════════════ */
-function EstimateView({sb,estimateId,onNavigate}){
-    const[est,setEst]=useState(null);
-    const[cats,setCats]=useState([]);
-    const[items,setItems]=useState([]);
-    const[loading,setLoading]=useState(true);
-    const[pfMap,setPfMap]=useState({}); // 상품명 → 연결된 포트폴리오 ID들
-    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
-    useEffect(()=>{if(sb)loadSettings(sb).then(s=>setHoldDays(s.holdDays));},[sb]);
-
-    useEffect(()=>{
-        if(!sb||!estimateId){setLoading(false);return;}
-        (async()=>{
-            const{data}=await sb.from('estimates').select('*').eq('id',estimateId).single();
-            if(data)setEst(data);
-            const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
-            const mc=cd||[];setCats(mc);
-            if(mc.length>0){
-                const{data:idt}=await sb.from('est_items').select('*').in('cat_id',mc.map(c=>c.id)).order('display_order');
-                setItems(idt||[]);
-            }
-            const{data:pr}=await sb.from('products').select('name,portfolio_ids');
-            const mp={};(pr||[]).forEach(x=>{const ids=parseJSON(x.portfolio_ids,[]);if(ids.length&&!mp[x.name])mp[x.name]=ids;});
-            setPfMap(mp);
-            setLoading(false);
-        })();
-    },[sb,estimateId]);
-
-    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
-    if(!est)return<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">견적서를 찾을 수 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>onNavigate('est-list')}>목록으로</button></div></div>;
-
-    const{sd,sc,stage,hold,label:stageLabel}=estStageInfo(est,holdDays);
-    const photos=parseJSON(est.site_photos,[]);
-    const ports=parseJSON(est.portfolio_items,[]);
-    const rowTotal=i=>(Number(i.total_amount)||((Number(i.quantity)||0)*(Number(i.unit_price)||0)+(Number(i.labor_cost)||0)));
-    const totalMat=items.reduce((s,i)=>s+(Number(i.quantity)||0)*(Number(i.unit_price)||0),0);
-    const totalLab=items.reduce((s,i)=>s+(Number(i.labor_cost)||0),0);
-    const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
-    const dep=Number(est.deposit_amount)||0,mid=Number(est.mid_amount)||0;
-    const bal=est.balance_paid?0:Math.max(0,grandVat-dep-mid);
-    const tel=(est.client_phone||'').replace(/[^0-9+]/g,'');
-    const mtel=(est.manager_phone||'').replace(/[^0-9+]/g,'');
-    const PAY_ICON={'입금전':'⏳','계약':'📝','완료':'✅'};
-
-    const printView=()=>{
-        const step=sendStepOnPrint(stage,sd,sc,hold);
-        if(step&&window.confirm(hold?`⏸ 보류 중인 견적입니다.\n${step}을 다시 발송 처리하시겠습니까?`:`${step} 완료 처리하시겠습니까?`)){
-            const nd={...sd,[step]:new Date().toISOString()};
-            const upd={status:getStage({sd:nd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid}),status_dates:JSON.stringify(nd)};
-            sb.from('estimates').update(upd).eq('id',estimateId).then(({error})=>{
-                if(error){toast('⚠️ 상태 저장 실패: '+error.message);return;}
-                setEst(p=>({...p,...upd}));toast('📤 '+step+' 처리됨');
-            });
-        }
-        printEstimateDoc(sb,{no:est.est_no||estimateId.substr(0,8).toUpperCase(),
-            client:{name:est.client_name,phone:est.client_phone,address:est.client_address,manager:est.client_manager,managerPhone:est.manager_phone},
-            cats,items:items.map(i=>({catId:i.cat_id,name:i.name,spec:i.specification,qty:i.quantity,unitPrice:i.unit_price,total:rowTotal(i)})),
-            portItems:ports});
-    };
-    const telLink=(t,label)=>t?<a href={'tel:'+t} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {label}</a>:'-';
-    const infoField=([l,v])=><div className="info-field" key={l}><label>{l}</label><div style={{fontSize:14,fontWeight:600,color:'var(--navy)',padding:'4px 0'}}>{v}</div></div>;
-
-    return(<div>
-        <div className="view-sticky">
-        <div className="page-header">
-            <div className="page-title-wrap"><h1>📄 견적서 보기</h1><p>{est.client_name||'고객'} · {est.est_no||''}</p></div>
-            <div className="btn-row no-print">
-                <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
-                <button className="btn btn-outline" onClick={()=>onNavigate('est-checklist',estimateId)}>✅ 시공 체크리스트</button>
-                <button className="btn btn-outline" onClick={printView}>🖨 인쇄</button>
-                <button className="btn btn-primary" onClick={()=>onNavigate('est-edit',estimateId)}>✏️ 견적 수정</button>
-            </div>
-        </div>
-
-        <div className="est-badge">
-            <div><div className="est-badge-label">견적번호</div><span className="est-badge-num">{est.est_no||estimateId.substr(0,8).toUpperCase()}</span></div>
-            <div className="est-badge-sep"/>
-            <div><div className="est-badge-label">작성일</div><span style={{color:'#fff',fontSize:14,fontWeight:600}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</span></div>
-            <div className="est-badge-sep"/>
-            <div><div className="est-badge-label">상태</div><StatusBadge status={stageLabel}/></div>
-        </div>
-
-        <div className="card"><div className="view-info">
-            <div className="view-info-client"><div className="card-title">고객 정보</div>
-                <div className="info-grid">
-                    {[['고객명',est.client_name||'-'],['연락처',telLink(tel,est.client_phone)],['주소/지역',est.client_address||'-']].map(infoField)}
-                </div>
-                {est.client_address&&<div style={{marginTop:10,display:'flex',gap:6}} className="no-print">
-                    <button className="nav-btn" onClick={()=>window.open('https://tmap.life/'+encodeURIComponent(est.client_address),'_blank')}>🗺T맵 길안내</button>
-                    <button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(est.client_address),'_blank')}>🗺카카오 길안내</button>
-                </div>}
-            </div>
-            <div className="view-info-mgr"><div className="card-title">👤 담당자 정보</div>
-                <div className="info-grid">
-                    {[['담당자',est.client_manager||'-'],['담당자연락처',telLink(mtel,est.manager_phone)]].map(infoField)}
-                </div>
-            </div>
-        </div></div>
-        </div>
-
-        {cats.length===0&&<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">등록된 견적 품목이 없습니다.</div></div>}
-        {cats.map(cat=>{
-            const ci=items.filter(i=>i.cat_id===cat.id);
-            const sub=ci.reduce((s,i)=>s+rowTotal(i),0);
-            return(<div key={cat.id} className="cat-section">
-                <div className="cat-header"><div className="cat-header-left"><div className="cat-bar"/><span style={{fontSize:16,fontWeight:800,color:'var(--navy)'}}>{cat.name}</span><span className="cat-subtotal">소계 {fmt(sub)}원</span></div></div>
-                <div className="table-wrap"><table>
-                    <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left'}}>품목/부품명</th><th style={{textAlign:'left'}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:115}}>합계(원)</th><th className="tc" style={{width:104}}>포트폴리오</th></tr></thead>
-                    <tbody>
-                        {ci.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
-                        {ci.map(i=><tr key={i.id}>
-                            <td className="tc">{i.image_url?<img src={i.image_url} className="img-prev" alt=""/>:<div className="img-ph" style={{border:'none'}}>·</div>}</td>
-                            <td style={{fontWeight:700}}>{i.name}</td>
-                            <td style={{fontSize:12,color:'var(--muted)'}}>{i.specification||'-'}</td>
-                            <td className="tr">{i.quantity}</td>
-                            <td className="tr">{fmt(i.unit_price)}</td>
-                            <td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(rowTotal(i))}</td>
-                            <td className="tc">{(pfMap[i.name]||[]).length>0&&(()=>{const u=pfUrl(pfMap[i.name]);return(<>
-                                <a className="no-print" href={u} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:'var(--blue)',textDecoration:'none',whiteSpace:'nowrap'}}>🖼 포트폴리오 ↗</a>
-                                <div className="print-only"><QrImg text={u}/><div style={{fontSize:9,color:'#64748b',marginTop:2}}>포트폴리오 보기</div></div>
-                            </>);})()}</td>
-                        </tr>)}
-                    </tbody>
-                </table></div>
-            </div>);
-        })}
-
-        {grand>0&&<div className="grand-card">
-            <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div><div className="grand-vat">공급가액 {fmt(grand)}원 + VAT {fmt(vat)}원</div></div>
-            <div className="grand-breakdown">{[['공급가액',grand,false],['VAT 10%',vat,true]].map(([l,v,g])=><div className="bd-item" key={l}><div className="bd-label">{l}</div><div className="bd-val" style={g?{color:'var(--gold)'}:{}}>{fmt(v)}원</div></div>)}</div>
-        </div>}
-
-        <div className="card" style={{marginTop:16}}>
-            <div className="card-title">💳 결제 정보</div>
-            <div className="pay-grid">
-                <div className="pay-field"><div className="pay-label">결제 상태</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{PAY_ICON[est.payment_status||'입금전']} {est.payment_status||'입금전'}</div></div>
-                <div className="pay-field"><div className="pay-label">계약금</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{fmt(dep)}원</div></div>
-                <div className="pay-field"><div className="pay-label">중도금</div><div style={{fontSize:16,fontWeight:800,textAlign:'right'}}>{fmt(mid)}원</div></div>
-                <div className="pay-field"><div className="pay-label">잔금{est.balance_paid?' (입금 완료)':''}</div><div style={{fontSize:16,fontWeight:800,textAlign:'right',color:est.balance_paid?'var(--green)':'var(--navy)'}}>{fmt(bal)}원</div></div>
-            </div>
-        </div>
-
-        <div className="card">
-            <div className="card-title">📊 진행 상태</div>
-            <StatusTrack sd={sd} sc={sc} stage={stage} hold={hold} balancePaid={est.balance_paid} holdDays={holdDays}/>
-            {extraVisitsOf(est).length>0&&<div style={{marginTop:14}}>
-                <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:6}}>🔧 추가 방문 (AS · 추가 설치)</div>
-                {extraVisitsOf(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return(
-                    <div key={v.id} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',fontSize:13,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
-                        <span className="status-badge" style={{background:tp.bg,color:tp.color}}>{tp.icon} {v.type}</span>
-                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}{v.dur?<span style={{fontWeight:500,color:'var(--muted)'}}> · ⏱ {durText(v.dur)}</span>:''}</span>
-                        <span style={{flex:1,color:'var(--text)'}}>{v.reason||'-'}</span>
-                        <span style={{fontSize:12,fontWeight:700,color:v.done?'var(--green)':'#b45309'}}>{v.done?'✅ 방문함':'⏳ 예정'}</span>
-                    </div>);})}
-            </div>}
-        </div>
-
-        {photos.length>0&&<div className="card">
-            <div className="card-title">📸 현장사진</div>
-            <div className="site-photos-grid">{photos.map((p,i)=><a key={i} href={p} target="_blank" rel="noreferrer" className="site-photo-item"><img src={p} className="site-photo-img" alt={'현장 '+(i+1)}/></a>)}</div>
-        </div>}
-
-        {ports.length>0&&<div className="card">
-            <div className="card-title">🖼 포트폴리오</div>
-            <div className="est-port-grid">{ports.map((p,i)=><div key={i} className="est-port-item">
-                {p.image_url?<img src={p.image_url} className="est-port-img" alt=""/>:<div className="est-port-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#94a3b8'}}>🖼</div>}
-                <div className="est-port-info">{p.title}</div></div>)}</div>
-        </div>}
-
-        <div style={{textAlign:'center',marginTop:18,fontSize:11,color:'#94a3b8',paddingBottom:40}}>★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | {new Date().toLocaleDateString('ko-KR')} 기준</div>
-    </div>);
-}
-
-function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
+function EstimateList({sb,onEdit,onNew,onChecklist}){
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
     const[statusFilter,setStatusFilter]=useState(null);
@@ -3930,7 +3757,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
                         const pst=PAY_STYLE[ps]||{};
                         return(<tr key={est.id}>
                             <td><div className="est-no">{est.est_no||est.id?.substr(0,8).toUpperCase()}</div></td>
-                            <td><div className="est-client" title="견적서 보기" style={onView?{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}:{}} onClick={()=>onView&&onView(est.id)}>{est.client_name||'-'}</div></td>
+                            <td><div className="est-client" title="견적서 수정" style={{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}} onClick={()=>onEdit(est.id)}>{est.client_name||'-'}</div></td>
                             <td style={{fontSize:12}}>{est.client_phone?<a href={'tel:'+est.client_phone.replace(/[^0-9+]/g,'')} title="전화 걸기" style={{color:'var(--blue)',textDecoration:'none',fontWeight:600,whiteSpace:'nowrap'}}>📞 {est.client_phone}</a>:<span style={{color:'var(--muted)'}}>-</span>}</td>
                             <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
                             <td><StatusBadge status={labels[est.id]}/>
@@ -3956,7 +3783,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
 // 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
 const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'설치',color:'#15803d',bg:'#dcfce7'}};
 
-function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
+function Schedule({sb,view,onSetView,onEditEst}){
     const[base,setBase]=useState(new Date());
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
@@ -4097,7 +3924,6 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                 })()}
                 <div className="modal-btns">
                     <button className="modal-cancel" onClick={()=>setPopup(null)}>닫기</button>
-                    {onViewEst&&<button className="modal-cancel" style={{background:'#e0e7ff',color:'var(--blue)',fontWeight:700}} onClick={()=>{setPopup(null);onViewEst(popup.id);}}>📄 견적서 보기</button>}
                     <button className="modal-ok" onClick={()=>{setPopup(null);onEditEst(popup.id);}}>✏️ 견적서 수정</button>
                 </div>
             </div>
@@ -4475,15 +4301,14 @@ function App(){
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
             case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
-            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)} onView={id=>navigate('est-view',id)}/>;
+            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
             case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
-            case 'est-view':return<EstimateView key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'est-checklist':return<ChecklistPage key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'sched-biweek':
-            case 'sched-month':return<Schedule sb={sb} view={page==='sched-month'?'month':'biweek'} onSetView={v=>navigate(v==='month'?'sched-month':'sched-biweek')} onEditEst={id=>navigate('est-edit',id)} onViewEst={id=>navigate('est-view',id)}/>
+            case 'sched-month':return<Schedule sb={sb} view={page==='sched-month'?'month':'biweek'} onSetView={v=>navigate(v==='month'?'sched-month':'sched-biweek')} onEditEst={id=>navigate('est-edit',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
             case 'settings':return<SettingsPage sb={sb}/>;
-            default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)} onView={id=>navigate('est-view',id)}/>;
+            default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
         }
     };
 

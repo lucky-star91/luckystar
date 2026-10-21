@@ -2237,13 +2237,17 @@ const WEEK=['일','월','화','수','목','금','토'];
 // t분에 시작하는 방문이 그날 일정들과 (이동 시간 포함) 겹치지 않는지
 const slotOk=(t,evs,st)=>{const visit=Number(st.visitMin)||60;return evs.every(e=>{const s=e.start.getHours()*60+e.start.getMinutes(),en=s+e.dur,tr=travelMin(e.dist,st.bufferMin);return t+visit+tr<=s||t>=en+tr;});};
 // 추천 계산: events [{start:Date,dur,kind,name,dist}] → 날짜별 {date,events,nearest,kind:'near'|'none'|'far',slots:[분]}
-const planVisitDays=(events,st,now=new Date())=>{
+// start부터 count일 (지난 날짜는 제외, 오늘은 지금 이후 시간만)
+const planVisitDays=(events,st,now=new Date(),start=null,count=null)=>{
     const visit=Number(st.visitMin)||60,ws=hm2min(st.workStart),we=hm2min(st.workEnd);
+    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const s0=start||today;
     const days=[];
-    for(let i=0;i<(Number(st.planDays)||14);i++){
-        const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+i);
+    for(let i=0;i<(count||Number(st.planDays)||14);i++){
+        const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+i);
+        if(d<today)continue;
         const evs=events.filter(e=>ymd(e.start)===ymd(d)).sort((a,b)=>a.start-b.start);
-        const earliest=i===0?Math.ceil((now.getHours()*60+now.getMinutes()+30)/30)*30:ws;
+        const earliest=ymd(d)===ymd(today)?Math.ceil((now.getHours()*60+now.getMinutes()+30)/30)*30:ws;
         const slots=[];
         for(let t=Math.max(ws,earliest);t+visit<=we;t+=30)if(slotOk(t,evs,st))slots.push(t);
         const nearest=evs.length?Math.min(...evs.map(e=>e.dist)):Infinity;
@@ -2345,7 +2349,8 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
     const[open,setOpen]=useState(false);
     const[busy,setBusy]=useState(false);
     const[err,setErr]=useState('');
-    const[data,setData]=useState(null); // {st,target,days}
+    const[data,setData]=useState(null); // {st,events}
+    const[weekOff,setWeekOff]=useState(0); // 0 = 이번 주 (월~일)
 
     const load=async()=>{
         setBusy(true);setErr('');
@@ -2355,7 +2360,7 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
             const target=await geocode(st.kakaoKey,address);
             if(!target)throw new Error('주소를 지도에서 찾지 못했습니다: '+address);
             const{data:ests}=await sb.from('estimates').select('*');
-            const now=new Date();const until=new Date(now.getFullYear(),now.getMonth(),now.getDate()+(Number(st.planDays)||14));
+            const now=new Date();const until=new Date(8640000000000000); // 주 단위로 넘겨 보므로 앞으로의 일정은 모두 불러옴
             const raw=[];
             (ests||[]).forEach(e=>{
                 if(e.id===estimateId)return;
@@ -2387,12 +2392,15 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
     const dayLabel=d=>`${d.getMonth()+1}/${d.getDate()}(${WEEK[d.getDay()]})`;
     // 이번 방문의 소요 시간을 반영해 빈 시간 계산 (소요 시간을 바꾸면 바로 다시 계산)
     const stEff=data?(Number(dur)>0?{...data.st,visitMin:Number(dur)}:data.st):null;
-    const days=data?planVisitDays(data.events,stEff):[];
+    // 주 단위 (월~일)
+    const now=new Date();const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-((now.getDay()+6)%7)+weekOff*7);
+    const sun=new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+6);
+    const days=data?planVisitDays(data.events,stEff,now,mon,7):[];
 
     // 선택한 날짜 경고
     let warn=null;
     if(data&&value){
-        const v=new Date(value);const day=days.find(x=>ymd(x.date)===ymd(v));
+        const v=new Date(value);const day=isNaN(v)?null:planVisitDays(data.events,stEff,now,new Date(v.getFullYear(),v.getMonth(),v.getDate()),1)[0];
         if(day&&day.events.length){
             const t=v.getHours()*60+v.getMinutes();
             const clash=!isNaN(t)&&!slotOk(t,day.events,stEff);
@@ -2408,26 +2416,27 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
             <span style={{fontSize:12,color:'var(--text)'}}>{day.events.length?`가장 가까운 예약 ${km(day.nearest)} · 예약 ${day.events.length}건`:'예약 없음'}</span>
         </div>
         {day.events.length>0&&<div style={{fontSize:12,color:'#334155',margin:'4px 0'}}>{day.events.map((e,i)=><span key={i} style={{marginRight:10,whiteSpace:'nowrap'}}>{min2hm(e.start.getHours()*60+e.start.getMinutes())} {e.kind} {e.name} ({km(e.dist)})</span>)}</div>}
-        {tone!=='far'&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:4}}>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:4}}>
             {day.slots.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>빈 시간 없음</span>
             :day.slots.map(t=><button key={t} className="btn btn-outline btn-xs" onClick={()=>pick(day.date,t)}>{min2hm(t)}</button>)}
-        </div>}
+        </div>
     </div>);
-
-    const near=data?days.filter(d=>d.kind==='near'&&d.slots.length).sort((a,b)=>a.nearest-b.nearest):[];
-    const free=data?days.filter(d=>d.kind==='none'&&d.slots.length).slice(0,3):[];
-    const far=data?days.filter(d=>d.kind==='far'):[];
 
     return(<div style={{marginTop:10}}>
         <button className="btn btn-outline btn-sm" disabled={busy} onClick={()=>{setOpen(o=>!o);if(!data&&!busy)load();}}>{busy?'📍 계산 중...':open?'📍 방문 추천 닫기':'📍 방문 추천 날짜 찾기'}</button>
         {err&&<div style={{marginTop:8,fontSize:12,color:'var(--red)',fontWeight:700}}>⚠ {err}</div>}
         {warn}
         {open&&data&&<div style={{marginTop:10,display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{fontSize:12,color:'var(--muted)'}}>앞으로 {stEff.planDays}일 · 방문 {stEff.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {stEff.bufferMin}분) · {stEff.nearKm}km 이내를 가까운 예약으로 봄 · 시간을 누르면 방문 예정에 입력됩니다</div>
-            {near.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#15803d'}}>⭐ 가까운 곳에 예약이 있는 날</div>{near.map(d=><DayRow key={ymd(d.date)} day={d} tone="near"/>)}</>}
-            {free.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'var(--navy)'}}>○ 예약이 없는 날</div>{free.map(d=><DayRow key={ymd(d.date)} day={d} tone="none"/>)}</>}
-            {far.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#b45309'}}>⚠ 피하면 좋은 날 (멀리 떨어진 예약)</div>{far.map(d=><DayRow key={ymd(d.date)} day={d} tone="far"/>)}</>}
-            {!near.length&&!free.length&&!far.length&&<div style={{fontSize:12,color:'var(--muted)'}}>추천할 날짜가 없습니다.</div>}
+            <div style={{fontSize:12,color:'var(--muted)'}}>방문 {stEff.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {stEff.bufferMin}분) · 시간을 누르면 방문 예정에 입력됩니다</div>
+            <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                <button className="btn btn-outline btn-sm" disabled={weekOff<=0} onClick={()=>setWeekOff(w=>w-1)}>◀ 이전 주</button>
+                <b style={{fontSize:14,minWidth:150,textAlign:'center'}}>{dayLabel(mon)} ~ {dayLabel(sun)}</b>
+                <button className="btn btn-outline btn-sm" onClick={()=>setWeekOff(w=>w+1)}>다음 주 ▶</button>
+                {weekOff>0&&<button className="btn btn-outline btn-sm" onClick={()=>setWeekOff(0)}>이번 주</button>}
+                <span style={{fontSize:11,color:'var(--muted)',marginLeft:6}}>⭐ {stEff.nearKm}km 이내 예약 있음 · ○ 예약 없음 · ⚠ 먼 예약 있음(피하면 좋은 날)</span>
+            </div>
+            {days.map(d=><DayRow key={ymd(d.date)} day={d} tone={d.kind}/>)}
+            {!days.length&&<div style={{fontSize:12,color:'var(--muted)'}}>표시할 날짜가 없습니다.</div>}
         </div>}
     </div>);
 }
@@ -4162,7 +4171,7 @@ function SettingsPage({sb}){
         </div>
         <div className="card"><div className="card-title">📍 방문 예약 추천</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'0 14px'}}>
-                {[['visitMin','방문 소요 시간 (분)','number'],['installMin','설치 소요 시간 (분)','number'],['bufferMin','최소 이동 여유 (분)','number'],['workStart','방문 가능 시작','time'],['workEnd','방문 가능 종료','time'],['planDays','추천 기간 (일)','number'],['nearKm','가까운 거리 기준 (km)','number']].map(([k,l,t])=>
+                {[['visitMin','방문 소요 시간 (분)','number'],['installMin','설치 소요 시간 (분)','number'],['bufferMin','최소 이동 여유 (분)','number'],['workStart','방문 가능 시작','time'],['workEnd','방문 가능 종료','time'],['nearKm','가까운 거리 기준 (km)','number']].map(([k,l,t])=>
                     <div className="field" key={k}><label>{l}</label><input type={t} min="0" value={st[k]} onChange={e=>upd(k,e.target.value)}/></div>)}
             </div>
             <div className="field"><label>카카오 JavaScript 키</label><input value={st.kakaoKey} onChange={e=>upd('kakaoKey',e.target.value)}/></div>

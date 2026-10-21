@@ -2244,7 +2244,8 @@ const openTmap=async address=>{
     if(!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){alert('티맵 길안내는 휴대폰에서만 실행됩니다.\nPC에서는 카카오 길안내를 이용하세요.');return;}
     let c=null;try{c=await geocode(SETTINGS_DEFAULT.kakaoKey,address);}catch(e){}
     const n=encodeURIComponent(address);
-    window.location.href=c?`tmap://route?rGoName=${n}&rGoX=${c.lng}&rGoY=${c.lat}`:`tmap://search?name=${n}`;
+    // 현재 티맵 앱은 goalname/goalx/goaly(목적지 이름·경도·위도)를 읽음 · 예전 버전용 rGo* 도 함께 전달
+    window.location.href=c?`tmap://route?goalname=${n}&goalx=${c.lng}&goaly=${c.lat}&rGoName=${n}&rGoX=${c.lng}&rGoY=${c.lat}`:`tmap://search?name=${n}`;
     // 앱이 없으면 화면이 그대로 남아 있음 → 설치 안내
     setTimeout(()=>{if(!document.hidden&&confirm('티맵 앱이 열리지 않았습니다. 티맵 설치 페이지로 이동할까요?'))
         window.location.href=/Android/i.test(navigator.userAgent)?'https://play.google.com/store/apps/details?id=com.skt.tmap.ku':'https://apps.apple.com/kr/app/id431589174';},2000);
@@ -2498,9 +2499,13 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const[showPortPick,setShowPortPick]=useState(false);
 
     useEffect(()=>{if(sb)loadSettings(sb).then(s=>setHoldDays(s.holdDays));},[sb]);
-    // 담당자 선택 목록: 로그인한 적 있는 모든 직원 (user_profiles)
+    // 담당자 선택 목록: 사용자 관리에서 승인된 직원(+관리자)의 프로필만
     const[staff,setStaff]=useState([]);
-    useEffect(()=>{if(sb)sb.from('user_profiles').select('*').order('name').then(({data})=>setStaff((data||[]).filter(p=>p.name)));},[sb]);
+    useEffect(()=>{if(!sb)return;(async()=>{
+        const[{data:profs},{data:ok}]=await Promise.all([sb.from('user_profiles').select('*').order('name'),sb.from('approved_users').select('email')]);
+        const allowed=new Set([ADMIN_EMAIL,...(ok||[]).map(a=>a.email)].map(e=>(e||'').toLowerCase()));
+        setStaff((profs||[]).filter(p=>p.name&&allowed.has((p.email||'').toLowerCase())));
+    })();},[sb]);
     // 새 견적: 자동 입력된 담당자의 연락처가 비어 있으면 직원 목록에서 채움
     useEffect(()=>{if(mode==='new'&&staff.length)setClient(c=>{if(!c.manager||c.managerPhone)return c;const p=staff.find(s=>s.name===c.manager);return p&&p.phone?{...c,managerPhone:p.phone}:c;});},[staff,client.manager]);
     const pickManager=name=>{const p=staff.find(s=>s.name===name);setClient(c=>({...c,manager:name,managerPhone:p?(p.phone||''):c.managerPhone}));};

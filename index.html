@@ -684,13 +684,13 @@ const prodTds=prods=>[
     <td key="pn" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
 ];
 const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories DISABLE ROW LEVEL SECURITY;\nALTER TABLE tools DISABLE ROW LEVEL SECURITY;";
-const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';";
+const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS extra_visits TEXT DEFAULT '[]';";
 // 공구/부자재 컬럼이 아직 없을 때: 해당 필드만 빼고 재시도 (나머지 데이터는 정상 저장)
 const prepSafe = async (run, payload) => {
     let r = await run(payload);
     const p = {...payload}; const dropped = [];
-    for(let n=0; n<3 && r.error; n++){
-        const col = ['est_prep','prep_items','portfolio_ids'].find(c => c in p && (r.error.message||'').indexOf(c) >= 0);
+    for(let n=0; n<4 && r.error; n++){
+        const col = ['est_prep','prep_items','portfolio_ids','extra_visits'].find(c => c in p && (r.error.message||'').indexOf(c) >= 0);
         if(!col) break;
         delete p[col]; dropped.push(col);
         r = await run(p);
@@ -730,6 +730,10 @@ const STATUS_COLOR = {'작성중':'#475569','가견적발송':'#1e6fd9','방문�
 const STATUS_BG    = {'작성중':'#f1f5f9','가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','본견적발송':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7','완료':'#bbf7d0','보류':'#e2e8f0'};
 const STATUS_ICON  = {'작성중':'📝','가견적발송':'📤','방문상담 및 실측':'🏠','본견적발송':'📨','제작중':'🔧','설치완료':'🎉','완료':'✔','보류':'⏸'};
 const STATUS_TEXT  = {'설치완료':'설치완료 · 잔금대기'};
+// ★ 추가 방문 (진행 단계와 별개: AS · 추가 설치 등) — estimates.extra_visits = [{id,type,at,reason,done}]
+const EXTRA_TYPES = {'AS':{icon:'🛠',color:'#7c3aed',bg:'#ede9fe'},'추가설치':{icon:'➕',color:'#0e7490',bg:'#cffafe'},'기타':{icon:'📌',color:'#475569',bg:'#e2e8f0'}};
+const extraVisitsOf = est => parseJSON(est&&est.extra_visits,[]);
+const pendingExtras = est => extraVisitsOf(est).filter(v=>v.at&&!v.done);
 
 const StatusBadge = ({status}) => (
     <span className="status-badge" style={{background:STATUS_BG[status]||'#f1f5f9',color:STATUS_COLOR[status]||'#64748b'}}>
@@ -2360,6 +2364,11 @@ function VisitPlanner({sb,estimateId,address,value,onPick}){
                     if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
                     raw.push({start:d,dur,kind,name:e.client_name||'고객',address:e.client_address||''});
                 });
+                pendingExtras(e).forEach(v=>{
+                    const d=new Date(v.at);
+                    if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
+                    raw.push({start:d,dur:Number(st.visitMin)||60,kind:v.type,name:e.client_name||'고객',address:e.client_address||''});
+                });
             });
             const events=[];
             for(const ev of raw){const c=await geocode(st.kakaoKey,ev.address);events.push({...ev,dist:c?distKm(target,c):999,noGeo:!c});}
@@ -2422,7 +2431,12 @@ function VisitPlanner({sb,estimateId,address,value,onPick}){
 function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,userProfile}){
     const[cats,setCats]=useState([]);  // {id,name,order}  — new: uid(), edit: DB uuid
     const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
-    const[client,setClient]=useState({name:'',phone:'',address:'',manager:'',managerPhone:''});
+    // 새 견적: '이 고객으로 새 견적 만들기'로 넘어온 고객 정보가 있으면 채워서 시작
+    const[client,setClient]=useState(()=>{
+        const blank={name:'',phone:'',address:'',manager:'',managerPhone:''};
+        if(mode!=='new')return blank;
+        try{const c=JSON.parse(sessionStorage.getItem('newEstClient')||'null');sessionStorage.removeItem('newEstClient');return c?{...blank,...c}:blank;}catch(e){return blank;}
+    });
     const[statusDates,setStatusDates]=useState({});
     const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
     const[loading,setLoading]=useState(mode==='edit');
@@ -2437,6 +2451,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const[balancePaid,setBalancePaid]=useState(false);
     const[statusChecked,setStatusChecked]=useState({}); // 진행상태 완료체크
     const[portItems,setPortItems]=useState([]);   // 첨부 포트폴리오
+    const[extraVisits,setExtraVisits]=useState([]); // 추가 방문 (AS · 추가 설치)
     const[estMaterials,setEstMaterials]=useState([]); // 소요 자재
     const[estPrep,setEstPrep]=useState([]); // 공구·부자재
     // ★ 수정 모드: 화면 변경은 저장 버튼을 누를 때만 DB에 반영 (불러온 시점의 ID를 기억해 두었다가 저장 시 비교)
@@ -2483,6 +2498,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 sc=normStatusObj(sc);setStatusChecked(sc);
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
                 setPortItems(pi);
+                setExtraVisits(extraVisitsOf(est));
                 let em=[];try{em=typeof est.est_materials==='string'?JSON.parse(est.est_materials||'[]'):(est.est_materials||[]);}catch{}
                 const _ep=parseJSON(est.est_prep,[]);origChecked.current=sc;setEstMaterials(em);setEstPrep(_ep);}
             const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
@@ -2682,6 +2698,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     balance_paid:balancePaid,
                     status_checked:JSON.stringify(statusChecked),
                     portfolio_items:JSON.stringify(portItems),
+                    extra_visits:JSON.stringify(extraVisits),
                     est_materials:JSON.stringify(estMaterials),
                     est_prep:JSON.stringify(estPrep)
                 };
@@ -2769,6 +2786,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     balance_paid:balancePaid,
                     status_checked:JSON.stringify(statusChecked),
                     portfolio_items:JSON.stringify(portItems),
+                    extra_visits:JSON.stringify(extraVisits),
                     est_materials:JSON.stringify(estMaterials.map(remap)),
                     updated_at:now,
                     est_prep:JSON.stringify(estPrep.map(remap))
@@ -2869,6 +2887,38 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={setBalancePaid}/>}
             {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🎉 설치 예정일은 일정표에 표시</div>}
             {statusOpen&&!statusChecked['방문상담 및 실측']&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={statusDates['방문상담 및 실측']} onPick={v=>updStatusDate('방문상담 및 실측',v)}/>}
+        </div>
+
+        {/* ★ 추가 방문 (AS · 추가 설치) — 진행 상태와 별개, 💾 저장 시 반영 */}
+        <div className="card">
+            <div className="card-title">🔧 추가 방문 (AS · 추가 설치)</div>
+            {extraVisits.length===0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>견적이 완료된 뒤에도 AS나 추가 설치로 방문할 일정을 등록합니다. 일정표와 방문 추천에 함께 반영됩니다.</div>}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {extraVisits.map(v=>{
+                    const upd=(k,val)=>setExtraVisits(p=>p.map(x=>x.id===v.id?{...x,[k]:val}:x));
+                    const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];
+                    return(<div key={v.id} style={{border:'1.5px solid '+(v.done?'#bbf7d0':tp.bg),background:v.done?'#f0fdf4':'#fff',borderRadius:10,padding:'8px 10px'}}>
+                        <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                            <select className="status-dt-input" value={v.type} onChange={e=>upd('type',e.target.value)} style={{fontWeight:700,color:tp.color,background:tp.bg,width:'auto'}}>
+                                {Object.keys(EXTRA_TYPES).map(t=><option key={t} value={t}>{EXTRA_TYPES[t].icon} {t}</option>)}</select>
+                            <input type="datetime-local" className={`status-dt-input ${v.at?'has-value':''}`} style={{width:'auto'}} value={dtLocal(v.at)} onChange={e=>upd('at',e.target.value)} title="방문 예정 일시"/>
+                            <input className="status-dt-input" style={{flex:1,minWidth:180}} value={v.reason||''} onChange={e=>upd('reason',e.target.value)} placeholder="방문 사유 (예: 문짝 휨 교체, 선반 2개 추가)"/>
+                            <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,cursor:'pointer'}}><input type="checkbox" className="status-check" checked={!!v.done} onChange={e=>upd('done',e.target.checked)}/>방문함</label>
+                            <button className="del-btn" title="삭제" onClick={()=>{if(confirm('이 추가 방문을 삭제할까요?'))setExtraVisits(p=>p.filter(x=>x.id!==v.id));}}>✕</button>
+                        </div>
+                        {!v.done&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={v.at} onPick={val=>upd('at',val)}/>}
+                    </div>);
+                })}
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginTop:10}}>
+                <button className="btn btn-outline btn-sm" onClick={()=>setExtraVisits(p=>[...p,{id:uid(),type:'AS',at:'',reason:'',done:false}])}>＋ 추가 방문</button>
+                {mode==='edit'&&<button className="btn btn-outline btn-sm" onClick={()=>{
+                    if(!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이 고객 정보로 새 견적을 만들까요?'))return;
+                    sessionStorage.setItem('newEstClient',JSON.stringify({name:client.name,phone:client.phone,address:client.address,manager:client.manager,managerPhone:client.managerPhone}));
+                    onNavigate('est-new');
+                }}>📋 이 고객으로 새 견적 만들기</button>}
+                {mode==='edit'&&<span style={{fontSize:11,color:'var(--muted)'}}>비용이 드는 추가 설치는 새 견적으로 만들면 금액·진행 상태를 따로 관리할 수 있습니다.</span>}
+            </div>
         </div>
 
 
@@ -3717,6 +3767,16 @@ function EstimateView({sb,estimateId,onNavigate}){
         <div className="card">
             <div className="card-title">📊 진행 상태</div>
             <StatusTrack sd={sd} sc={sc} stage={stage} hold={hold} balancePaid={est.balance_paid} holdDays={holdDays}/>
+            {extraVisitsOf(est).length>0&&<div style={{marginTop:14}}>
+                <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',marginBottom:6}}>🔧 추가 방문 (AS · 추가 설치)</div>
+                {extraVisitsOf(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return(
+                    <div key={v.id} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',fontSize:13,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+                        <span className="status-badge" style={{background:tp.bg,color:tp.color}}>{tp.icon} {v.type}</span>
+                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}</span>
+                        <span style={{flex:1,color:'var(--text)'}}>{v.reason||'-'}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:v.done?'var(--green)':'#b45309'}}>{v.done?'✅ 방문함':'⏳ 예정'}</span>
+                    </div>);})}
+            </div>}
         </div>
 
         {photos.length>0&&<div className="card">
@@ -3755,19 +3815,22 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
         setEstimates(p=>p.filter(e=>e.id!==id));toast('🗑 삭제됨');
     };
 
-    const STATUS_DASH=['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','보류'];
+    const STATUS_DASH=['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','보류','추가방문'];
     const PAY_DASH=['입금전','계약'];
     const labels=Object.fromEntries(estimates.map(e=>[e.id,labelOf(e)]));
-    const sCount=s=>estimates.filter(e=>labels[e.id]===s).length;
+    const hasExtra=e=>pendingExtras(e).length>0;
+    const sCount=s=>s==='추가방문'?estimates.filter(hasExtra).length:estimates.filter(e=>labels[e.id]===s).length;
     const pCount=p=>estimates.filter(e=>(e.payment_status||'입금전')===p).length;
-    const STATUS_DASH_STYLE=Object.fromEntries(STATUS_DASH.map(s=>[s,{color:STATUS_COLOR[s],bg:STATUS_BG[s]}]));
+    const STATUS_DASH_STYLE={...Object.fromEntries(STATUS_DASH.map(s=>[s,{color:STATUS_COLOR[s],bg:STATUS_BG[s]}])),'추가방문':{color:EXTRA_TYPES['AS'].color,bg:EXTRA_TYPES['AS'].bg}};
+    const DASH_TEXT={...STATUS_TEXT,'추가방문':'추가 방문 예정'};const DASH_ICON={...STATUS_ICON,'추가방문':'🔧'};
     const PAY_STYLE={'입금전':{color:'#b91c1c',bg:'#fee2e2'},'계약':{color:'#854d0e',bg:'#fef9c3'}};
 
     // 검색: 고객명·연락처·주소·견적번호 (검색 중에는 보류 견적도 표시)
     const qs=q.trim().toLowerCase();const qd=qs.replace(/[^0-9]/g,'');
     const matchQ=e=>!qs||[e.client_name,e.client_address,e.est_no].some(v=>(v||'').toLowerCase().includes(qs))||(qd.length>=3&&(e.client_phone||'').replace(/[^0-9]/g,'').includes(qd));
     const filtered=estimates.filter(e=>{
-        if(statusFilter&&labels[e.id]!==statusFilter)return false;
+        if(statusFilter==='추가방문'){if(!hasExtra(e))return false;}
+        else if(statusFilter&&labels[e.id]!==statusFilter)return false;
         if(!statusFilter&&!qs&&labels[e.id]==='보류')return false; // 보류는 기본으로 숨김
         if(payFilter&&(e.payment_status||'입금전')!==payFilter)return false;
         return matchQ(e);
@@ -3799,7 +3862,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
                     onClick={()=>toggleSF(s)}>
                     <div className="dash-card-type">진행상태</div>
                     <div className="dash-card-num">{sCount(s)}</div>
-                    <div className="dash-card-label">{STATUS_ICON[s]} {STATUS_TEXT[s]||s}</div>
+                    <div className="dash-card-label">{DASH_ICON[s]} {DASH_TEXT[s]||s}</div>
                 </div>);
             })}
         </div>
@@ -3821,7 +3884,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
         {(statusFilter||payFilter)&&(
             <div className="filter-active-bar">
                 <span>🔍 필터:</span>
-                {statusFilter&&<span style={{color:STATUS_COLOR[statusFilter]||'var(--navy)',fontWeight:800}}>{STATUS_ICON[statusFilter]} {STATUS_TEXT[statusFilter]||statusFilter}</span>}
+                {statusFilter&&<span style={{color:STATUS_DASH_STYLE[statusFilter]?.color||'var(--navy)',fontWeight:800}}>{DASH_ICON[statusFilter]} {DASH_TEXT[statusFilter]||statusFilter}</span>}
                 {statusFilter&&payFilter&&<span>+</span>}
                 {payFilter&&<span style={{color:PAY_STYLE[payFilter]?.color,fontWeight:800}}>{payFilter}</span>}
                 <span style={{marginLeft:'auto',color:'var(--muted)',fontSize:11}}>{filtered.length}건</span>
@@ -3854,7 +3917,8 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
                             <td><div className="est-client" title="견적서 보기" style={onView?{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}:{}} onClick={()=>onView&&onView(est.id)}>{est.client_name||'-'}</div></td>
                             <td style={{fontSize:12}}>{est.client_phone?<a href={'tel:'+est.client_phone.replace(/[^0-9+]/g,'')} title="전화 걸기" style={{color:'var(--blue)',textDecoration:'none',fontWeight:600,whiteSpace:'nowrap'}}>📞 {est.client_phone}</a>:<span style={{color:'var(--muted)'}}>-</span>}</td>
                             <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
-                            <td><StatusBadge status={labels[est.id]}/></td>
+                            <td><StatusBadge status={labels[est.id]}/>
+                                {pendingExtras(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return<span key={v.id} className="status-badge" title={v.reason||''} style={{marginLeft:4,background:tp.bg,color:tp.color}}>{tp.icon} {v.type} {fmtDT(v.at).split(' ').slice(0,2).join(' ')}</span>;})}</td>
                             <td><span style={{fontSize:11,fontWeight:700,color:pst.color,background:pst.bg,padding:'2px 8px',borderRadius:10,whiteSpace:'nowrap'}}>{ps==='입금전'?'⏳':ps==='계약'?'📝':'✅'} {ps}</span></td>
                             <td style={{fontSize:12,color:'var(--muted)'}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</td>
                             <td className="tc">
@@ -3882,6 +3946,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
     const[loading,setLoading]=useState(true);
     const[popup,setPopup]=useState(null);
     const[popItems,setPopItems]=useState(null); // 팝업 견적의 상품 목록 (null = 불러오는 중)
+    const[popExtra,setPopExtra]=useState(null); // 추가 방문 일정을 눌렀을 때 그 방문 정보
 
     // 팝업을 열면 해당 견적의 상품 목록을 불러옴
     useEffect(()=>{
@@ -3911,6 +3976,11 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                 const info=SCHED_MAP[key];const d=new Date(sd[key]);
                 if(!isNaN(d))evts.push({date:d,label:info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
             });
+            // 추가 방문 (AS · 추가 설치) — 방문함 체크 전까지 표시
+            pendingExtras(est).forEach(v=>{
+                const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];const d=new Date(v.at);
+                if(!isNaN(d))evts.push({date:d,label:tp.icon+' '+v.type,color:tp.color,bg:tp.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est,extra:v});
+            });
         });
         return evts;
     };
@@ -3918,7 +3988,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
     const events=getEvents();
     const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
 
-    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>setPopup(ev.est)}>
+    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>{setPopExtra(ev.extra||null);setPopup(ev.est);}}>
         <span className="cal-event-time">{ev.time}</span>
         <span className="cal-event-label">{ev.label}</span>
         <span className="cal-event-client">{ev.clientName}</span>
@@ -3973,7 +4043,12 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                         <span style={{color:'var(--muted)',fontWeight:700,minWidth:64,fontSize:11,flexShrink:0}}>{l}</span>
                         <span style={{fontWeight:600,color:'var(--navy)',minWidth:0}}>{v}</span></div>;
                     return(<div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px',maxHeight:'65vh',overflowY:'auto'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>
+                        {popExtra&&(()=>{const tp=EXTRA_TYPES[popExtra.type]||EXTRA_TYPES['기타'];return(
+                            <div style={{border:'1.5px solid '+tp.color,background:tp.bg,borderRadius:10,padding:'8px 12px',fontSize:13}}>
+                                <div style={{fontWeight:800,color:tp.color}}>{tp.icon} {popExtra.type} 방문 · {fmtDT(popExtra.at)}</div>
+                                <div style={{marginTop:2,color:'var(--navy)',fontWeight:600}}>사유: {popExtra.reason||'-'}</div>
+                            </div>);})()}                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
                             <div style={{fontSize:11,fontWeight:700,color:'var(--blue)'}}>고객 정보</div>
                             {row('고객명',popup.client_name||'-')}
                             {row('연락처',telA(tel,popup.client_phone))}
@@ -4023,7 +4098,8 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}
-            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치 예정만 표시 · 방문함/설치함 체크된 일정은 숨김</span>
+            {Object.entries(EXTRA_TYPES).map(([t,tp])=>(<span key={t} className="cal-legend-item" style={{background:tp.bg,color:tp.color}}>{tp.icon} {t}</span>))}
+            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치·추가 방문 예정만 표시 · 방문함/설치함 체크된 일정은 숨김</span>
         </div>
 
         <div className="cal-header" style={{marginBottom:14}}>

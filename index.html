@@ -2340,7 +2340,8 @@ async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
 }
 
 // ★ 방문 예약 추천 패널 (견적 수정 · 진행 상태 카드 아래)
-function VisitPlanner({sb,estimateId,address,value,onPick}){
+// dur: 이번 방문의 예상 소요 시간(분) — 없으면 환경설정의 방문 소요 시간
+function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
     const[open,setOpen]=useState(false);
     const[busy,setBusy]=useState(false);
     const[err,setErr]=useState('');
@@ -2367,12 +2368,12 @@ function VisitPlanner({sb,estimateId,address,value,onPick}){
                 pendingExtras(e).forEach(v=>{
                     const d=new Date(v.at);
                     if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
-                    raw.push({start:d,dur:Number(st.visitMin)||60,kind:v.type,name:e.client_name||'고객',address:e.client_address||''});
+                    raw.push({start:d,dur:Number(v.dur)||Number(st.visitMin)||60,kind:v.type,name:e.client_name||'고객',address:e.client_address||''});
                 });
             });
             const events=[];
             for(const ev of raw){const c=await geocode(st.kakaoKey,ev.address);events.push({...ev,dist:c?distKm(target,c):999,noGeo:!c});}
-            setData({st,days:planVisitDays(events,st,now)});
+            setData({st,events});
         }catch(e){setErr(e.message||String(e));setData(null);}
         finally{setBusy(false);}
     };
@@ -2384,15 +2385,18 @@ function VisitPlanner({sb,estimateId,address,value,onPick}){
     const pick=(d,t)=>onPick(ymd(d)+'T'+min2hm(t));
     const km=n=>n>=999?'위치 미확인':n<1?Math.round(n*1000)+'m':n.toFixed(1)+'km';
     const dayLabel=d=>`${d.getMonth()+1}/${d.getDate()}(${WEEK[d.getDay()]})`;
+    // 이번 방문의 소요 시간을 반영해 빈 시간 계산 (소요 시간을 바꾸면 바로 다시 계산)
+    const stEff=data?(Number(dur)>0?{...data.st,visitMin:Number(dur)}:data.st):null;
+    const days=data?planVisitDays(data.events,stEff):[];
 
     // 선택한 날짜 경고
     let warn=null;
     if(data&&value){
-        const v=new Date(value);const day=data.days.find(x=>ymd(x.date)===ymd(v));
+        const v=new Date(value);const day=days.find(x=>ymd(x.date)===ymd(v));
         if(day&&day.events.length){
             const t=v.getHours()*60+v.getMinutes();
-            const clash=!isNaN(t)&&!slotOk(t,day.events,data.st);
-            const far=day.events.filter(e=>e.dist>(Number(data.st.nearKm)||15));
+            const clash=!isNaN(t)&&!slotOk(t,day.events,stEff);
+            const far=day.events.filter(e=>e.dist>(Number(stEff.nearKm)||15));
             if(far.length||clash)warn=<div style={{marginTop:8,fontSize:12,fontWeight:700,color:'#b45309',background:'#fef3c7',border:'1.5px solid #fcd34d',borderRadius:8,padding:'6px 10px'}}>
                 ⚠ {dayLabel(v)} {far.length?`멀리 떨어진 예약이 있습니다: ${far.map(e=>`${e.name} ${km(e.dist)}`).join(', ')}`:''}{far.length&&clash?' · ':''}{clash?'다른 일정과 시간이 겹치거나 이동 시간이 부족합니다':''}</div>;
         }
@@ -2410,16 +2414,16 @@ function VisitPlanner({sb,estimateId,address,value,onPick}){
         </div>}
     </div>);
 
-    const near=data?data.days.filter(d=>d.kind==='near'&&d.slots.length).sort((a,b)=>a.nearest-b.nearest):[];
-    const free=data?data.days.filter(d=>d.kind==='none'&&d.slots.length).slice(0,3):[];
-    const far=data?data.days.filter(d=>d.kind==='far'):[];
+    const near=data?days.filter(d=>d.kind==='near'&&d.slots.length).sort((a,b)=>a.nearest-b.nearest):[];
+    const free=data?days.filter(d=>d.kind==='none'&&d.slots.length).slice(0,3):[];
+    const far=data?days.filter(d=>d.kind==='far'):[];
 
     return(<div style={{marginTop:10}}>
         <button className="btn btn-outline btn-sm" disabled={busy} onClick={()=>{setOpen(o=>!o);if(!data&&!busy)load();}}>{busy?'📍 계산 중...':open?'📍 방문 추천 닫기':'📍 방문 추천 날짜 찾기'}</button>
         {err&&<div style={{marginTop:8,fontSize:12,color:'var(--red)',fontWeight:700}}>⚠ {err}</div>}
         {warn}
         {open&&data&&<div style={{marginTop:10,display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{fontSize:12,color:'var(--muted)'}}>앞으로 {data.st.planDays}일 · 방문 {data.st.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {data.st.bufferMin}분) · {data.st.nearKm}km 이내를 가까운 예약으로 봄 · 시간을 누르면 방문 예정에 입력됩니다</div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>앞으로 {stEff.planDays}일 · 방문 {stEff.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {stEff.bufferMin}분) · {stEff.nearKm}km 이내를 가까운 예약으로 봄 · 시간을 누르면 방문 예정에 입력됩니다</div>
             {near.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#15803d'}}>⭐ 가까운 곳에 예약이 있는 날</div>{near.map(d=><DayRow key={ymd(d.date)} day={d} tone="near"/>)}</>}
             {free.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'var(--navy)'}}>○ 예약이 없는 날</div>{free.map(d=><DayRow key={ymd(d.date)} day={d} tone="none"/>)}</>}
             {far.length>0&&<><div style={{fontSize:12,fontWeight:800,color:'#b45309'}}>⚠ 피하면 좋은 날 (멀리 떨어진 예약)</div>{far.map(d=><DayRow key={ymd(d.date)} day={d} tone="far"/>)}</>}
@@ -2902,16 +2906,18 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                             <select className="status-dt-input" value={v.type} onChange={e=>upd('type',e.target.value)} style={{fontWeight:700,color:tp.color,background:tp.bg,width:'auto'}}>
                                 {Object.keys(EXTRA_TYPES).map(t=><option key={t} value={t}>{EXTRA_TYPES[t].icon} {t}</option>)}</select>
                             <input type="datetime-local" className={`status-dt-input ${v.at?'has-value':''}`} style={{width:'auto'}} value={dtLocal(v.at)} onChange={e=>upd('at',e.target.value)} title="방문 예정 일시"/>
+                            <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,whiteSpace:'nowrap'}} title="예상 소요 시간 (방문 추천 계산에 사용)">⏱
+                                <input type="number" min="10" step="10" className="status-dt-input" style={{width:72}} value={v.dur||''} placeholder="60" onChange={e=>upd('dur',e.target.value)}/>분</label>
                             <input className="status-dt-input" style={{flex:1,minWidth:180}} value={v.reason||''} onChange={e=>upd('reason',e.target.value)} placeholder="방문 사유 (예: 문짝 휨 교체, 선반 2개 추가)"/>
                             <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,cursor:'pointer'}}><input type="checkbox" className="status-check" checked={!!v.done} onChange={e=>upd('done',e.target.checked)}/>방문함</label>
                             <button className="del-btn" title="삭제" onClick={()=>{if(confirm('이 추가 방문을 삭제할까요?'))setExtraVisits(p=>p.filter(x=>x.id!==v.id));}}>✕</button>
                         </div>
-                        {!v.done&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={v.at} onPick={val=>upd('at',val)}/>}
+                        {!v.done&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={v.at} dur={v.dur} onPick={val=>upd('at',val)}/>}
                     </div>);
                 })}
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginTop:10}}>
-                <button className="btn btn-outline btn-sm" onClick={()=>setExtraVisits(p=>[...p,{id:uid(),type:'AS',at:'',reason:'',done:false}])}>＋ 추가 방문</button>
+                <button className="btn btn-outline btn-sm" onClick={()=>setExtraVisits(p=>[...p,{id:uid(),type:'AS',at:'',dur:60,reason:'',done:false}])}>＋ 추가 방문</button>
                 {mode==='edit'&&<button className="btn btn-outline btn-sm" onClick={()=>{
                     if(!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이 고객 정보로 새 견적을 만들까요?'))return;
                     sessionStorage.setItem('newEstClient',JSON.stringify({name:client.name,phone:client.phone,address:client.address,manager:client.manager,managerPhone:client.managerPhone}));
@@ -3772,7 +3778,7 @@ function EstimateView({sb,estimateId,onNavigate}){
                 {extraVisitsOf(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return(
                     <div key={v.id} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',fontSize:13,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
                         <span className="status-badge" style={{background:tp.bg,color:tp.color}}>{tp.icon} {v.type}</span>
-                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}</span>
+                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}{v.dur?<span style={{fontWeight:500,color:'var(--muted)'}}> · ⏱ {v.dur}분</span>:''}</span>
                         <span style={{flex:1,color:'var(--text)'}}>{v.reason||'-'}</span>
                         <span style={{fontSize:12,fontWeight:700,color:v.done?'var(--green)':'#b45309'}}>{v.done?'✅ 방문함':'⏳ 예정'}</span>
                     </div>);})}
@@ -4046,7 +4052,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                         <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>
                         {popExtra&&(()=>{const tp=EXTRA_TYPES[popExtra.type]||EXTRA_TYPES['기타'];return(
                             <div style={{border:'1.5px solid '+tp.color,background:tp.bg,borderRadius:10,padding:'8px 12px',fontSize:13}}>
-                                <div style={{fontWeight:800,color:tp.color}}>{tp.icon} {popExtra.type} 방문 · {fmtDT(popExtra.at)}</div>
+                                <div style={{fontWeight:800,color:tp.color}}>{tp.icon} {popExtra.type} 방문 · {fmtDT(popExtra.at)}{popExtra.dur?` · ⏱ ${popExtra.dur}분`:''}</div>
                                 <div style={{marginTop:2,color:'var(--navy)',fontWeight:600}}>사유: {popExtra.reason||'-'}</div>
                             </div>);})()}                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
                             <div style={{fontSize:11,fontWeight:700,color:'var(--blue)'}}>고객 정보</div>

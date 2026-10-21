@@ -2410,7 +2410,7 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
         {day.events.length>0&&<div style={{fontSize:12,color:'#334155',margin:'4px 0'}}>{day.events.map((e,i)=><span key={i} style={{marginRight:10,whiteSpace:'nowrap'}}>{min2hm(e.start.getHours()*60+e.start.getMinutes())} {e.kind} {e.name} ({km(e.dist)})</span>)}</div>}
         {tone!=='far'&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:4}}>
             {day.slots.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>빈 시간 없음</span>
-            :day.slots.slice(0,10).map(t=><button key={t} className="btn btn-outline btn-xs" onClick={()=>pick(day.date,t)}>{min2hm(t)}</button>)}
+            :day.slots.map(t=><button key={t} className="btn btn-outline btn-xs" onClick={()=>pick(day.date,t)}>{min2hm(t)}</button>)}
         </div>}
     </div>);
 

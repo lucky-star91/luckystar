@@ -3764,11 +3764,11 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
         const evts=[];
         estimates.forEach(est=>{
             const{sd,sc}=estStageInfo(est,0);
-            // 예정일이 입력되면 바로 표시 (완료 체크된 일정은 ✓ 표시)
+            // 예정일이 입력되면 바로 표시 · 방문함/설치함 체크된(끝난) 일정은 표시하지 않음
             Object.keys(SCHED_MAP).forEach(key=>{
-                if(!sd[key])return;
+                if(!sd[key]||sc[key])return;
                 const info=SCHED_MAP[key];const d=new Date(sd[key]);
-                if(!isNaN(d))evts.push({date:d,label:(sc[key]?'✓ ':'')+info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
+                if(!isNaN(d))evts.push({date:d,label:info.label,color:info.color,bg:info.bg,clientName:est.client_name||'고객',time:d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),est});
             });
         });
         return evts;
@@ -3777,14 +3777,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
     const events=getEvents();
     const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
 
-    // 완료·잔금대기 견적은 팝업을 열기 전에 알림창으로도 안내
-    const openPopup=est=>{
-        const stg=estStageInfo(est,0).stage;
-        if(stg==='완료')alert('✔ 설치완료 및 결제완료된 견적입니다.');
-        else if(stg==='설치완료')alert('💰 설치완료 되었으나 잔금결제가 남아 있습니다.');
-        setPopup(est);
-    };
-    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>openPopup(ev.est)}>
+    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>setPopup(ev.est)}>
         <span className="cal-event-time">{ev.time}</span>
         <span className="cal-event-label">{ev.label}</span>
         <span className="cal-event-client">{ev.clientName}</span>
@@ -3839,12 +3832,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                         <span style={{color:'var(--muted)',fontWeight:700,minWidth:64,fontSize:11,flexShrink:0}}>{l}</span>
                         <span style={{fontWeight:600,color:'var(--navy)',minWidth:0}}>{v}</span></div>;
                     return(<div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px',maxHeight:'65vh',overflowY:'auto'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>
-                        {(()=>{const stg=estStageInfo(popup,0).stage;
-                            if(stg==='완료')return<div style={{fontSize:13,fontWeight:700,color:'#15803d',background:'#dcfce7',border:'1.5px solid #86efac',borderRadius:8,padding:'8px 12px'}}>✔ 설치완료 및 결제완료된 견적입니다.</div>;
-                            if(stg==='설치완료')return<div style={{fontSize:13,fontWeight:700,color:'#b45309',background:'#fef3c7',border:'1.5px solid #fcd34d',borderRadius:8,padding:'8px 12px'}}>💰 설치완료 되었으나 잔금결제가 남아 있습니다.</div>;
-                            return null;})()}
-                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
                             <div style={{fontSize:11,fontWeight:700,color:'var(--blue)'}}>고객 정보</div>
                             {row('고객명',popup.client_name||'-')}
                             {row('연락처',telA(tel,popup.client_phone))}
@@ -3894,7 +3882,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}
-            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치 예정만 표시 · ✓ 표시는 완료된 일정</span>
+            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치 예정만 표시 · 방문함/설치함 체크된 일정은 숨김</span>
         </div>
 
         <div className="cal-header" style={{marginBottom:14}}>

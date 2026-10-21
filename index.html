@@ -3735,12 +3735,25 @@ function EstimateList({sb,onEdit,onNew,onChecklist,onView}){
 // 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
 const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'설치',color:'#15803d',bg:'#dcfce7'}};
 
-function Schedule({sb,onEditEst}){
-    const[view,setView]=useState('biweek');
+function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
     const[base,setBase]=useState(new Date());
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
     const[popup,setPopup]=useState(null);
+    const[popItems,setPopItems]=useState(null); // 팝업 견적의 상품 목록 (null = 불러오는 중)
+
+    // 팝업을 열면 해당 견적의 상품 목록을 불러옴
+    useEffect(()=>{
+        if(!popup){setPopItems(null);return;}
+        let alive=true;
+        (async()=>{
+            const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',popup.id).order('display_order');
+            const cs=cd||[];let its=[];
+            if(cs.length){const{data:idt}=await sb.from('est_items').select('*').in('cat_id',cs.map(c=>c.id)).order('display_order');its=idt||[];}
+            if(alive)setPopItems(cs.map(c=>({name:c.name,items:its.filter(i=>i.cat_id===c.id)})).filter(c=>c.items.length));
+        })();
+        return()=>{alive=false;};
+    },[popup]);
 
     useEffect(()=>{
         if(!sb)return;
@@ -3778,7 +3791,6 @@ function Schedule({sb,onEditEst}){
         return(<div className="biweek-wrap">
             <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
                 {DAY_NAMES.map((d,i)=><div key={i} className={`biweek-hd ${i>=5?'weekend':''}`}>{d}</div>)}
-                {DAY_NAMES.map((d,i)=><div key={i+7} className={`biweek-hd ${i>=5?'weekend':''}`}>{d}</div>)}
             </div>
             <div className="biweek-grid">
                 {days.map((day,i)=>{const isToday=day.toDateString()===new Date().toDateString();const evts=forDay(day);return(
@@ -3813,17 +3825,52 @@ function Schedule({sb,onEditEst}){
         {popup&&(<div className="modal-overlay" onClick={()=>setPopup(null)}>
             <div className="modal-box sm" onClick={e=>e.stopPropagation()}>
                 <div className="modal-header"><div className="modal-title">📋 {popup.client_name||'고객'} 견적서</div><button className="modal-close" onClick={()=>setPopup(null)}>✕</button></div>
-                <div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px'}}>
-                    {[['견적번호',popup.est_no],['연락처',popup.client_phone||'-'],['주소',popup.client_address||'-'],['공급가액',fmt(popup.total_supply||0)+'원'],['결제상태',popup.payment_status||'-']].map(([l,v])=>(
-                        <div key={l} style={{display:'flex',gap:12,fontSize:13}}>
-                            <span style={{color:'var(--muted)',fontWeight:700,minWidth:60,fontSize:11,textTransform:'uppercase'}}>{l}</span>
-                            <span style={{fontWeight:600,color:'var(--navy)'}}>{v}</span>
+                {(()=>{
+                    const tel=(popup.client_phone||'').replace(/[^0-9+]/g,'');const mtel=(popup.manager_phone||'').replace(/[^0-9+]/g,'');
+                    const telA=(t,label)=>t?<a href={'tel:'+t} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {label}</a>:'-';
+                    const row=(l,v)=><div key={l} style={{display:'flex',gap:12,fontSize:13,alignItems:'baseline'}}>
+                        <span style={{color:'var(--muted)',fontWeight:700,minWidth:64,fontSize:11,flexShrink:0}}>{l}</span>
+                        <span style={{fontWeight:600,color:'var(--navy)',minWidth:0}}>{v}</span></div>;
+                    return(<div style={{display:'flex',flexDirection:'column',gap:10,padding:'4px 0 8px',maxHeight:'65vh',overflowY:'auto'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>
+                        {(()=>{const stg=estStageInfo(popup,0).stage;
+                            if(stg==='완료')return<div style={{fontSize:13,fontWeight:700,color:'#15803d',background:'#dcfce7',border:'1.5px solid #86efac',borderRadius:8,padding:'8px 12px'}}>✔ 설치완료 및 결제완료된 견적입니다.</div>;
+                            if(stg==='설치완료')return<div style={{fontSize:13,fontWeight:700,color:'#b45309',background:'#fef3c7',border:'1.5px solid #fcd34d',borderRadius:8,padding:'8px 12px'}}>💰 설치완료 되었으나 잔금결제가 남아 있습니다.</div>;
+                            return null;})()}
+                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                            <div style={{fontSize:11,fontWeight:700,color:'var(--blue)'}}>고객 정보</div>
+                            {row('고객명',popup.client_name||'-')}
+                            {row('연락처',telA(tel,popup.client_phone))}
+                            {row('주소',popup.client_address||'-')}
+                            {popup.client_address&&<div style={{display:'flex',gap:6}}>
+                                <button className="nav-btn" onClick={()=>window.open('https://tmap.life/'+encodeURIComponent(popup.client_address),'_blank')}>🗺T맵 길안내</button>
+                                <button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(popup.client_address),'_blank')}>🗺카카오 길안내</button>
+                            </div>}
                         </div>
-                    ))}
-                    <div style={{marginTop:4}}><StatusBadge status={estStageInfo(popup,0).stage}/></div>
-                </div>
+                        <div style={{border:'1.5px solid #f6dc9c',background:'#fff8e6',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                            <div style={{fontSize:11,fontWeight:700,color:'#b07800'}}>👤 담당자 정보</div>
+                            {row('담당자',popup.client_manager||'-')}
+                            {row('연락처',telA(mtel,popup.manager_phone))}
+                        </div>
+                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px'}}>
+                            <div style={{fontSize:11,fontWeight:700,color:'var(--blue)',marginBottom:6}}>🛍 상품 목록</div>
+                            {popItems===null?<div style={{fontSize:12,color:'var(--muted)'}}>불러오는 중...</div>
+                            :popItems.length===0?<div style={{fontSize:12,color:'var(--muted)'}}>등록된 상품이 없습니다.</div>
+                            :popItems.map(c=><div key={c.name} style={{marginBottom:6}}>
+                                <div style={{fontSize:11,fontWeight:700,color:'var(--muted)'}}>{c.name}</div>
+                                {c.items.map(i=><div key={i.id} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:13,padding:'2px 0'}}>
+                                    <span style={{fontWeight:600,color:'var(--navy)'}}>{i.name}{i.specification?<span style={{fontWeight:400,color:'var(--muted)',fontSize:12}}> · {i.specification}</span>:''}</span>
+                                    <span style={{fontWeight:700,whiteSpace:'nowrap'}}>× {i.quantity}</span></div>)}
+                            </div>)}
+                            <div style={{borderTop:'1px solid var(--border)',marginTop:6,paddingTop:6,display:'flex',justifyContent:'space-between',fontSize:13}}>
+                                <span style={{color:'var(--muted)',fontWeight:700,fontSize:11}}>공급가액 · 결제</span>
+                                <span style={{fontWeight:700}}>{fmt(popup.total_supply||0)}원 · {popup.payment_status||'입금전'}</span></div>
+                        </div>
+                    </div>);
+                })()}
                 <div className="modal-btns">
                     <button className="modal-cancel" onClick={()=>setPopup(null)}>닫기</button>
+                    {onViewEst&&<button className="modal-cancel" style={{background:'#e0e7ff',color:'var(--blue)',fontWeight:700}} onClick={()=>{setPopup(null);onViewEst(popup.id);}}>📄 견적서 보기</button>}
                     <button className="modal-ok" onClick={()=>{setPopup(null);onEditEst(popup.id);}}>✏️ 견적서 수정</button>
                 </div>
             </div>
@@ -3832,15 +3879,15 @@ function Schedule({sb,onEditEst}){
         <div className="page-header">
             <div className="page-title-wrap"><h1>📅 일정표</h1><p>견적 진행 일정 · 이벤트 클릭 시 견적서 열기</p></div>
             <div className="btn-row">
-                <button className={`btn ${view==='biweek'?'btn-primary':'btn-outline'}`} onClick={()=>setView('biweek')}>2주간</button>
-                <button className={`btn ${view==='month'?'btn-primary':'btn-outline'}`} onClick={()=>setView('month')}>월간</button>
+                <button className={`btn ${view==='biweek'?'btn-primary':'btn-outline'}`} onClick={()=>onSetView('biweek')}>2주간</button>
+                <button className={`btn ${view==='month'?'btn-primary':'btn-outline'}`} onClick={()=>onSetView('month')}>월간</button>
                 <button className="btn btn-outline" onClick={()=>setBase(new Date())}>오늘</button>
             </div>
         </div>
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}
-            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 가견적발송·설치완료 제외</span>
+            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치 예정만 표시 · ✓ 표시는 완료된 일정</span>
         </div>
 
         <div className="cal-header" style={{marginBottom:14}}>
@@ -4196,8 +4243,8 @@ function App(){
             case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
             case 'est-view':return<EstimateView key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'est-checklist':return<ChecklistPage key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
-            case 'sched-biweek':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>;
-            case 'sched-month':return<Schedule sb={sb} onEditEst={id=>navigate('est-edit',id)}/>
+            case 'sched-biweek':
+            case 'sched-month':return<Schedule sb={sb} view={page==='sched-month'?'month':'biweek'} onSetView={v=>navigate(v==='month'?'sched-month':'sched-biweek')} onEditEst={id=>navigate('est-edit',id)} onViewEst={id=>navigate('est-view',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
             case 'settings':return<SettingsPage sb={sb}/>;
             default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)} onView={id=>navigate('est-view',id)}/>;

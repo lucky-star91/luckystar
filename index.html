@@ -323,6 +323,14 @@ td{padding:9px 14px;vertical-align:middle;}
 .est-badge-label{font-size:10px;color:rgba(255,255,255,.4);margin-bottom:2px;}
 .est-badge-sep{width:1px;height:30px;background:rgba(255,255,255,.1);}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
+/* 견적서 보기: 상단(제목·견적번호·고객/담당자) 고정 */
+.view-sticky{position:sticky;top:0;z-index:60;background:var(--bg);margin:-32px -36px 22px;padding:24px 36px 2px;box-shadow:0 8px 16px -12px rgba(15,25,35,.25);}
+.view-sticky .page-header{margin-bottom:14px;}.view-sticky .est-badge{margin-bottom:14px;}.view-sticky .card{margin-bottom:14px;padding:16px 22px;}
+.view-info{display:flex;gap:18px;align-items:stretch;}
+.view-info-client{flex:1;min-width:0;}
+.view-info-mgr{width:340px;flex-shrink:0;background:#fff8e6;border:1.5px solid #f6dc9c;border-radius:10px;padding:12px 16px;}
+.view-info-mgr .card-title{color:#b07800;margin-bottom:10px;}.view-info-mgr .card-title::after{background:#f6dc9c;}
+.view-info-mgr .info-grid{grid-template-columns:1fr 1fr;}
 .info-field label{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;}
 .info-field input{width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;font-family:'Noto Sans KR',sans-serif;color:var(--text);outline:none;transition:border-color .15s;}
 .info-field input:focus{border-color:var(--blue);background:#f0f6ff;}
@@ -611,7 +619,10 @@ td{padding:9px 14px;vertical-align:middle;}
     .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .modal-box.lg{width:96vw!important;}
 }
-@media print{.print-only{display:block!important;}.sidebar,.mobile-header,.sb-overlay,.btn-row,.del-btn,.no-print{display:none!important;}.status-sticky{position:static;box-shadow:none;}.main{margin-left:0;padding:20px;}}
+@media(min-width:768px)and(max-width:1023px){.view-sticky{margin:-24px -20px 22px;padding:18px 20px 2px;}.view-info{flex-direction:column;}.view-info-mgr{width:auto;}}
+@media(max-width:767px){.view-sticky{position:static;margin:0 0 18px;padding:0;background:none;box-shadow:none;}.view-info{flex-direction:column;}.view-info-mgr{width:auto;}}
+@media print{.view-sticky{position:static;margin:0;padding:0;box-shadow:none;}
+.print-only{display:block!important;}.sidebar,.mobile-header,.sb-overlay,.btn-row,.del-btn,.no-print{display:none!important;}.status-sticky{position:static;box-shadow:none;}.main{margin-left:0;padding:20px;}}
 </style>
 </head>
 <body><div id="root"></div>
@@ -2072,6 +2083,86 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
     );
 }
 
+// ★ 견적서 인쇄 팝업 (견적 수정 · 견적서 보기 공용)
+// items: {catId,name,spec,qty,unitPrice,laborCost,total}
+async function printEstimateDoc(sb,{no,client,cats,items,statusDates,statusChecked,portItems}){
+    const totalMat=items.reduce((s,i)=>s+(parseFloat(i.qty)||0)*(parseFloat(i.unitPrice)||0),0);
+    const totalLab=items.reduce((s,i)=>s+(parseFloat(i.laborCost)||0),0);
+    const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
+    // 팝업은 클릭 직후 먼저 열어 두고(차단 방지), 데이터를 불러온 뒤 내용을 채움
+    const w=window.open('','_blank','width=920,height=720');
+    if(w){w.document.write('<p style="font-family:sans-serif;padding:24px;color:#64748b">인쇄 준비 중...</p>');}
+    // 상품에 연결된 포트폴리오 → 품목별 QR
+    const pfMap={};
+    try{
+        const{data:pr}=await sb.from('products').select('name,portfolio_ids');
+        (pr||[]).forEach(x=>{const ids=parseJSON(x.portfolio_ids,[]);if(ids.length&&!pfMap[x.name])pfMap[x.name]=ids;});
+    }catch(e){}
+    const hasPf=items.some(i=>(pfMap[i.name]||[]).length>0);
+    const pfCell=item=>{
+        const ids=pfMap[item.name]||[];
+        if(!ids.length)return'';
+        const u=pfUrl(ids);const src=makeQrDataUrl(u,240);
+        return src
+            ?`<img src="${src}" style="width:68px;height:68px;display:block;margin:0 auto"><div style="font-size:8px;color:#64748b;text-align:center">포트폴리오 보기</div>`
+            :`<div style="font-size:7px;color:#3b82f6;word-break:break-all;max-width:90px">${u}</div>`;
+    };
+    const rows=cats.map(cat=>items.filter(i=>i.catId===cat.id).map(item=>`
+        <tr><td>${cat.name}</td><td>${item.name}</td><td>${item.spec||''}</td>
+        <td style="text-align:right">${item.qty}</td>
+        <td style="text-align:right">${fmt(item.unitPrice)}</td>
+        <td style="text-align:right">${fmt(item.laborCost)}</td>
+        <td style="text-align:right;font-weight:700">${fmt(item.total)}</td>${hasPf?`<td style="text-align:center">${pfCell(item)}</td>`:''}</tr>`).join('')).join('');
+    const pStatus=STATUS_LIST.map(s=>{const d=statusDates[s];const chk=statusChecked[s];if(!d&&!chk)return'';return`<tr><td>${STATUS_ICON[s]} ${s}</td><td>${d?new Date(d).toLocaleString('ko-KR'):'-'}</td><td>${chk?'✅':''}</td></tr>`;}).join('');
+    const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>럭키스타 견적서</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans KR',sans-serif;padding:28px;color:#1e293b;font-size:13px;}
+    .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;border-bottom:2px solid #0f1923;padding-bottom:12px;}
+    h1{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:2px;color:#0f1923;}
+    .sub{font-size:11px;color:#64748b;margin-top:2px;}
+    .ci{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#f4f6fa;border-radius:8px;padding:12px;margin-bottom:16px;}
+    .ci label{font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:2px;}
+    .ci span{font-size:13px;font-weight:600;}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
+    thead{background:#0f1923;}th{color:rgba(255,255,255,.8);padding:7px 9px;text-align:left;font-size:10px;letter-spacing:1px;}
+    td{padding:7px 9px;border-bottom:1px solid #e2e8f0;}
+    .tot{background:linear-gradient(135deg,#0f1923,#1a3a5c);color:#fff;border-radius:10px;padding:16px 20px;margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;}
+    .tot-val{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f0a500;letter-spacing:1px;}
+    .tot-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;}
+    .tot-bd{display:flex;gap:18px;flex-wrap:wrap;}
+    .bd{text-align:right;}.bd-l{font-size:10px;color:rgba(255,255,255,.4);}.bd-v{font-size:14px;font-weight:700;color:rgba(255,255,255,.8);}
+    .st-section{margin:14px 0;}.st-section h3{font-size:11px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+    .ft{text-align:center;margin-top:16px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px;}
+    @media print{body{padding:15px;}}</style></head><body>
+    <div class="hd"><div><h1>LUCKYSTAR CARAVAN</h1><div class="sub">견적서 · ${no}</div></div>
+    <div style="text-align:right"><div style="font-size:11px;color:#64748b">작성일</div><div style="font-weight:700">${new Date().toLocaleDateString('ko-KR')}</div><div style="font-size:11px;color:#64748b;margin-top:4px">유효기간 30일</div></div></div>
+    <div class="ci">
+    <div><label>고객명</label><span>${client.name||'-'}</span></div>
+    <div><label>연락처</label><span>${client.phone||'-'}</span></div>
+    <div><label>주소</label><span>${client.address||'-'}</span></div>
+    <div><label>차량 모델</label><span>${client.model||'-'}</span></div>
+    <div><label>카라반 유형</label><span>${client.caravan||'-'}</span></div>
+    <div><label>담당자</label><span>${client.manager||'-'}</span></div></div>
+    <table><thead><tr><th>카테고리</th><th>품목명</th><th>규격/재질</th><th style="text-align:right">수량</th><th style="text-align:right">단가</th><th style="text-align:right">노무비</th><th style="text-align:right">합계</th>${hasPf?'<th style="text-align:center">포트폴리오</th>':''}</tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="tot"><div><div style="font-size:10px;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">최종 견적금액 (VAT 포함)</div><div class="tot-val">${fmt(grandVat)}원</div><div class="tot-sub">공급가액 ${fmt(grand)}원 + VAT ${fmt(vat)}원</div></div>
+    <div class="tot-bd"><div class="bd"><div class="bd-l">자재비</div><div class="bd-v">${fmt(totalMat)}원</div></div><div class="bd"><div class="bd-l">노무비</div><div class="bd-v">${fmt(totalLab)}원</div></div><div class="bd"><div class="bd-l">공급가액</div><div class="bd-v">${fmt(grand)}원</div></div><div class="bd"><div class="bd-l">VAT 10%</div><div class="bd-v" style="color:#f0a500">${fmt(vat)}원</div></div></div></div>
+    ${pStatus?`<div class="st-section"><h3>진행 상태</h3><table><thead><tr><th>상태</th><th>일시</th><th>완료</th></tr></thead><tbody>${pStatus}</tbody></table></div>`:''}
+    ${portItems.length>0?`
+    <div style="margin-top:18px">
+    <h3 style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px">포트폴리오</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    ${portItems.map(p=>`<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+    ${p.image_url?`<img src="${p.image_url}" style="width:100%;height:120px;object-fit:cover">`:``}
+    <div style="padding:8px;font-size:11px;font-weight:700">${p.title||''}</div>
+    ${p.image_url?`<div style="padding:0 8px 8px;font-size:10px;color:#3b82f6;word-break:break-all">${p.image_url}</div>`:``}
+    </div>`).join('')}
+    </div></div>`:''}
+    <div class="ft">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | ${new Date().toLocaleDateString('ko-KR')} 기준</div>
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`;
+    if(w){w.document.open();w.document.write(html);w.document.close();}
+}
+
 function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,userProfile}){
     const[cats,setCats]=useState([]);  // {id,name,order}  — new: uid(), edit: DB uuid
     const[items,setItems]=useState([]); // {id,catId,name,spec,qty,unitPrice,laborCost,total,imgUrl}
@@ -2259,80 +2350,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     };
 
     // ★ 인쇄 팝업
-    const printEstimate=async()=>{
-        // 팝업은 클릭 직후 먼저 열어 두고(차단 방지), 데이터를 불러온 뒤 내용을 채움
-        const w=window.open('','_blank','width=920,height=720');
-        if(w){w.document.write('<p style="font-family:sans-serif;padding:24px;color:#64748b">인쇄 준비 중...</p>');}
-        // 상품에 연결된 포트폴리오 → 품목별 QR
-        const pfMap={};
-        try{
-            const{data:pr}=await sb.from('products').select('name,portfolio_ids');
-            (pr||[]).forEach(x=>{const ids=parseJSON(x.portfolio_ids,[]);if(ids.length&&!pfMap[x.name])pfMap[x.name]=ids;});
-        }catch(e){}
-        const hasPf=items.some(i=>(pfMap[i.name]||[]).length>0);
-        const pfCell=item=>{
-            const ids=pfMap[item.name]||[];
-            if(!ids.length)return'';
-            const u=pfUrl(ids);const src=makeQrDataUrl(u,240);
-            return src
-                ?`<img src="${src}" style="width:68px;height:68px;display:block;margin:0 auto"><div style="font-size:8px;color:#64748b;text-align:center">포트폴리오 보기</div>`
-                :`<div style="font-size:7px;color:#3b82f6;word-break:break-all;max-width:90px">${u}</div>`;
-        };
-        const rows=cats.map(cat=>items.filter(i=>i.catId===cat.id).map(item=>`
-            <tr><td>${cat.name}</td><td>${item.name}</td><td>${item.spec||''}</td>
-            <td style="text-align:right">${item.qty}</td>
-            <td style="text-align:right">${fmt(item.unitPrice)}</td>
-            <td style="text-align:right">${fmt(item.laborCost)}</td>
-            <td style="text-align:right;font-weight:700">${fmt(item.total)}</td>${hasPf?`<td style="text-align:center">${pfCell(item)}</td>`:''}</tr>`).join('')).join('');
-        const pStatus=STATUS_LIST.map(s=>{const d=statusDates[s];const chk=statusChecked[s];if(!d&&!chk)return'';return`<tr><td>${STATUS_ICON[s]} ${s}</td><td>${d?new Date(d).toLocaleString('ko-KR'):'-'}</td><td>${chk?'✅':''}</td></tr>`;}).join('');
-        const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>럭키스타 견적서</title>
-        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
-        <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans KR',sans-serif;padding:28px;color:#1e293b;font-size:13px;}
-        .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;border-bottom:2px solid #0f1923;padding-bottom:12px;}
-        h1{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:2px;color:#0f1923;}
-        .sub{font-size:11px;color:#64748b;margin-top:2px;}
-        .ci{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#f4f6fa;border-radius:8px;padding:12px;margin-bottom:16px;}
-        .ci label{font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:2px;}
-        .ci span{font-size:13px;font-weight:600;}
-        table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
-        thead{background:#0f1923;}th{color:rgba(255,255,255,.8);padding:7px 9px;text-align:left;font-size:10px;letter-spacing:1px;}
-        td{padding:7px 9px;border-bottom:1px solid #e2e8f0;}
-        .tot{background:linear-gradient(135deg,#0f1923,#1a3a5c);color:#fff;border-radius:10px;padding:16px 20px;margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;}
-        .tot-val{font-family:'Bebas Neue',sans-serif;font-size:32px;color:#f0a500;letter-spacing:1px;}
-        .tot-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;}
-        .tot-bd{display:flex;gap:18px;flex-wrap:wrap;}
-        .bd{text-align:right;}.bd-l{font-size:10px;color:rgba(255,255,255,.4);}.bd-v{font-size:14px;font-weight:700;color:rgba(255,255,255,.8);}
-        .st-section{margin:14px 0;}.st-section h3{font-size:11px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
-        .ft{text-align:center;margin-top:16px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px;}
-        @media print{body{padding:15px;}}</style></head><body>
-        <div class="hd"><div><h1>LUCKYSTAR CARAVAN</h1><div class="sub">견적서 · ${mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase()}</div></div>
-        <div style="text-align:right"><div style="font-size:11px;color:#64748b">작성일</div><div style="font-weight:700">${new Date().toLocaleDateString('ko-KR')}</div><div style="font-size:11px;color:#64748b;margin-top:4px">유효기간 30일</div></div></div>
-        <div class="ci">
-        <div><label>고객명</label><span>${client.name||'-'}</span></div>
-        <div><label>연락처</label><span>${client.phone||'-'}</span></div>
-        <div><label>주소</label><span>${client.address||'-'}</span></div>
-        <div><label>차량 모델</label><span>${client.model||'-'}</span></div>
-        <div><label>카라반 유형</label><span>${client.caravan||'-'}</span></div>
-        <div><label>담당자</label><span>${client.manager||'-'}</span></div></div>
-        <table><thead><tr><th>카테고리</th><th>품목명</th><th>규격/재질</th><th style="text-align:right">수량</th><th style="text-align:right">단가</th><th style="text-align:right">노무비</th><th style="text-align:right">합계</th>${hasPf?'<th style="text-align:center">포트폴리오</th>':''}</tr></thead>
-        <tbody>${rows}</tbody></table>
-        <div class="tot"><div><div style="font-size:10px;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">최종 견적금액 (VAT 포함)</div><div class="tot-val">${fmt(grandVat)}원</div><div class="tot-sub">공급가액 ${fmt(grand)}원 + VAT ${fmt(vat)}원</div></div>
-        <div class="tot-bd"><div class="bd"><div class="bd-l">자재비</div><div class="bd-v">${fmt(totalMat)}원</div></div><div class="bd"><div class="bd-l">노무비</div><div class="bd-v">${fmt(totalLab)}원</div></div><div class="bd"><div class="bd-l">공급가액</div><div class="bd-v">${fmt(grand)}원</div></div><div class="bd"><div class="bd-l">VAT 10%</div><div class="bd-v" style="color:#f0a500">${fmt(vat)}원</div></div></div></div>
-        ${pStatus?`<div class="st-section"><h3>진행 상태</h3><table><thead><tr><th>상태</th><th>일시</th><th>완료</th></tr></thead><tbody>${pStatus}</tbody></table></div>`:''}
-        ${portItems.length>0?`
-        <div style="margin-top:18px">
-        <h3 style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px">포트폴리오</h3>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        ${portItems.map(p=>`<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-        ${p.image_url?`<img src="${p.image_url}" style="width:100%;height:120px;object-fit:cover">`:``}
-        <div style="padding:8px;font-size:11px;font-weight:700">${p.title||''}</div>
-        ${p.image_url?`<div style="padding:0 8px 8px;font-size:10px;color:#3b82f6;word-break:break-all">${p.image_url}</div>`:``}
-        </div>`).join('')}
-        </div></div>`:''}
-        <div class="ft">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | ${new Date().toLocaleDateString('ko-KR')} 기준</div>
-        <script>window.onload=()=>{window.print();}<\/script></body></html>`;
-        if(w){w.document.open();w.document.write(html);w.document.close();}
-    };
+    const printEstimate=()=>printEstimateDoc(sb,{no:mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase(),client,cats,items,statusDates,statusChecked,portItems});
 
     // ★ DB 안내 팝업
     const showSqlGuide=()=>alert(`📋 Supabase 설정 가이드\n\n` +
@@ -3348,13 +3366,21 @@ function EstimateView({sb,estimateId,onNavigate}){
     const mtel=(est.manager_phone||'').replace(/[^0-9+]/g,'');
     const PAY_ICON={'입금전':'⏳','계약':'📝','완료':'✅'};
 
+    const printView=()=>printEstimateDoc(sb,{no:est.est_no||estimateId.substr(0,8).toUpperCase(),
+        client:{name:est.client_name,phone:est.client_phone,address:est.client_address,model:est.client_model,caravan:est.client_caravan,manager:est.client_manager},
+        cats,items:items.map(i=>({catId:i.cat_id,name:i.name,spec:i.specification,qty:i.quantity,unitPrice:i.unit_price,laborCost:i.labor_cost,total:rowTotal(i)})),
+        statusDates:sd,statusChecked:sc,portItems:ports});
+    const telLink=(t,label)=>t?<a href={'tel:'+t} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {label}</a>:'-';
+    const infoField=([l,v])=><div className="info-field" key={l}><label>{l}</label><div style={{fontSize:14,fontWeight:600,color:'var(--navy)',padding:'4px 0'}}>{v}</div></div>;
+
     return(<div>
+        <div className="view-sticky">
         <div className="page-header">
             <div className="page-title-wrap"><h1>📄 견적서 보기</h1><p>{est.client_name||'고객'} · {est.est_no||''}</p></div>
             <div className="btn-row no-print">
                 <button className="btn btn-outline" onClick={()=>onNavigate('est-list')}>← 목록으로</button>
                 <button className="btn btn-outline" onClick={()=>onNavigate('est-checklist',estimateId)}>✅ 시공 체크리스트</button>
-                <button className="btn btn-outline" onClick={()=>window.print()}>🖨 인쇄</button>
+                <button className="btn btn-outline" onClick={printView}>🖨 인쇄</button>
                 <button className="btn btn-primary" onClick={()=>onNavigate('est-edit',estimateId)}>✏️ 견적 수정</button>
             </div>
         </div>
@@ -3367,21 +3393,22 @@ function EstimateView({sb,estimateId,onNavigate}){
             <div><div className="est-badge-label">상태</div><StatusBadge status={est.status||'가견적발송'}/></div>
         </div>
 
-        <div className="card"><div className="card-title">고객 정보</div>
-            <div className="info-grid">
-                {[['고객명',est.client_name||'-'],
-                  ['연락처',tel?<a href={'tel:'+tel} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {est.client_phone}</a>:'-'],
-                  ['주소/지역',est.client_address||'-'],
-                  ['담당자',est.client_manager||'-'],
-                  ['담당자연락처',mtel?<a href={'tel:'+mtel} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {est.manager_phone}</a>:'-']
-                ].map(([l,v])=>(
-                    <div className="info-field" key={l}><label>{l}</label><div style={{fontSize:14,fontWeight:600,color:'var(--navy)',padding:'4px 0'}}>{v}</div></div>
-                ))}
+        <div className="card"><div className="view-info">
+            <div className="view-info-client"><div className="card-title">고객 정보</div>
+                <div className="info-grid">
+                    {[['고객명',est.client_name||'-'],['연락처',telLink(tel,est.client_phone)],['주소/지역',est.client_address||'-']].map(infoField)}
+                </div>
+                {est.client_address&&<div style={{marginTop:10,display:'flex',gap:6}} className="no-print">
+                    <button className="nav-btn" onClick={()=>window.open('https://tmap.life/'+encodeURIComponent(est.client_address),'_blank')}>🗺T맵 길안내</button>
+                    <button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(est.client_address),'_blank')}>🗺카카오 길안내</button>
+                </div>}
             </div>
-            {est.client_address&&<div style={{marginTop:10,display:'flex',gap:6}} className="no-print">
-                <button className="nav-btn" onClick={()=>window.open('https://tmap.life/'+encodeURIComponent(est.client_address),'_blank')}>🗺T맵 길안내</button>
-                <button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(est.client_address),'_blank')}>🗺카카오 길안내</button>
-            </div>}
+            <div className="view-info-mgr"><div className="card-title">👤 담당자 정보</div>
+                <div className="info-grid">
+                    {[['담당자',est.client_manager||'-'],['담당자연락처',telLink(mtel,est.manager_phone)]].map(infoField)}
+                </div>
+            </div>
+        </div></div>
         </div>
 
         {cats.length===0&&<div className="empty-state"><div className="empty-icon">📋</div><div className="empty-text">등록된 견적 품목이 없습니다.</div></div>}

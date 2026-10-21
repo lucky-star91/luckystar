@@ -328,6 +328,7 @@ td{padding:9px 14px;vertical-align:middle;}
 .view-sticky .page-header{margin-bottom:14px;}.view-sticky .est-badge{margin-bottom:14px;}.view-sticky .card{margin-bottom:14px;padding:16px 22px;}
 .view-info{display:flex;gap:18px;align-items:stretch;}
 .view-info-client{flex:1;min-width:0;}
+.view-info-client .info-grid{grid-template-columns:1fr 1fr 1.7fr;}
 .view-info-mgr{width:340px;flex-shrink:0;background:#fff8e6;border:1.5px solid #f6dc9c;border-radius:10px;padding:12px 16px;}
 .view-info-mgr .card-title{color:#b07800;margin-bottom:10px;}.view-info-mgr .card-title::after{background:#f6dc9c;}
 .view-info-mgr .info-grid{grid-template-columns:1fr 1fr;}
@@ -2563,6 +2564,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
     return(<div>
         {showPick&&<ProductPickModal sb={sb} prodCats={prodCats} cats={cats} onAddProduct={addProductToEst} onClose={()=>setShowPick(false)}/>}
+        <div className="view-sticky">
         <div className="page-header">
             <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'변경 내용은 💾 저장 버튼을 눌러야 DB에 반영됩니다'}</p></div>
             <div className="btn-row no-print">
@@ -2580,9 +2582,34 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             {[['견적번호',<span className="est-badge-num">{mode==='new'?estNo:estimateId?.substr(0,8).toUpperCase()}</span>],['작성일',<span style={{color:'#fff',fontSize:14,fontWeight:600}}>{new Date().toLocaleDateString('ko-KR')}</span>],['상태',<StatusBadge status={currentStatus}/>]].map(([l,v],i)=><React.Fragment key={l}>{i>0&&<div className="est-badge-sep"/>}<div><div className="est-badge-label">{l}</div>{v}</div></React.Fragment>)}
         </div>
 
-        {/* ★ 수정 모드: 진행 상태 관리 (스크롤해도 상단 고정) */}
+        {/* 고객 정보 / 담당자 정보 */}
+        <div className="card"><div className="view-info">
+            {[['고객 정보','view-info-client',[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시']]],
+              ['👤 담당자 정보','view-info-mgr',[['manager','담당자','담당자명'],['managerPhone','담당자연락처','010-0000-0000']]]].map(([title,cls,fields])=>(
+            <div className={cls} key={cls}><div className="card-title">{title}</div>
+                <div className="info-grid">{fields.map(([k,l,p])=>(
+                        <div className="info-field" key={k}>
+                            <label>{l}</label>
+                            <div style={{display:'flex',gap:5,alignItems:'center'}}>
+                                <input style={{flex:1}} value={client[k]||''} onChange={e=>updClient(k,e.target.value)} placeholder={p}/>
+                                {k==='address'&&client.address&&(
+                                    <div style={{display:'flex',gap:4,flexShrink:0}}>
+                                        <button className="nav-btn" title="T맵으로 길안내"
+                                            onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://tmap.life/${a}`,'_blank');}}>🗺T맵</button>
+                                        <button className="nav-btn" style={{background:'var(--green)'}} title="카카오맵으로 길안내"
+                                            onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://map.kakao.com/?q=${a}`,'_blank');}}>🗺카카오</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                ))}</div>
+            </div>))}
+        </div></div>
+        </div>
+
+        {/* ★ 수정 모드: 진행 상태 관리 */}
         {mode==='edit'&&(
-            <div className="status-timeline-card status-sticky">
+            <div className="status-timeline-card">
                 <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
                     📊 진행 상태 관리 <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
                 </div>
@@ -2622,25 +2649,6 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             </div>
         )}
 
-        {/* 고객 정보 */}
-        <div className="card"><div className="card-title">고객 정보</div>
-            <div className="info-grid">{[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['manager','담당자','담당자명'],['managerPhone','담당자연락처','010-0000-0000']].map(([k,l,p])=>(
-                    <div className="info-field" key={k}>
-                        <label>{l}</label>
-                        <div style={{display:'flex',gap:5,alignItems:'center'}}>
-                            <input style={{flex:1}} value={client[k]||''} onChange={e=>updClient(k,e.target.value)} placeholder={p}/>
-                            {k==='address'&&client.address&&(
-                                <div style={{display:'flex',gap:4,flexShrink:0}}>
-                                    <button className="nav-btn" title="T맵으로 길안내"
-                                        onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://tmap.life/${a}`,'_blank');}}>🗺T맵</button>
-                                    <button className="nav-btn" style={{background:'var(--green)'}} title="카카오맵으로 길안내"
-                                        onClick={()=>{const a=encodeURIComponent(client.address||'');window.open(`https://map.kakao.com/?q=${a}`,'_blank');}}>🗺카카오</button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-            ))}</div>
-        </div>
 
         {/* 카테고리 버튼 */}
         <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}} className="no-print">

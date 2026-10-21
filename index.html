@@ -3777,7 +3777,14 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
     const events=getEvents();
     const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
 
-    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>setPopup(ev.est)}>
+    // 완료·잔금대기 견적은 팝업을 열기 전에 알림창으로도 안내
+    const openPopup=est=>{
+        const stg=estStageInfo(est,0).stage;
+        if(stg==='완료')alert('✔ 설치완료 및 결제완료된 견적입니다.');
+        else if(stg==='설치완료')alert('💰 설치완료 되었으나 잔금결제가 남아 있습니다.');
+        setPopup(est);
+    };
+    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>openPopup(ev.est)}>
         <span className="cal-event-time">{ev.time}</span>
         <span className="cal-event-label">{ev.label}</span>
         <span className="cal-event-client">{ev.clientName}</span>

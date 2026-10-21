@@ -734,6 +734,7 @@ const STATUS_TEXT  = {'설치완료':'설치완료 · 잔금대기'};
 const EXTRA_TYPES = {'AS':{icon:'🛠',color:'#7c3aed',bg:'#ede9fe'},'추가설치':{icon:'➕',color:'#0e7490',bg:'#cffafe'},'기타':{icon:'📌',color:'#475569',bg:'#e2e8f0'}};
 const extraVisitsOf = est => parseJSON(est&&est.extra_visits,[]);
 const pendingExtras = est => extraVisitsOf(est).filter(v=>v.at&&!v.done);
+const durText = m => { const h=Number(m)/60; return (Number.isInteger(h)?h:h.toFixed(1))+'시간'; }; // 소요 시간(분) → '1.5시간'
 
 const StatusBadge = ({status}) => (
     <span className="status-badge" style={{background:STATUS_BG[status]||'#f1f5f9',color:STATUS_COLOR[status]||'#64748b'}}>
@@ -2427,7 +2428,7 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
         {err&&<div style={{marginTop:8,fontSize:12,color:'var(--red)',fontWeight:700}}>⚠ {err}</div>}
         {warn}
         {open&&data&&<div style={{marginTop:10,display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{fontSize:12,color:'var(--muted)'}}>방문 {stEff.visitMin}분 · 이동 시간은 직선거리 기준 추정(최소 {stEff.bufferMin}분) · 시간을 누르면 방문 예정에 입력됩니다</div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>방문 {durText(stEff.visitMin)} · 이동 시간은 직선거리 기준 추정(최소 {stEff.bufferMin}분) · 시간을 누르면 방문 예정에 입력됩니다</div>
             <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                 <button className="btn btn-outline btn-sm" disabled={weekOff<=0} onClick={()=>setWeekOff(w=>w-1)}>◀ 이전 주</button>
                 <b style={{fontSize:14,minWidth:150,textAlign:'center'}}>{dayLabel(mon)} ~ {dayLabel(sun)}</b>
@@ -2915,8 +2916,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                             <select className="status-dt-input" value={v.type} onChange={e=>upd('type',e.target.value)} style={{fontWeight:700,color:tp.color,background:tp.bg,width:'auto'}}>
                                 {Object.keys(EXTRA_TYPES).map(t=><option key={t} value={t}>{EXTRA_TYPES[t].icon} {t}</option>)}</select>
                             <input type="datetime-local" className={`status-dt-input ${v.at?'has-value':''}`} style={{width:'auto'}} value={dtLocal(v.at)} onChange={e=>upd('at',e.target.value)} title="방문 예정 일시"/>
-                            <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,whiteSpace:'nowrap'}} title="예상 소요 시간 (방문 추천 계산에 사용)">⏱
-                                <input type="number" min="10" step="10" className="status-dt-input" style={{width:72}} value={v.dur||''} placeholder="60" onChange={e=>upd('dur',e.target.value)}/>분</label>
+                            <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,whiteSpace:'nowrap'}} title="예상 소요 시간 (방문 추천 계산에 사용, 0.5 = 30분)">⏱
+                                <input type="number" min="0.5" step="0.5" className="status-dt-input" style={{width:68}} value={v.dur?Number(v.dur)/60:''} placeholder="1" onChange={e=>upd('dur',e.target.value?Math.round(Number(e.target.value)*60):'')}/>시간</label>
                             <input className="status-dt-input" style={{flex:1,minWidth:180}} value={v.reason||''} onChange={e=>upd('reason',e.target.value)} placeholder="방문 사유 (예: 문짝 휨 교체, 선반 2개 추가)"/>
                             <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,cursor:'pointer'}}><input type="checkbox" className="status-check" checked={!!v.done} onChange={e=>upd('done',e.target.checked)}/>방문함</label>
                             <button className="del-btn" title="삭제" onClick={()=>{if(confirm('이 추가 방문을 삭제할까요?'))setExtraVisits(p=>p.filter(x=>x.id!==v.id));}}>✕</button>
@@ -3787,7 +3788,7 @@ function EstimateView({sb,estimateId,onNavigate}){
                 {extraVisitsOf(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return(
                     <div key={v.id} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',fontSize:13,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
                         <span className="status-badge" style={{background:tp.bg,color:tp.color}}>{tp.icon} {v.type}</span>
-                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}{v.dur?<span style={{fontWeight:500,color:'var(--muted)'}}> · ⏱ {v.dur}분</span>:''}</span>
+                        <span style={{fontWeight:700,minWidth:120}}>{v.at?fmtDT(v.at):'일정 미정'}{v.dur?<span style={{fontWeight:500,color:'var(--muted)'}}> · ⏱ {durText(v.dur)}</span>:''}</span>
                         <span style={{flex:1,color:'var(--text)'}}>{v.reason||'-'}</span>
                         <span style={{fontSize:12,fontWeight:700,color:v.done?'var(--green)':'#b45309'}}>{v.done?'✅ 방문함':'⏳ 예정'}</span>
                     </div>);})}
@@ -4061,7 +4062,7 @@ function Schedule({sb,view,onSetView,onEditEst,onViewEst}){
                         <div style={{display:'flex',alignItems:'center',gap:8}}><StatusBadge status={estStageInfo(popup,0).stage}/><span style={{fontSize:12,color:'var(--muted)'}}>{popup.est_no}</span></div>
                         {popExtra&&(()=>{const tp=EXTRA_TYPES[popExtra.type]||EXTRA_TYPES['기타'];return(
                             <div style={{border:'1.5px solid '+tp.color,background:tp.bg,borderRadius:10,padding:'8px 12px',fontSize:13}}>
-                                <div style={{fontWeight:800,color:tp.color}}>{tp.icon} {popExtra.type} 방문 · {fmtDT(popExtra.at)}{popExtra.dur?` · ⏱ ${popExtra.dur}분`:''}</div>
+                                <div style={{fontWeight:800,color:tp.color}}>{tp.icon} {popExtra.type} 방문 · {fmtDT(popExtra.at)}{popExtra.dur?` · ⏱ ${durText(popExtra.dur)}`:''}</div>
                                 <div style={{marginTop:2,color:'var(--navy)',fontWeight:600}}>사유: {popExtra.reason||'-'}</div>
                             </div>);})()}                        <div style={{border:'1.5px solid var(--border)',borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
                             <div style={{fontSize:11,fontWeight:700,color:'var(--blue)'}}>고객 정보</div>

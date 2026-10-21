@@ -324,8 +324,14 @@ td{padding:9px 14px;vertical-align:middle;}
 .est-badge-sep{width:1px;height:30px;background:rgba(255,255,255,.1);}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
 /* 견적서 보기: 상단(제목·견적번호·고객/담당자) 고정 */
-.view-sticky{position:sticky;top:0;z-index:60;background:var(--bg);margin:-32px -36px 22px;padding:24px 36px 2px;box-shadow:0 8px 16px -12px rgba(15,25,35,.25);}
-.view-sticky .page-header{margin-bottom:14px;}.view-sticky .est-badge{margin-bottom:14px;}.view-sticky .card{margin-bottom:14px;padding:16px 22px;}
+.view-sticky{position:sticky;top:0;z-index:60;background:var(--bg);margin:-32px -36px 18px;padding:12px 36px 2px;box-shadow:0 8px 16px -12px rgba(15,25,35,.25);}
+/* 상단 고정 영역은 높이를 줄이기 위해 촘촘하게 */
+.view-sticky .page-header{margin-bottom:8px;align-items:center;}.view-sticky .page-title-wrap h1{font-size:20px;}
+.view-sticky .est-badge{margin-bottom:0;padding:6px 14px;gap:12px;}.view-sticky .est-badge-sep{height:18px;}.view-sticky .est-badge-num{font-size:16px;}
+.view-sticky .card{margin-bottom:10px;padding:10px 18px;}.view-sticky .card-title{margin-bottom:6px;}
+.view-sticky .info-grid{gap:8px 12px;}.view-sticky .info-field label{margin-bottom:2px;}
+.view-sticky .info-field input{padding:6px 10px;}.view-sticky .nav-btn{padding:5px 8px;}
+.view-sticky .view-info-mgr{padding:8px 12px;}
 .view-info{display:flex;gap:18px;align-items:stretch;}
 .view-info-client{flex:1;min-width:0;}
 .view-info-client .info-grid{grid-template-columns:1fr 1fr 1.7fr;}
@@ -2458,7 +2464,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const[loading,setLoading]=useState(mode==='edit');
     const[saving,setSaving]=useState(false);
     const[showPick,setShowPick]=useState(false);
-    const[estNo]=useState(()=>mode==='new'?genEstNo():'');
+    const[estNo,setEstNo]=useState(()=>mode==='new'?genEstNo():''); // 수정 모드는 DB의 est_no를 불러와 씀
+    const shownNo=estNo||(estimateId||'').substr(0,8).toUpperCase(); // 견적번호가 없는 옛 견적만 내부 코드로 표시
     // ★ 현장사진 & 결제 정보
     const[sitePhotos,setSitePhotos]=useState([]);
     const[paymentStatus,setPaymentStatus]=useState('입금전');
@@ -2502,7 +2509,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             if(est){setClient({name:est.client_name||'',phone:est.client_phone||'',address:est.client_address||'',model:est.client_model||'',caravan:est.client_caravan||'',manager:est.client_manager||'',managerPhone:est.manager_phone||''});
                 // status_dates: TEXT(JSON문자열) 또는 JSONB 모두 처리
                 let sd={};try{sd=typeof est.status_dates==='string'?JSON.parse(est.status_dates||'{}'):(est.status_dates||{});}catch(e){}
-                setStatusDates(normStatusObj(sd));
+                setStatusDates(normStatusObj(sd));setEstNo(est.est_no||'');
                 // ★ 현장사진 & 결제 정보 로드
                 let sp=[];try{sp=typeof est.site_photos==='string'?JSON.parse(est.site_photos||'[]'):(est.site_photos||[]);}catch(e){}
                 setSitePhotos(sp);
@@ -2651,7 +2658,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     .then(({error})=>toast(error?'⚠️ 상태 저장 실패: '+error.message:'📤 '+step+' 처리됨'));
             }else toast('📤 '+step+' 처리됨 — 💾 저장을 눌러야 반영됩니다');
         }
-        printEstimateDoc(sb,{no:mode==='new'?estNo:(estimateId||'').substr(0,8).toUpperCase(),client,cats,items,portItems});
+        printEstimateDoc(sb,{no:shownNo,client,cats,items,portItems});
     };
 
     // ★ DB 안내 팝업
@@ -2853,7 +2860,13 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         {showPick&&<ProductPickModal sb={sb} prodCats={prodCats} cats={cats} onAddProduct={addProductToEst} onClose={()=>setShowPick(false)}/>}
         <div className="view-sticky">
         <div className="page-header">
-            <div className="page-title-wrap"><h1>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1><p>{mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'변경 내용은 💾 저장 버튼을 눌러야 DB에 반영됩니다'}</p></div>
+            {/* 제목 옆에 견적 배지를 한 줄로 (상단 고정 영역 높이 절약) */}
+            <div className="page-title-wrap" style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+                <h1 title={mode==='new'?'상품 선택 또는 직접 입력 · 작성 완료 후 저장 버튼을 눌러주세요':'변경 내용은 💾 저장 버튼을 눌러야 DB에 반영됩니다'}>{mode==='new'?'📋 새 견적서 작성':'✏️ 견적서 수정'}</h1>
+                <div className="est-badge">
+                    {[['견적번호',<span className="est-badge-num">{shownNo}</span>],['작성일',<span style={{color:'#fff',fontSize:13,fontWeight:600}}>{new Date().toLocaleDateString('ko-KR')}</span>],['상태',<StatusBadge status={currentStatus}/>]].map(([l,v],i)=><React.Fragment key={l}>{i>0&&<div className="est-badge-sep"/>}<div style={{display:'flex',alignItems:'center',gap:6}}><span className="est-badge-label" style={{marginBottom:0}}>{l}</span>{v}</div></React.Fragment>)}
+                </div>
+            </div>
             <div className="btn-row no-print">
                 <button className="btn btn-outline" onClick={()=>leave('est-list')}>← 목록으로</button>
                 <button className="btn btn-gold" onClick={exportExcel}>📊 엑셀</button>
@@ -2862,11 +2875,6 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
                 <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'저장 중...':'💾 저장'}</button>
             </div>
-        </div>
-
-        {/* 견적 배지 */}
-        <div className="est-badge">
-            {[['견적번호',<span className="est-badge-num">{mode==='new'?estNo:estimateId?.substr(0,8).toUpperCase()}</span>],['작성일',<span style={{color:'#fff',fontSize:14,fontWeight:600}}>{new Date().toLocaleDateString('ko-KR')}</span>],['상태',<StatusBadge status={currentStatus}/>]].map(([l,v],i)=><React.Fragment key={l}>{i>0&&<div className="est-badge-sep"/>}<div><div className="est-badge-label">{l}</div>{v}</div></React.Fragment>)}
         </div>
 
         {/* 고객 정보 / 담당자 정보 */}

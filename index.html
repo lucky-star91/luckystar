@@ -656,9 +656,9 @@ function DecimalInput({value,onCommit,min=0.1,style,className}){
         onBlur={()=>setTxt(String(value))}/>);
 }
 // ★ 뒤로가기 지원: 화면 이동을 주소(#/페이지/ID)로 기록
-const ROUTE_PAGES=['mat-list','supplier-list','mat-stock','tool-list','prod-list','portfolio','est-new','est-list','est-edit','est-checklist','sched-biweek','sched-month','user-approval','settings'];
+const ROUTE_PAGES=['mat-list','supplier-list','mat-stock','tool-list','prod-list','portfolio','est-new','est-list','est-edit','est-checklist','sched-biweek','sched-month','user-approval','settings','out-list'];
 const EST_ID_PAGES=['est-edit','est-checklist'];
-const LIST_KEYS={'mat-list':'mat','prod-list':'prod','tool-list':'tool'};
+const LIST_KEYS={'mat-list':'mat','prod-list':'prod','tool-list':'tool','out-list':'out'};
 const buildHash=(page,estId,cat)=>{
     if(EST_ID_PAGES.includes(page))return '#/'+page+(estId?'/'+estId:'');
     const k=LIST_KEYS[page];
@@ -693,7 +693,7 @@ const prodTds=prods=>[
     <td key="pc" style={{fontSize:12,color:'var(--muted)'}}>{prods.length?prods.map((p,i)=><div key={i}>{p.cat||'-'}</div>):'-'}</td>,
     <td key="pn" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
 ];
-const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories DISABLE ROW LEVEL SECURITY;\nALTER TABLE tools DISABLE ROW LEVEL SECURITY;";
+const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tool_categories;\nCREATE POLICY staff_all ON tool_categories FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\nALTER TABLE tools ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tools;\nCREATE POLICY staff_all ON tools FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());";
 const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS extra_visits TEXT DEFAULT '[]';";
 // 공구/부자재 컬럼이 아직 없을 때: 해당 필드만 빼고 재시도 (나머지 데이터는 정상 저장)
 const prepSafe = async (run, payload) => {
@@ -1762,6 +1762,157 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
     </div>);
 }
 
+
+/* ═══════════════════════════════════════
+   ★ 외주 관리 (자재분류와 동일 구조: 분류 + 품목)
+═══════════════════════════════════════ */
+function OutsourcingModal({sb,outCats,suppliers,initial,onClose,onSave}){
+    const blank={category_id:'',name:'',specification:'',unit_price:0,supplier:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
+    const[form,setForm]=useState(initial?{...initial}:blank);
+    const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+    const ok=()=>{if(!form.name.trim()){alert('품목명을 입력하세요');return;}onSave(form);};
+    return(<div className="modal-overlay">
+        <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><div className="modal-title">{initial?'외주 품목 수정':'새 외주 품목 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
+            <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="outsourcing" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
+            <div className="modal-grid">
+                <div className="mf"><label className="ml">분류</label><select className="mi" value={form.category_id||''} onChange={e=>set('category_id',e.target.value)}><option value="">분류 선택</option>{outCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                <div className="mf"><label className="ml">품목명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="외주 품목명 입력"/></div>
+                <div className="mf full"><label className="ml">규격/작업내용</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 또는 작업 내용"/></div>
+                <div className="mf"><label className="ml">단가(원)</label><input className="mi" type="number" value={form.unit_price||0} onChange={e=>set('unit_price',Number(e.target.value))} min="0"/></div>
+                <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 긴급, A업체 전용"/></div>
+                <div className="mf"><label className="ml">외주업체</label>
+                    <select className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)}>
+                        <option value="">외주업체 선택</option>
+                        {(suppliers||[]).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+                        <option value="__direct__">직접 입력...</option>
+                    </select>
+                    {form.supplier==='__direct__'&&<input className="mi" style={{marginTop:6}} placeholder="업체명 직접 입력" onChange={e=>set('supplier',e.target.value)}/>}
+                </div>
+                <div className="mf"><label className="ml">참고링크</label><input className="mi" value={form.purchase_link||''} onChange={e=>set('purchase_link',e.target.value)} placeholder="https://..."/></div>
+                <div className="mf full"><label className="ml">메모</label><input className="mi" value={form.memo||''} onChange={e=>set('memo',e.target.value)} placeholder="기타 메모"/></div>
+                <div className="mf full"><label className="ml">견적서 파일</label><FileUpload sb={sb} folder="out-quotes" value={form.quote_file_url} fileName={form.quote_file_name} onChange={(url,name)=>{set('quote_file_url',url);set('quote_file_name',name);}}/></div>
+            </div>
+            <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>취소</button><button className="modal-ok" onClick={ok}>저장</button></div>
+        </div>
+    </div>);
+}
+
+function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
+    const[items,setItems]=useState([]);const[loading,setLoading]=useState(true);
+    const[activeCat,setActiveCat]=useState(initialCatId||null);
+    const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
+    const[search,setSearch]=useState('');
+
+    useEffect(()=>{
+        if(!sb)return;
+        sb.from('outsourcing_items').select('*').order('name',{ascending:true}).then(({data,error})=>{if(error)console.warn('outsourcing_items 로드 오류:',error.message);if(data)setItems(data);setLoading(false);});
+    },[sb]);
+
+    const save=async form=>{
+        setShowModal(false);setEditing(null);
+        if(editing){
+            const{data,error}=await sb.from('outsourcing_items').update(form).eq('id',editing.id).select();
+            if(error){toast('오류: '+error.message);return;}
+            if(data)setItems(p=>p.map(m=>m.id===editing.id?data[0]:m).sort((a,b)=>a.name.localeCompare(b.name,'ko')));toast('✅ 수정됨');
+        }else{
+            const{data,error}=await sb.from('outsourcing_items').insert([form]).select();
+            if(error){toast('오류: '+error.message);return;}
+            if(data)setItems(p=>[...p,data[0]].sort((a,b)=>a.name.localeCompare(b.name,'ko')));toast('✅ 외주 품목 등록됨');
+        }
+    };
+    const del=async id=>{if(!confirm('삭제?'))return;await sb.from('outsourcing_items').delete().eq('id',id);setItems(p=>p.filter(m=>m.id!==id));toast('🗑 삭제됨');};
+    const catName=id=>outCats.find(c=>c.id===id)?.name||'미분류';
+
+    const exportExcel=()=>{
+        const headers=['품목명','분류','규격/작업내용','단가(원)','외주업체','기타구분','메모','참고링크'];
+        const rows=items.map(m=>[m.name||'',catName(m.category_id),m.specification||'',m.unit_price||0,m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
+        const wb=XLSX.utils.book_new();
+        const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+        ws['!cols']=[{wch:22},{wch:12},{wch:24},{wch:10},{wch:14},{wch:12},{wch:18},{wch:30}];
+        XLSX.utils.book_append_sheet(wb,ws,'외주목록');
+        XLSX.writeFile(wb,'럭키스타_외주목록.xlsx');
+        toast('📊 엑셀 저장됨');
+    };
+
+    const showSqlGuide=()=>alert(`📋 외주관리 Supabase 테이블 생성 안내\n\n`+
+`CREATE TABLE IF NOT EXISTS outsourcing_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT,\n  display_order INT DEFAULT 0\n);\n`+
+`ALTER TABLE outsourcing_categories ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON outsourcing_categories;\nCREATE POLICY staff_all ON outsourcing_categories FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\n\n`+
+`CREATE TABLE IF NOT EXISTS outsourcing_items (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES outsourcing_categories(id) ON DELETE SET NULL,\n  name TEXT,\n  specification TEXT,\n  unit_price NUMERIC DEFAULT 0,\n  supplier TEXT,\n  category_extra TEXT,\n  purchase_link TEXT,\n  image_url TEXT,\n  memo TEXT,\n  quote_file_url TEXT,\n  quote_file_name TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n`+
+`ALTER TABLE outsourcing_items ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON outsourcing_items;\nCREATE POLICY staff_all ON outsourcing_items FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());`);
+
+    const filtered=koSort(items
+        .filter(m=>!activeCat||m.category_id===activeCat)
+        .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
+            (m.specification||'').toLowerCase().includes(search.toLowerCase())||
+            (m.supplier||'').toLowerCase().includes(search.toLowerCase())),'name');
+
+    if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    return(<div className="list-page">
+        {showModal&&<OutsourcingModal sb={sb} outCats={outCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        <div className="page-header">
+            <div className="page-title-wrap"><h1>🛠 외주 관리</h1><p>외주 품목 등록 · 분류별 단가 관리</p></div>
+            <div className="btn-row">
+                <button className="btn btn-outline" onClick={onAddOutCat}>＋ 분류 추가</button>
+                <button className="btn btn-outline" onClick={exportExcel}>📊 엑셀 저장</button>
+                <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
+                <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 외주 품목 등록</button>
+            </div>
+        </div>
+        <div className="cat-filter">
+            <div className={`cat-tab ${!activeCat?'active':''}`} onClick={()=>setActiveCat(null)}>전체 <span className="cnt">{items.length}</span></div>
+            {outCats.map(c=><div key={c.id} className={`cat-tab ${activeCat===c.id?'active':''}`} onClick={()=>setActiveCat(c.id)}>{c.name} <span className="cnt">{items.filter(m=>m.category_id===c.id).length}</span></div>)}
+        </div>
+        <div style={{marginBottom:14}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품목명 · 규격 · 업체 검색..."
+                style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
+                onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+        </div>
+        <div className="list-body">
+        {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛠</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 외주 품목이 없습니다.'}</div></div>
+        :<div className="table-wrap"><table style={{minWidth:820}}>
+            <thead><tr>
+                <th style={{width:50}}>사진</th>
+                <th style={{textAlign:'left'}}>품목명</th>
+                <th style={{textAlign:'left'}}>분류</th>
+                <th style={{textAlign:'left'}}>규격/작업내용</th>
+                <th className="tr">단가(원)</th>
+                <th style={{textAlign:'left'}}>외주업체</th>
+                <th style={{textAlign:'left'}}>기타구분</th>
+                <th style={{textAlign:'center',width:70}}>링크</th>
+                <th style={{textAlign:'center',width:70}}>견적서</th>
+                <th style={{textAlign:'center',width:70}}>관리</th>
+            </tr></thead>
+            <tbody>{filtered.map(m=>(
+                <tr key={m.id}>
+                    <td style={{textAlign:'center'}}>{m.image_url?<img src={m.image_url} style={{width:36,height:36,objectFit:'cover',borderRadius:5,border:'1px solid var(--border)'}} alt=""/>:<span style={{fontSize:18}}>🛠</span>}</td>
+                    <td style={{fontWeight:700}}>{m.name}</td>
+                    <td style={{fontSize:12,color:'var(--muted)'}}>{catName(m.category_id)}</td>
+                    <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
+                    <td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price||0)}</td>
+                    <td style={{fontSize:12}}>{m.supplier||'-'}</td>
+                    <td style={{fontSize:12,color:'var(--muted)'}}>{m.category_extra||'-'}</td>
+                    <td style={{textAlign:'center'}}>
+                        {m.purchase_link?<a href={m.purchase_link} target="_blank" rel="noreferrer">
+                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>🔗 열기</button>
+                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                        {m.quote_file_url?<a href={m.quote_file_url} target="_blank" rel="noreferrer" title={m.quote_file_name||'견적서'}>
+                            <button className="btn btn-outline btn-xs" style={{whiteSpace:'nowrap'}}>📄 보기</button>
+                        </a>:<span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
+                    </td>
+                    <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
+                        <button className="btn-icon" onClick={()=>{setEditing(m);setShowModal(true);}}>✏️</button>
+                        <button className="btn-icon" onClick={()=>del(m.id)}>🗑</button>
+                    </td>
+                </tr>
+            ))}</tbody>
+        </table></div>}
+        </div>
+    </div>);
+}
+
 /* ═══════════════════════════════════════
    ★ 상품 관리
 ═══════════════════════════════════════ */
@@ -2008,7 +2159,7 @@ function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
                 const validMats=mats.filter(m=>m.material_name);
                 if(validMats.length>0){
                     const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,editing.id)));
-                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials DISABLE ROW LEVEL SECURITY;');return;}
+                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON product_materials;\nCREATE POLICY staff_all ON product_materials FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());');return;}
                 }
                 setProducts(p=>p.map(x=>x.id===editing.id?data[0]:x));
             }
@@ -2021,7 +2172,7 @@ function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
                 const validMats=mats.filter(m=>m.material_name);
                 if(validMats.length>0){
                     const{error:e2}=await sb.from('product_materials').insert(validMats.map(m=>cleanRow(m,pid)));
-                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials DISABLE ROW LEVEL SECURITY;');return;}
+                    if(e2){alert('자재 저장 오류: '+e2.message+'\n\nSupabase SQL Editor에서 아래를 실행하세요:\nALTER TABLE product_materials ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON product_materials;\nCREATE POLICY staff_all ON product_materials FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());');return;}
                 }
                 setProducts(p=>[...p,data[0]]);
             }
@@ -2299,7 +2450,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
 const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:'',holdDays:30,
     // 방문 예약 추천 (카카오 JavaScript 키는 등록한 도메인에서만 동작하는 공개용 키)
     kakaoKey:'7542fd0954e761a43a882196d3b2da3b',visitMin:60,installMin:240,bufferMin:30,workStart:'09:00',workEnd:'20:00',planDays:14,nearKm:15};
-const SQL_SETTINGS="CREATE TABLE IF NOT EXISTS app_settings (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE app_settings DISABLE ROW LEVEL SECURITY;";
+const SQL_SETTINGS="CREATE TABLE IF NOT EXISTS app_settings (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON app_settings;\nCREATE POLICY staff_all ON app_settings FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());";
 const loadSettings=async sb=>{
     try{
         const{data,error}=await sb.from('app_settings').select('value').eq('key','estimate').maybeSingle();
@@ -2791,11 +2942,11 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const showSqlGuide=()=>alert(`📋 Supabase 설정 가이드\n\n` +
 `══ 1. 테이블 생성 ══\n` +
 `CREATE TABLE IF NOT EXISTS estimates (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  est_no TEXT, status TEXT DEFAULT '가견적발송',\n  status_dates TEXT DEFAULT '{}',\n  client_name TEXT, client_phone TEXT, client_address TEXT,\n  client_model TEXT, client_caravan TEXT, client_manager TEXT,\n  total_supply NUMERIC DEFAULT 0, total_vat NUMERIC DEFAULT 0, total_amount NUMERIC DEFAULT 0,\n  site_photos TEXT DEFAULT '[]', payment_status TEXT DEFAULT '입금전',\n  deposit_amount NUMERIC DEFAULT 0, mid_amount NUMERIC DEFAULT 0,\n  balance_amount NUMERIC DEFAULT 0, balance_paid BOOLEAN DEFAULT FALSE,\n  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()\n);\n` +
-`ALTER TABLE estimates DISABLE ROW LEVEL SECURITY;\n\n` +
+`ALTER TABLE estimates ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON estimates;\nCREATE POLICY staff_all ON estimates FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\n\n` +
 `CREATE TABLE IF NOT EXISTS est_cats (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  estimate_id UUID REFERENCES estimates(id) ON DELETE CASCADE,\n  name TEXT, display_order INT DEFAULT 0\n);\n` +
-`ALTER TABLE est_cats DISABLE ROW LEVEL SECURITY;\n\n` +
+`ALTER TABLE est_cats ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON est_cats;\nCREATE POLICY staff_all ON est_cats FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\n\n` +
 `CREATE TABLE IF NOT EXISTS est_items (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  cat_id UUID REFERENCES est_cats(id) ON DELETE CASCADE,\n  name TEXT, specification TEXT, quantity NUMERIC DEFAULT 1,\n  unit_price NUMERIC DEFAULT 0, labor_cost NUMERIC DEFAULT 0,\n  total_amount NUMERIC DEFAULT 0, image_url TEXT, display_order INT DEFAULT 0\n);\n` +
-`ALTER TABLE est_items DISABLE ROW LEVEL SECURITY;\n\n` +
+`ALTER TABLE est_items ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON est_items;\nCREATE POLICY staff_all ON est_items FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\n\n` +
 `-- 기존 테이블에 컬럼 추가 (이미 있으면 무시)\n` +
 `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS site_photos TEXT DEFAULT '[]';\n` +
 `ALTER TABLE estimates ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT '입금전';\n` +
@@ -2968,7 +3119,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             console.error('저장 실패:', msg);
             // RLS 오류 안내
             if(msg.includes('row-level security')||msg.includes('policy')||msg.includes('42501')){
-                alert('⚠️ 저장 실패: Supabase RLS(보안 정책) 오류\n\n아래 SQL을 Supabase SQL Editor에서 실행하세요:\n\nALTER TABLE estimates DISABLE ROW LEVEL SECURITY;\nALTER TABLE est_cats DISABLE ROW LEVEL SECURITY;\nALTER TABLE est_items DISABLE ROW LEVEL SECURITY;');
+                alert('⚠️ 저장 실패: 저장 권한이 없습니다 (보안 규칙)\n\n로그인한 계정이 사용자 관리에서 승인되어 있는지 확인하세요.\n승인된 계정인데도 계속 실패하면 관리자에게 알려주세요.');
             } else if(msg.includes('relation')||msg.includes('does not exist')||msg.includes('42P01')){
                 alert('⚠️ 저장 실패: 테이블이 없습니다\n\n채팅 아래쪽에 안내된 SQL 3개를 Supabase SQL Editor에서 먼저 실행하세요.');
             } else {
@@ -4130,7 +4281,7 @@ function SettingsPage({sb}){
     const ta={width:'100%',border:'1.5px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",lineHeight:1.6,outline:'none',resize:'vertical'};
     return(<div style={{maxWidth:860}}>
         <div className="page-header">
-            <div className="page-title-wrap"><h1>🛠 환경설정</h1><p>견적서 인쇄에 들어가는 상호·공통 문구와 진행 상태 설정을 관리합니다</p></div>
+            <div className="page-title-wrap"><h1>🔧 환경설정</h1><p>견적서 인쇄에 들어가는 상호·공통 문구와 진행 상태 설정을 관리합니다</p></div>
             <div className="btn-row"><button className="btn btn-primary" disabled={saving} onClick={save}>{saving?'저장 중...':'💾 저장'}</button></div>
         </div>
         {st._error&&<div className="card" style={{borderColor:'#fca5a5',background:'#fef2f2'}}>
@@ -4165,18 +4316,19 @@ function SettingsPage({sb}){
 /* ═══════════════════════════════════════
    ★ 사이드바
 ═══════════════════════════════════════ */
-function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onEditMatCat,onEditToolCat,onEditProdCat,onAddProdCat,onDelProdCat,toolCats,onAddToolCat,onDelToolCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
-    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
-    const[openSub,setOpenSub]=useState({mat:true,prod:true,tool:true});
+function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onEditMatCat,onEditToolCat,onEditProdCat,onAddProdCat,onDelProdCat,toolCats,onAddToolCat,onDelToolCat,outCats,onAddOutCat,onDelOutCat,onEditOutCat,activeCatId,setActiveCatId,grandWithVat,onLogout,sbOpen,onClose}){
+    const[open,setOpen]=useState(()=>page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate');
+    const[openSub,setOpenSub]=useState({mat:true,prod:true,tool:true,out:true});
     const toggle=id=>setOpen(o=>o===id?null:id);
-    const _grp=page.startsWith('mat')?'material':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    const _grp=page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
     useEffect(()=>{setOpen(_grp);},[_grp]);
     const toggleSub=key=>setOpenSub(p=>({...p,[key]:!p[key]}));
     const uname=user?.user_metadata?.full_name||user?.email?.split('@')[0]||'사용자';
     const avatar=user?.user_metadata?.avatar_url;
-    const activeGroup=page.startsWith('mat')?'material':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
+    const activeGroup=page.startsWith('mat')?'material':page.startsWith('out')?'outsourcing':page==='supplier-list'?'supplier':page.startsWith('tool')?'tool':page.startsWith('prod')?'product':page.startsWith('port')?'portfolio':page.startsWith('sched')?'schedule':'estimate';
     const goMat=(catId=null)=>{setPage('mat-list');setActiveCatId({mat:catId,prod:null});if(onClose)onClose();};
     const goProd=(catId=null)=>{setPage('prod-list');setActiveCatId({mat:null,prod:catId});if(onClose)onClose();};
+    const goOut=(catId=null)=>{setPage('out-list');setActiveCatId({mat:null,prod:null,tool:null,out:catId,sup:null});if(onClose)onClose();};
     const goSup=(f=null)=>{setPage('supplier-list');setActiveCatId({mat:null,prod:null,tool:null,sup:f});if(onClose)onClose();};
     const goTool=(catId=null)=>{setPage('tool-list');setActiveCatId({mat:null,prod:null,tool:catId});if(onClose)onClose();};
     const go=p=>{setPage(p);if(onClose)onClose();};
@@ -4222,6 +4374,22 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
                     <SSI label="전체 공구/부자재" isActive={page==='tool-list'&&(activeCatId?.tool??null)===null} onNav={()=>goTool(null)}/>
                     {(toolCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='tool-list'&&activeCatId?.tool===c.id} onNav={()=>goTool(c.id)} onEdit={()=>onEditToolCat(c)} onDel={()=>onDelToolCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddToolCat}>＋ 분류 추가</div>
+                </div>
+            </div>
+
+            <div className={`nav-row ${activeGroup==='outsourcing'?'active':''} ${open==='outsourcing'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('outsourcing')}><span className="nav-icon">🛠</span>외주관리<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='outsourcing'?'open':''}`}>
+                <div className={`nav-grp-hd ${openSub.out?'open':''}`} onClick={()=>toggleSub('out')}>
+                    <span>📁 외주분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddOutCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.out?'open':''}`}>
+                    <SSI label="전체 외주" isActive={page==='out-list'&&(activeCatId?.out??null)===null} onNav={()=>goOut(null)}/>
+                    {(outCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='out-list'&&activeCatId?.out===c.id} onNav={()=>goOut(c.id)} onEdit={()=>onEditOutCat(c)} onDel={()=>onDelOutCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddOutCat}>＋ 분류 추가</div>
                 </div>
             </div>
 
@@ -4273,7 +4441,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
                 <SI label="월간 일정" isActive={page==='sched-month'} onNav={()=>go('sched-month')}/>
             </div>
             <div className={`nav-row ${page==='settings'?'active':''}`} style={{marginTop:8}}>
-                <div className="nav-label" onClick={()=>go('settings')}><span className="nav-icon">🛠</span>환경설정</div>
+                <div className="nav-label" onClick={()=>go('settings')}><span className="nav-icon">🔧</span>환경설정</div>
             </div>
             {/* 관리자 전용 메뉴 */}
             {user?.email===ADMIN_EMAIL&&(
@@ -4321,7 +4489,9 @@ function App(){
     const[addMatModal,setAddMatModal]=useState(false);
     const[addProdModal,setAddProdModal]=useState(false);
     const[toolCats,setToolCats]=useState([]);
-    const[outCats,setOutCats]=useState([]); // 외주 분류 (공급사 외주업체 구분용)
+    const[outCats,setOutCats]=useState([]); // 외주 분류 (외주관리 · 공급사 외주업체 구분)
+    const[addOutModal,setAddOutModal]=useState(false);
+    const[editOutCat,setEditOutCat]=useState(null);
     const[addToolModal,setAddToolModal]=useState(false);
     const[editMatCat,setEditMatCat]=useState(null);
     const[editToolCat,setEditToolCat]=useState(null);
@@ -4447,6 +4617,22 @@ function App(){
         if(error){alert('수정 실패: '+error.message);return;}
         setProdCats(p=>p.map(c=>c.id===id?{...c,name}:c));setEditProdCat(null);toast('✅ 상품 분류명 수정됨');
     };
+    const addOutCat=async name=>{
+        const{data,error}=await sb.from('outsourcing_categories').insert([{name,display_order:outCats.length}]).select();
+        if(error){alert('오류: '+error.message+'\n\n외주관리 페이지의 "⚙️ DB 안내" 버튼을 눌러 먼저 테이블을 생성하세요.');return;}
+        if(data)setOutCats(p=>[...p,data[0]]);
+        setAddOutModal(false);toast('📁 외주분류 추가됨');
+    };
+    const delOutCat=async id=>{
+        if(!confirm('분류를 삭제하시겠습니까?'))return;
+        await sb.from('outsourcing_categories').delete().eq('id',id);
+        setOutCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
+    };
+    const renameOutCat=async(id,name)=>{
+        const{error}=await sb.from('outsourcing_categories').update({name}).eq('id',id);
+        if(error){alert('수정 실패: '+error.message);return;}
+        setOutCats(p=>p.map(c=>c.id===id?{...c,name}:c));setEditOutCat(null);toast('✅ 외주 분류명 수정됨');
+    };
     const renameToolCat=async(id,name)=>{
         const{error}=await sb.from('tool_categories').update({name}).eq('id',id);
         if(error){alert('수정 실패: '+error.message);return;}
@@ -4458,6 +4644,7 @@ function App(){
         switch(page){
             case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat} openMatId={openMatId} onOpened={()=>setOpenMatId(null)}/>;
             case 'tool-list':return<ToolList sb={sb} toolCats={toolCats} onAddToolCat={()=>setAddToolModal(true)} initialCatId={activeCatId.tool}/>;
+            case 'out-list':return<OutsourcingList key={'out-'+(activeCatId.out||'all')} sb={sb} outCats={outCats} suppliers={suppliers} onAddOutCat={()=>setAddOutModal(true)} initialCatId={activeCatId.out||null}/>;
             case 'supplier-list':return<SupplierList key={'sup-'+(activeCatId.sup||'all')} sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats} initialFilter={activeCatId.sup||null}/>;
             case 'mat-stock':return<div><div className="page-header"><div className="page-title-wrap"><h1>🏭 재고 현황</h1><p>자재별 재고 조회</p></div></div><div className="coming-wrap" style={{marginTop:0}}><div className="coming-icon">🔨</div><div style={{fontSize:16,fontWeight:700,color:'var(--navy)'}}>준비 중</div></div></div>;
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
@@ -4492,9 +4679,11 @@ function App(){
         {editMatCat&&<AddNameModal title="자재 분류명 수정" placeholder="분류명 입력" initial={editMatCat.name} onClose={()=>setEditMatCat(null)} onSave={n=>renameMatCat(editMatCat.id,n)}/>}
         {editProdCat&&<AddNameModal title="상품 분류명 수정" placeholder="분류명 입력" initial={editProdCat.name} onClose={()=>setEditProdCat(null)} onSave={n=>renameProdCat(editProdCat.id,n)}/>}
         {editToolCat&&<AddNameModal title="공구/부자재 분류명 수정" placeholder="분류명 입력" initial={editToolCat.name} onClose={()=>setEditToolCat(null)} onSave={n=>renameToolCat(editToolCat.id,n)}/>}
+        {addOutModal&&<AddNameModal title="외주 분류 추가" placeholder="분류명 입력" onClose={()=>setAddOutModal(false)} onSave={addOutCat}/>}
+        {editOutCat&&<AddNameModal title="외주 분류명 수정" placeholder="분류명 입력" initial={editOutCat.name} onClose={()=>setEditOutCat(null)} onSave={n=>renameOutCat(editOutCat.id,n)}/>}
         {addToolModal&&<AddNameModal title="공구/부자재 분류 추가" placeholder="분류명 입력 (예: 공구, 부자재)" onClose={()=>setAddToolModal(false)} onSave={addToolCat}/>}
         {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={c=>{setEditMatCat(c);setSbOpen(false);}} onEditToolCat={c=>{setEditToolCat(c);setSbOpen(false);}} onEditProdCat={c=>{setEditProdCat(c);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} toolCats={toolCats} onAddToolCat={()=>{setAddToolModal(true);setSbOpen(false);}} onDelToolCat={delToolCat} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
+        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={c=>{setEditMatCat(c);setSbOpen(false);}} onEditToolCat={c=>{setEditToolCat(c);setSbOpen(false);}} onEditProdCat={c=>{setEditProdCat(c);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} toolCats={toolCats} onAddToolCat={()=>{setAddToolModal(true);setSbOpen(false);}} onDelToolCat={delToolCat} outCats={outCats} onAddOutCat={()=>{setAddOutModal(true);setSbOpen(false);}} onDelOutCat={delOutCat} onEditOutCat={c=>{setEditOutCat(c);setSbOpen(false);}} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

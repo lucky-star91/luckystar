@@ -4433,6 +4433,48 @@ function PublicPortfolioPage({sb,ids}){
     </div>);
 }
 
+/* ── 📌 오늘 할 일(오늘 일정) · 📅 1주일 할 일(내일부터 7일 안 일정 + 연락할 일) · 💰 잔금 미입금 — 견적 목록·일정표 공용 ── */
+function TodoPanels({estimates,st,onEdit}){
+    const[open,setOpen]=useState(true);
+    const now=new Date(),today=ymd(now);
+    const weekEnd=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()+7)); // 오늘부터 7일 뒤까지
+    const todayList=[],weekList=[],unpaid=[];
+    const sched=(e,kind,d,detail)=>{const k=ymd(new Date(d));if(k===today)todayList.push([e,kind,detail]);else if(k>today&&k<=weekEnd)weekList.push([e,kind,fmtDT(d).split(' ').slice(0,2).join(' ')+' '+(detail||''),new Date(d)]);};
+    estimates.forEach(e=>{
+        const i=estStageInfo(e,st.holdDays,st.delayDays);if(i.lost||i.deleted)return;
+        if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측'])sched(e,'🏠 방문',i.sd['방문상담 및 실측'],fmtDT(i.sd['방문상담 및 실측']).split(' ').slice(2).join(' '));
+        if(i.sd['설치완료']&&!i.sc['설치완료'])sched(e,'🎉 설치',i.sd['설치완료'],fmtDT(i.sd['설치완료']).split(' ').slice(2).join(' '));
+        if(i.sd['제작시작']&&!i.sc['설치완료']){const s0=new Date(String(i.sd['제작시작']).slice(0,10)+'T09:00'),days=prodDays(i.sd)||1;
+            for(let k=0;k<days;k++)sched(e,days>1?'🔨 공사':'🔨 제작',new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,9),days>1?`${k+1}/${days}일`:'');}
+        pendingExtras(e).forEach(v=>sched(e,'🔧 '+v.type,v.at,v.reason||''));
+        // 연락·처리할 일은 1주일 할 일에
+        if(i.delayed)weekList.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
+        if(!i.hold&&(i.stage==='가견적발송'||i.stage==='본견적발송')&&Number(st.holdDays)>0){
+            const left=Math.ceil((lastSentAt(i.sd)+Number(st.holdDays)*86400000-Date.now())/86400000);
+            if(left>=0&&left<=5)weekList.push([e,'⏳ 곧 보류',left+'일 남음 · 연락 필요']);
+        }
+        if(i.stage==='설치완료')unpaid.push([e,'💰 잔금',fmt(Math.max(0,(Number(e.total_amount)||0)-(Number(e.deposit_amount)||0)-(Number(e.mid_amount)||0)))+'원']);
+    });
+    weekList.sort((a,b)=>(a[3]||Infinity)-(b[3]||Infinity));
+    return(<>
+        <div style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:6}} onClick={()=>setOpen(o=>!o)}>
+            <b style={{fontSize:13,color:'var(--navy)'}}>할 일</b><span style={{fontSize:11,color:'var(--muted)'}}>{open?'▲ 접기':'▼ 펼치기'}</span></div>
+        {open&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:12,marginBottom:14}}>
+            {[['📌 오늘 할 일','#b45309','#fffbeb','#fcd34d',todayList,'오늘 일정이 없습니다'],
+              ['📅 1주일 할 일','#1d4ed8','#eff6ff','#bfdbfe',weekList,'앞으로 7일 안 일정·연락할 일이 없습니다'],
+              ['💰 잔금 미입금','#b91c1c','#fef2f2','#fecaca',unpaid,'잔금 미입금 견적이 없습니다']].map(([title,color,bg,bd,list,empty])=>(
+            <div key={title} style={{background:bg,border:'1.5px solid '+bd,borderRadius:12,padding:'10px 14px'}}>
+                <b style={{color}}>{title} {list.length>0&&<span>{list.length}건</span>}</b>
+                <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:6,maxHeight:220,overflowY:'auto'}}>
+                    {list.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>{empty}</span>
+                    :list.map(([e,kind,detail],i)=><div key={i} style={{display:'flex',gap:8,alignItems:'baseline',fontSize:13,cursor:'pointer',flexWrap:'wrap'}} onClick={()=>onEdit(e.id)}>
+                        <span style={{fontWeight:800,whiteSpace:'nowrap'}}>{kind}</span><span style={{fontWeight:700,color:'var(--blue)'}}>{e.client_name||'고객'}</span><span style={{color:'var(--muted)',fontSize:12}}>{detail}</span></div>)}
+                </div>
+            </div>))}
+        </div>}
+    </>);
+}
+
 function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
@@ -4443,7 +4485,6 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
     const[sortKey,setSortKey]=useState('created'); // created · amount · name · status
     const[period,setPeriod]=useState('all');       // all · thisMonth · lastMonth · custom
     const[range,setRange]=useState({from:'',to:''});
-    const[showToday,setShowToday]=useState(true);
     const[delDlg,setDelDlg]=useState(null);        // 삭제 버튼을 누른 견적 (실주 처리 / 휴지통 선택)
     const[lostReason,setLostReason]=useState(LOST_REASONS[0]);
 
@@ -4531,27 +4572,6 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
     const won=sent.filter(e=>['제작중','설치완료','완료'].includes(info[e.id].stage));
     const rate=sent.length?Math.round(won.length/sent.length*100):0;
 
-    // ── 📌 오늘 할 일(오늘 일정) · 📅 주간 할 일(이번 주 남은 일정 + 연락할 일) · 💰 잔금 미입금 ──
-    const today=ymd(now);
-    const weekEnd=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()+(7-now.getDay())%7)); // 이번 주 일요일
-    const todayList=[],weekList=[],unpaid=[];
-    const sched=(e,kind,d,detail)=>{const k=ymd(new Date(d));if(k===today)todayList.push([e,kind,detail]);else if(k>today&&k<=weekEnd)weekList.push([e,kind,fmtDT(d).split(' ').slice(0,2).join(' ')+' '+(detail||''),new Date(d)]);};
-    live.forEach(e=>{
-        const i=info[e.id];if(i.lost)return;
-        if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측'])sched(e,'🏠 방문',i.sd['방문상담 및 실측'],fmtDT(i.sd['방문상담 및 실측']).split(' ').slice(2).join(' '));
-        if(i.sd['설치완료']&&!i.sc['설치완료'])sched(e,'🎉 설치',i.sd['설치완료'],fmtDT(i.sd['설치완료']).split(' ').slice(2).join(' '));
-        if(i.sd['제작시작']&&!i.sc['설치완료']){const s0=new Date(String(i.sd['제작시작']).slice(0,10)+'T09:00'),days=prodDays(i.sd)||1;
-            for(let k=0;k<days;k++)sched(e,days>1?'🔨 공사':'🔨 제작',new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,9),days>1?`${k+1}/${days}일`:'');}
-        pendingExtras(e).forEach(v=>sched(e,'🔧 '+v.type,v.at,v.reason||''));
-        // 연락·처리할 일은 주간 할 일에
-        if(i.delayed)weekList.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
-        if(!i.hold&&(i.stage==='가견적발송'||i.stage==='본견적발송')&&Number(st.holdDays)>0){
-            const left=Math.ceil((lastSentAt(i.sd)+Number(st.holdDays)*86400000-Date.now())/86400000);
-            if(left>=0&&left<=5)weekList.push([e,'⏳ 곧 보류',left+'일 남음 · 연락 필요']);
-        }
-        if(i.stage==='설치완료')unpaid.push([e,'💰 잔금',fmt(Math.max(0,(Number(e.total_amount)||0)-(Number(e.deposit_amount)||0)-(Number(e.mid_amount)||0)))+'원']);
-    });
-    weekList.sort((a,b)=>(a[3]||Infinity)-(b[3]||Infinity));
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
     const resetAll=()=>{setStatusFilter(null);setPayFilter(null);setQ('');setPeriod('all');};
@@ -4581,22 +4601,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
         </div>
 
-        {/* 📌 오늘 할 일 · 📅 주간 할 일 · 💰 잔금 미입금 */}
-        <div style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:6}} onClick={()=>setShowToday(o=>!o)}>
-            <b style={{fontSize:13,color:'var(--navy)'}}>할 일</b><span style={{fontSize:11,color:'var(--muted)'}}>{showToday?'▲ 접기':'▼ 펼치기'}</span></div>
-        {showToday&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:12,marginBottom:14}}>
-            {[['📌 오늘 할 일','#b45309','#fffbeb','#fcd34d',todayList,'오늘 일정이 없습니다'],
-              ['📅 주간 할 일','#1d4ed8','#eff6ff','#bfdbfe',weekList,'이번 주 남은 일정·연락할 일이 없습니다'],
-              ['💰 잔금 미입금','#b91c1c','#fef2f2','#fecaca',unpaid,'잔금 미입금 견적이 없습니다']].map(([title,color,bg,bd,list,empty])=>(
-            <div key={title} style={{background:bg,border:'1.5px solid '+bd,borderRadius:12,padding:'10px 14px'}}>
-                <b style={{color}}>{title} {list.length>0&&<span>{list.length}건</span>}</b>
-                <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:6,maxHeight:220,overflowY:'auto'}}>
-                    {list.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>{empty}</span>
-                    :list.map(([e,kind,detail],i)=><div key={i} style={{display:'flex',gap:8,alignItems:'baseline',fontSize:13,cursor:'pointer',flexWrap:'wrap'}} onClick={()=>onEdit(e.id)}>
-                        <span style={{fontWeight:800,whiteSpace:'nowrap'}}>{kind}</span><span style={{fontWeight:700,color:'var(--blue)'}}>{e.client_name||'고객'}</span><span style={{color:'var(--muted)',fontSize:12}}>{detail}</span></div>)}
-                </div>
-            </div>))}
-        </div>}
+        <TodoPanels estimates={live} st={st} onEdit={onEdit}/>
 
         <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 고객명 · 연락처 · 주소 · 견적번호 검색 (보류·실주 포함)"
@@ -4725,6 +4730,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const[popItems,setPopItems]=useState(null); // 팝업 견적의 상품 목록 (null = 불러오는 중)
     const[popExtra,setPopExtra]=useState(null); // 추가 방문 일정을 눌렀을 때 그 방문 정보
     const[selDay,setSelDay]=useState(()=>new Date()); // 달력에서 고른 날 → 달력 아래에 그날 일정 목록
+    const[st,setSt]=useState(SETTINGS_DEFAULT);
 
     // 팝업을 열면 해당 견적의 상품 목록을 불러옴
     useEffect(()=>{
@@ -4742,6 +4748,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     useEffect(()=>{
         if(!sb)return;
         (async()=>{setLoading(true);const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});if(data)setEstimates(data);setLoading(false);})();
+        loadSettings(sb).then(setSt);
     },[sb]);
 
     const getEvents=()=>{
@@ -4910,6 +4917,8 @@ function Schedule({sb,view,onSetView,onEditEst}){
                 <button className="btn btn-outline" onClick={()=>setBase(new Date())}>오늘</button>
             </div>
         </div>
+
+        <TodoPanels estimates={estimates} st={st} onEdit={onEditEst}/>
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}

@@ -639,7 +639,12 @@ td{padding:9px 14px;vertical-align:middle;}
 const { useState, useEffect, useRef } = React;
 const fmt = n => Math.round(Number(n)||0).toLocaleString('ko-KR');
 const koSort=(arr,key)=>[...(arr||[])].sort((a,b)=>String(a[key]||'').localeCompare(String(b[key]||''),'ko',{numeric:true,sensitivity:'base'}));
-const genEstNo = () => { const d=new Date(); return `LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9000)+1000)}`; };
+const nextEstNo = async sb => {
+    const d=new Date();const day=`LS-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-`;
+    const{data}=await sb.from('estimates').select('est_no').like('est_no',day+'%');
+    const max=(data||[]).reduce((m,r)=>{const n=parseInt(String(r.est_no||'').slice(day.length),10);return !isNaN(n)&&n<1000?Math.max(m,n):m;},0); // 옛 무작위 4자리(1000 이상)는 순번에서 제외
+    return day+String(max+1).padStart(2,'0');
+};
 const uid = () => Math.random().toString(36).substr(2,9);
 // 수량 입력: 소수 첫째 자리까지 허용. 입력 중("0." 등)에는 글자를 그대로 두고, 0보다 큰 유효한 값만 반영
 function DecimalInput({value,onCommit,min=0.1,style,className}){
@@ -694,13 +699,13 @@ const prodTds=prods=>[
     <td key="pn" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
 ];
 const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tool_categories;\nCREATE POLICY staff_all ON tool_categories FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\nALTER TABLE tools ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tools;\nCREATE POLICY staff_all ON tools FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());";
-const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS extra_visits TEXT DEFAULT '[]';";
+const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS extra_visits TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS meta TEXT DEFAULT '{}';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS send_history TEXT DEFAULT '[]';\n\n(전체 SQL은 supabase/batch2_columns.sql 참고)";
 // 공구/부자재 컬럼이 아직 없을 때: 해당 필드만 빼고 재시도 (나머지 데이터는 정상 저장)
 const prepSafe = async (run, payload) => {
     let r = await run(payload);
     const p = {...payload}; const dropped = [];
-    for(let n=0; n<4 && r.error; n++){
-        const col = ['est_prep','prep_items','portfolio_ids','extra_visits'].find(c => c in p && (r.error.message||'').indexOf(c) >= 0);
+    for(let n=0; n<6 && r.error; n++){
+        const col = ['est_prep','prep_items','portfolio_ids','extra_visits','meta','send_history'].find(c => c in p && (r.error.message||'').indexOf(c) >= 0);
         if(!col) break;
         delete p[col]; dropped.push(col);
         r = await run(p);
@@ -731,18 +736,41 @@ function QrImg({text, size=92}){
         ? <img src={src} alt="QR" style={{width:size,height:size,display:'block',margin:'0 auto'}}/>
         : <div style={{fontSize:9,color:'#64748b',wordBreak:'break-all',maxWidth:size}}>{text}</div>;
 }
+const shareUrlOf = token => window.location.origin + window.location.pathname + '?q=' + token; // 고객용 웹 견적서
 const pfUrl = ids => window.location.origin + window.location.pathname + '?pf=' + ids.join(',');
 let _tt; const toast = msg=>{const el=document.getElementById('__toast');if(!el)return;el.textContent=msg;el.style.display='block';clearTimeout(_tt);_tt=setTimeout(()=>el.style.display='none',2800);};
 
 // ★ 상태 목록
 const STATUS_LIST = ['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료'];
-const STATUS_COLOR = {'작성중':'#475569','가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','본견적발송':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a','완료':'#15803d','보류':'#475569'};
-const STATUS_BG    = {'작성중':'#f1f5f9','가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','본견적발송':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7','완료':'#bbf7d0','보류':'#e2e8f0'};
-const STATUS_ICON  = {'작성중':'📝','가견적발송':'📤','방문상담 및 실측':'🏠','본견적발송':'📨','제작중':'🔧','설치완료':'🎉','완료':'✔','보류':'⏸'};
+const STATUS_COLOR = {'작성중':'#475569','가견적발송':'#1e6fd9','방문상담 및 실측':'#f97316','본견적발송':'#7c3aed','제작중':'#ca8a04','설치완료':'#16a34a','완료':'#15803d','보류':'#475569','실주':'#b91c1c'};
+const STATUS_BG    = {'작성중':'#f1f5f9','가견적발송':'#dbeafe','방문상담 및 실측':'#ffedd5','본견적발송':'#ede9fe','제작중':'#fef9c3','설치완료':'#dcfce7','완료':'#bbf7d0','보류':'#e2e8f0','실주':'#fee2e2'};
+const STATUS_ICON  = {'작성중':'📝','가견적발송':'📤','방문상담 및 실측':'🏠','본견적발송':'📨','제작중':'🔧','설치완료':'🎉','완료':'✔','보류':'⏸','실주':'❌'};
 const STATUS_TEXT  = {'설치완료':'설치완료 · 잔금대기'};
 // ★ 추가 방문 (진행 단계와 별개: AS · 추가 설치 등) — estimates.extra_visits = [{id,type,at,reason,done}]
 const EXTRA_TYPES = {'AS':{icon:'🛠',color:'#7c3aed',bg:'#ede9fe'},'추가설치':{icon:'➕',color:'#0e7490',bg:'#cffafe'},'기타':{icon:'📌',color:'#475569',bg:'#e2e8f0'}};
 const extraVisitsOf = est => parseJSON(est&&est.extra_visits,[]);
+// 시공비 항목 (meta.costs) — 공급가액에 포함, 0원이면 견적서 인쇄에서 제외
+const COST_KEYS = [['install','설치비'],['delivery','운반비'],['demolition','철거비']];
+const LOST_REASONS = ['가격','일정','다른 업체 선택','연락 두절','기타'];
+const SITE_SOURCES = ['숨고','지인 소개','블로그','인스타그램','전화 문의','기타']; // 현장정보 유입 경로
+// ★ 재고 증감: DB 함수(adjust_stock)가 수량 변경과 입출고 기록을 한 번에 처리 (동시에 해도 숫자가 틀리지 않음)
+//   DB 함수를 아직 안 만들었으면 예전 방식(읽고 쓰기)으로 처리하고 기록은 남기지 않음
+let _stockFallbackWarned=false;
+const adjustStock=async(sb,{materialId,delta,estimateId=null,reason,memo=null})=>{
+    const{data,error}=await sb.rpc('adjust_stock',{p_material:materialId,p_delta:delta,p_estimate:estimateId,p_reason:reason,p_memo:memo});
+    if(!error)return Number(data);
+    if(!/adjust_stock|function|PGRST202/i.test(error.message+(error.code||'')))throw new Error(error.message);
+    if(!_stockFallbackWarned){_stockFallbackWarned=true;alert('재고 입출고 기록 기능(DB 함수)이 아직 없어 수량만 바꾸고 기록은 남기지 않습니다.\nsupabase/batch2_columns.sql 을 실행하면 기록이 남습니다.');}
+    const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',materialId).maybeSingle();
+    const q=Math.max(0,(Number(cur&&cur.stock_qty)||0)+delta);
+    const{error:e2}=await sb.from('materials').update({stock_qty:q}).eq('id',materialId);
+    if(e2)throw new Error(e2.message);
+    return q;
+};
+// 견적 소요 자재를 자재별로 합산 (재고 차감용)
+const stockLinesOf=mats=>{const m={};(mats||[]).forEach(r=>{if(!r.material_id||!(Number(r.qty)>0))return;if(!m[r.material_id])m[r.material_id]={material_id:r.material_id,name:r.name,qty:0};m[r.material_id].qty=Math.round((m[r.material_id].qty+Number(r.qty))*10)/10;});return Object.values(m);};
+// 저장소 공개 주소 → 저장소 안 경로 (사진·파일 정리용)
+const storagePathOf = url => { const m=String(url||'').match(/\/object\/public\/lucky-star\/(.+)$/); return m?decodeURIComponent(m[1].split('?')[0]):null; };
 const pendingExtras = est => extraVisitsOf(est).filter(v=>v.at&&!v.done);
 const durText = m => { const h=Number(m)/60; return (Number.isInteger(h)?h:h.toFixed(1))+'시간'; }; // 소요 시간(분) → '1.5시간'
 
@@ -772,14 +800,23 @@ const isOnHold = (stage,sd,holdDays) => {
     const t=lastSentAt(sd); return t>0 && Date.now()-t > days*86400000;
 };
 // DB 견적 한 건 → {sd, sc, stage, hold, label}
-const estStageInfo = (est,holdDays) => {
-    const sd=normStatusObj(parseJSON(est.status_dates,{})), sc=normStatusObj(parseJSON(est.status_checked,{}));
-    const stage=getStage({sd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid});
-    const hold=isOnHold(stage,sd,holdDays);
-    return {sd,sc,stage,hold,label:hold?'보류':stage};
+// 본견적 지연: 방문함 체크 후 delayDays 일이 지나도 본견적을 안 보낸 건 (우리가 할 일을 놓친 건 · 보류와 별개 표시)
+// 제작·공사 기간 일수 (시작일~완료일, 같은 날이면 1)
+const prodDays = sd => { const a=new Date(String(sd['제작시작']||'').slice(0,10)),b=new Date(String(sd['제작완료']||'').slice(0,10)); return isNaN(a)||isNaN(b)?0:Math.max(1,Math.round((b-a)/86400000)+1); };
+const isDelayed = (stage,sd,sc,delayDays) => {
+    const days=Number(delayDays)||0; if(days<=0||stage!=='방문상담 및 실측'||!sc['방문상담 및 실측']||sd['본견적발송']) return false;
+    const t=new Date(sd['방문상담 및 실측']).getTime(); return !isNaN(t) && Date.now()-t > days*86400000;
 };
-// 인쇄할 때 물어볼 발송 단계 (없으면 null)
-// 아직 발송 전이면 가견적발송, 가견적을 보낸 뒤(방문 여부 무관)·계약 전이면 본견적발송
+// DB 견적 한 건 → {sd, sc, meta, stage, hold, lost, deleted, delayed, label}
+const estStageInfo = (est,holdDays,delayDays) => {
+    const sd=normStatusObj(parseJSON(est.status_dates,{})), sc=normStatusObj(parseJSON(est.status_checked,{}));
+    const meta=parseJSON(est.meta,{});
+    const stage=getStage({sd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid});
+    const lost=!!meta.lost, deleted=!!meta.deletedAt;
+    const hold=!lost&&isOnHold(stage,sd,holdDays);
+    const delayed=!lost&&isDelayed(stage,sd,sc,delayDays);
+    return {sd,sc,meta,stage,hold,lost,deleted,delayed,label:lost?'실주':hold?'보류':stage};
+};
 const sendStepOnPrint = (stage,sd,sc,hold) => {
     if(hold) return sd['본견적발송']?'본견적발송':'가견적발송';
     if(stage==='작성중') return '가견적발송';
@@ -870,6 +907,8 @@ const uploadImg = async (sb, file, folder='uploads') => {
 
 function ImgUpload({sb,folder='uploads',value,onChange}){
     const[busy,setBusy]=useState(false);
+    const[armed,setArmed]=useState(false); // 마우스가 사진 칸 위에 있을 때만 붙여넣기 (다른 칸에 Ctrl+V 해도 사진으로 올라가지 않게)
+    const armedRef=useRef(false);armedRef.current=armed;
     const upload=async f=>{
         setBusy(true);
         try{const url=await uploadImg(sb,f,folder);onChange(url);}
@@ -879,6 +918,7 @@ function ImgUpload({sb,folder='uploads',value,onChange}){
     // ★ 클립보드 이미지 붙여넣기 (캡처 후 Ctrl+V) — 텍스트 붙여넣기는 그대로 동작
     useEffect(()=>{
         const h=e=>{
+            if(!armedRef.current)return;
             const items=e.clipboardData&&e.clipboardData.items;
             if(!items)return;
             for(const it of items){
@@ -892,10 +932,11 @@ function ImgUpload({sb,folder='uploads',value,onChange}){
         document.addEventListener('paste',h);
         return()=>document.removeEventListener('paste',h);
     });
-    return(<label className="img-area" style={{display:'block',cursor:'pointer'}}>
+    return(<label className="img-area" style={{display:'block',cursor:'pointer',outline:armed?'2px solid var(--blue)':'none',outlineOffset:2}}
+        onMouseEnter={()=>setArmed(true)} onMouseLeave={()=>setArmed(false)}>
         {busy?<div className="img-placeholder"><span style={{fontSize:28}}>⏳</span>업로드 중...</div>:
          value?<img src={value} alt="" style={{maxHeight:130,maxWidth:'100%',borderRadius:8,objectFit:'cover'}}/>:
-         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드<div style={{fontSize:11,marginTop:4}}>또는 캡처 후 Ctrl+V 로 붙여넣기</div></div>}
+         <div className="img-placeholder"><span>📷</span>클릭하여 사진 업로드<div style={{fontSize:11,marginTop:4}}>또는 캡처 후 이 칸 위에 마우스를 두고 Ctrl+V</div></div>}
         <input type="file" accept="image/*" style={{display:'none'}} onChange={pick}/>
     </label>);
 }
@@ -1388,11 +1429,57 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
     </div>);
 }
 
+// ★ 재고 수정 · 입출고 기록 창 (자재관리 목록의 재고 ✏️)
+function StockModal({sb,mat,onClose,onChanged}){
+    const[mode,setMode]=useState('set'); // set: 실제 수량으로 맞추기 · add: 입고(+) · sub: 사용·폐기(-)
+    const[val,setVal]=useState('');const[memo,setMemo]=useState('');
+    const[log,setLog]=useState(null);const[busy,setBusy]=useState(false);
+    const loadLog=()=>sb.from('stock_ledger').select('*').eq('material_id',mat.id).order('created_at',{ascending:false}).limit(50).then(({data,error})=>setLog(error?false:(data||[])));
+    useEffect(()=>{loadLog();},[mat.id]);
+    const cur=Number(mat.stock_qty)||0,v=Number(val);
+    const delta=val===''||isNaN(v)?0:mode==='set'?v-cur:mode==='add'?v:-v;
+    const apply=async()=>{
+        if(!delta){alert('바꿀 수량을 입력하세요');return;}
+        setBusy(true);
+        try{const q=await adjustStock(sb,{materialId:mat.id,delta,reason:mode==='set'?'직접 수정':mode==='add'?'입고':'사용·폐기',memo:memo||null});
+            onChanged(q);setVal('');setMemo('');loadLog();toast('📦 재고 '+cur+' → '+q);}
+        catch(e){alert('재고 수정 실패: '+e.message);}
+        finally{setBusy(false);}
+    };
+    const sel={border:'1.5px solid var(--border)',borderRadius:8,padding:'8px 10px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif"};
+    return(<div className="modal-overlay" onClick={onClose}>
+        <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><div className="modal-title">📦 {mat.name} 재고</div><button className="modal-close" onClick={onClose}>✕</button></div>
+            <div style={{fontSize:14,marginBottom:12}}>현재 재고 <b style={{fontSize:20,color:'var(--navy)'}}>{cur}</b></div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+                <select style={sel} value={mode} onChange={e=>setMode(e.target.value)}>
+                    <option value="set">실제 수량으로 맞추기</option><option value="add">입고 (+)</option><option value="sub">사용·폐기 (−)</option></select>
+                <input type="number" min="0" step="0.1" style={{...sel,width:110}} placeholder={mode==='set'?'실제 수량':'수량'} value={val} onChange={e=>setVal(e.target.value)}/>
+                <input style={{...sel,flex:1,minWidth:140}} placeholder="메모 (예: 재고 실사, 파손)" value={memo} onChange={e=>setMemo(e.target.value)}/>
+            </div>
+            {delta!==0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>{cur} → <b>{Math.max(0,Math.round((cur+delta)*10)/10)}</b> ({delta>0?'+':''}{Math.round(delta*10)/10})</div>}
+            <div className="modal-btns"><button className="modal-cancel" onClick={onClose}>닫기</button><button className="modal-ok" disabled={busy} onClick={apply}>{busy?'처리 중...':'재고 반영'}</button></div>
+            <div style={{fontSize:12,fontWeight:800,color:'var(--navy)',margin:'14px 0 6px'}}>📜 입출고 기록 (최근 50건)</div>
+            {log===null?<div style={{fontSize:12,color:'var(--muted)'}}>불러오는 중...</div>
+            :log===false?<div style={{fontSize:12,color:'var(--muted)'}}>입출고 기록 표가 아직 없습니다 (supabase/batch2_columns.sql 실행 필요).</div>
+            :log.length===0?<div style={{fontSize:12,color:'var(--muted)'}}>기록이 없습니다.</div>
+            :<div style={{maxHeight:240,overflowY:'auto'}}><table style={{width:'100%',fontSize:12}}><tbody>{log.map(r=><tr key={r.id}>
+                <td style={{whiteSpace:'nowrap',padding:'4px 6px'}}>{fmtDT(r.created_at)}</td>
+                <td style={{padding:'4px 6px'}}>{r.reason}</td>
+                <td className="tr" style={{padding:'4px 6px',fontWeight:700,color:r.qty_change<0?'#b91c1c':'#15803d'}}>{r.qty_change>0?'+':''}{r.qty_change}</td>
+                <td className="tr" style={{padding:'4px 6px'}}>→ {r.stock_after}</td>
+                <td style={{padding:'4px 6px',color:'var(--muted)'}}>{r.memo||''}{r.created_by?' · '+String(r.created_by).split('@')[0]:''}</td>
+            </tr>)}</tbody></table></div>}
+        </div>
+    </div>);
+}
+
 function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
     const blank={category_id:'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-    const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}onSave(form);};
+    // 수정할 때는 재고수량을 건드리지 않음 (재고는 목록의 ✏️ '재고 수정'으로 바꾸면 입출고 기록이 남음)
+    const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}const{stock_qty,...rest}=form;onSave(initial?rest:form);};
     return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title">{initial?'자재 수정':'새 자재 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
@@ -1405,7 +1492,7 @@ function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
                 <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 외부용, 방수, A등급"/></div>
                 <div className="mf"><label className="ml">단가(원)</label><input className="mi" type="number" value={form.unit_price||0} onChange={e=>set('unit_price',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">가공비(원)</label><input className="mi" type="number" value={form.processing_cost||0} onChange={e=>set('processing_cost',Number(e.target.value))} min="0"/></div>
-                <div className="mf"><label className="ml">재고수량</label><input className="mi" type="number" value={form.stock_qty||0} onChange={e=>set('stock_qty',Number(e.target.value))} min="0"/></div>
+                <div className="mf"><label className="ml">재고수량{initial?' (목록의 ✏️ 재고 수정에서 변경)':' (처음 수량)'}</label><input className="mi" type="number" value={form.stock_qty||0} readOnly={!!initial} style={initial?{background:'#f1f5f9'}:undefined} onChange={e=>set('stock_qty',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">제조사</label><input className="mi" value={form.manufacturer||''} onChange={e=>set('manufacturer',e.target.value)} placeholder="제조사명"/></div>
                 <div className="mf"><label className="ml">공급업체</label>
                     <select className="mi" value={form.supplier||''} onChange={e=>set('supplier',e.target.value)}>
@@ -1431,6 +1518,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');const[importing,setImporting]=useState(false);
     const[orderCart,setOrderCart]=useState([]); // 발주서 카트
+    const[stockMat,setStockMat]=useState(null); // 재고 수정 창에 연 자재
     const[showOrderQty,setShowOrderQty]=useState(null); // 수량입력 팝업
     const[orderQtyVal,setOrderQtyVal]=useState(1);
     const[showOrderForm,setShowOrderForm]=useState(false); // 발주서 양식
@@ -1578,8 +1666,8 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
 재고 수량이 발주 수량만큼 증가합니다.`))return;
         const items=orderCart.filter(it=>it.mat.supplier===supName);
         for(const it of items){
-            const newQty=(it.mat.stock_qty||0)+it.qty;
-            await sb.from('materials').update({stock_qty:newQty}).eq('id',it.mat.id);
+            // 입고: 재고 입출고 기록에 남김
+            const newQty=await adjustStock(sb,{materialId:it.mat.id,delta:it.qty,reason:'입고',memo:supName+' 발주 완료'});
             setMaterials(p=>p.map(m=>m.id===it.mat.id?{...m,stock_qty:newQty}:m));
         }
         setOrderCart(p=>p.filter(it=>it.mat.supplier!==supName));
@@ -1588,6 +1676,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
+        {stockMat&&<StockModal sb={sb} mat={stockMat} onClose={()=>setStockMat(null)} onChanged={q=>{setMaterials(p=>p.map(m=>m.id===stockMat.id?{...m,stock_qty:q}:m));setStockMat(s=>({...s,stock_qty:q}));}}/>}
         {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📦 자재 관리</h1><p>자재 등록 · 단가 · 재고 · 이름순 정렬</p></div>
@@ -1736,7 +1825,8 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
                     <td style={{fontSize:12,color:'var(--muted)'}}>{m.thickness||'-'}</td>
                     <td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price||0)}</td>
                     <td className="tr" style={{color:'var(--orange)',fontWeight:700}}>{fmt(m.processing_cost||0)}</td>
-                    <td className="tr" style={{color:(m.stock_qty||0)<=0?'var(--red)':'inherit',fontWeight:700}}>{m.stock_qty||0}</td>
+                    <td className="tr" style={{color:(m.stock_qty||0)<=0?'var(--red)':'inherit',fontWeight:700,whiteSpace:'nowrap'}}>{m.stock_qty||0}
+                        <button className="btn-icon" style={{fontSize:12}} title="재고 수량 수정 · 입출고 기록" onClick={()=>setStockMat(m)}>✏️</button></td>
                     <td style={{fontSize:12}}>{m.manufacturer||'-'}</td>
                     <td style={{fontSize:12}}>{m.supplier||'-'}</td>
                     <td style={{fontSize:12,color:'var(--muted)'}}>{m.category_extra||'-'}</td>
@@ -2342,7 +2432,9 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
                 const orig = Number(prev[idx].qty) || 0;
                 const q = n === idxs.length - 1 ? remaining : Math.min(orig, remaining);
                 remaining = Math.round((remaining - q) * 10) / 10;
-                next[idx] = {...prev[idx], qty:q};
+                // 직접 고친 수량도 품목 수량 연동이 유지되도록 1개 기준 수량(baseQty)을 다시 계산
+                const iq = parseFloat((items||[]).find(it => it.id === prev[idx].itemId)?.qty) || 1;
+                next[idx] = {...prev[idx], qty:q, baseQty:Math.round(q / iq * 1000) / 1000};
             });
             return next.filter(x => !((x.material_id || x.name) === key && !(Number(x.qty) > 0)));
         });
@@ -2449,13 +2541,17 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
 // ★ 환경설정 (상호 · 견적서 공통내용) — app_settings 테이블의 key='estimate' 한 줄에 JSON으로 저장
 const SETTINGS_DEFAULT={company:'LUCKYSTAR CARAVAN',companyInfo:'럭키스타 캠핑카라반 | 경기도 파주시 광탄면',validDays:30,notes:'',holdDays:30,
     // 방문 예약 추천 (카카오 JavaScript 키는 등록한 도메인에서만 동작하는 공개용 키)
-    kakaoKey:'7542fd0954e761a43a882196d3b2da3b',visitMin:60,installMin:240,bufferMin:30,workStart:'09:00',workEnd:'20:00',planDays:14,nearKm:15};
+    kakaoKey:'7542fd0954e761a43a882196d3b2da3b',visitMin:60,installMin:240,bufferMin:30,workStart:'09:00',workEnd:'20:00',planDays:14,nearKm:15,
+    delayDays:3, // 방문 후 본견적 지연 판정 일수
+    bankAccount:'',depositRate:30,asTerms:'', // 견적서 결제 조건 기본값 (견적서마다 수정 가능)
+    marginWarn:30}; // 마진율이 이보다 낮으면 빨간색 표시
 const SQL_SETTINGS="CREATE TABLE IF NOT EXISTS app_settings (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON app_settings;\nCREATE POLICY staff_all ON app_settings FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());";
+let _settingsCache=null; // 마지막으로 불러온 환경설정 (sb 없이 쓰는 곳용: 티맵 길안내)
 const loadSettings=async sb=>{
     try{
         const{data,error}=await sb.from('app_settings').select('value').eq('key','estimate').maybeSingle();
         if(error)return{...SETTINGS_DEFAULT,_error:error.message};
-        return{...SETTINGS_DEFAULT,...parseJSON(data&&data.value,{})};
+        return(_settingsCache={...SETTINGS_DEFAULT,...parseJSON(data&&data.value,{})});
     }catch(e){return{...SETTINGS_DEFAULT,_error:String(e)};}
 };
 const escHtml=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2493,7 +2589,7 @@ const geocode=async(key,addr)=>{
 const openTmap=async address=>{
     address=(address||'').trim();if(!address)return;
     if(!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){alert('티맵 길안내는 휴대폰에서만 실행됩니다.\nPC에서는 카카오 길안내를 이용하세요.');return;}
-    let c=null;try{c=await geocode(SETTINGS_DEFAULT.kakaoKey,address);}catch(e){}
+    let c=null;try{c=await geocode((_settingsCache||SETTINGS_DEFAULT).kakaoKey,address);}catch(e){} // 환경설정의 카카오 키 사용
     const n=encodeURIComponent(address);
     // 현재 티맵 앱은 goalname/goalx/goaly(목적지 이름·경도·위도)를 읽음 · 예전 버전용 rGo* 도 함께 전달
     window.location.href=c?`tmap://route?goalname=${n}&goalx=${c.lng}&goaly=${c.lat}&rGoName=${n}&rGoX=${c.lng}&rGoY=${c.lat}`:`tmap://search?name=${n}`;
@@ -2532,12 +2628,15 @@ const planVisitDays=(events,st,now=new Date(),start=null,count=null)=>{
 };
 
 // ★ 견적서 인쇄 팝업 (견적 수정 · 견적서 보기 공용)
-// items: {catId,name,spec,qty,unitPrice,total}
-async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
-    const grand=items.reduce((s,i)=>s+(parseFloat(i.total)||0),0);const vat=Math.round(grand*.1);const grandVat=grand+vat;
+// items: {catId,name,spec,qty,unitPrice,total} · costs: 시공비 {install,delivery,demolition} · terms: 결제 조건 {bank,depositRate,asTerms}
+// title: '가견적서' / '견적서' · date: 작성일(발송일) · win: 미리 열어 둔 창 · shareUrl: 고객용 웹 견적서 주소
+async function printEstimateDoc(sb,{no,client,cats,items,portItems,win,title,date,costs,terms,shareUrl}){
+    const costList=COST_KEYS.map(([k,l])=>[l,Number((costs||{})[k])||0]).filter(([,v])=>v>0); // 0원인 시공비는 인쇄에서 제외
+    const grand=items.reduce((s,i)=>s+(parseFloat(i.total)||0),0)+costList.reduce((s,[,v])=>s+v,0);const vat=Math.round(grand*.1);const grandVat=grand+vat;
     // 팝업은 클릭 직후 먼저 열어 두고(차단 방지), 데이터를 불러온 뒤 내용을 채움
-    const w=window.open('','_blank','width=920,height=720');
-    if(w){w.document.write('<p style="font-family:sans-serif;padding:24px;color:#334155">인쇄 준비 중...</p>');}
+    const w=win||window.open('','_blank','width=920,height=720');
+    if(w&&!win){w.document.write('<p style="font-family:sans-serif;padding:24px;color:#334155">인쇄 준비 중...</p>');}
+    const tm=terms||{};const rate=Number(tm.depositRate)||0;
     const st=await loadSettings(sb);
     // 상품에 연결된 포트폴리오 → 품목별 QR
     const pfMap={};
@@ -2559,8 +2658,9 @@ async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
         <tr><td class="c">${++n}</td><td class="nw">${escHtml(cat.name)}</td><td class="b">${escHtml(item.name)}</td><td>${escHtml(item.spec)}</td>
         <td class="r">${escHtml(item.qty)}</td>
         <td class="r">${fmt(item.unitPrice)}</td>
-        <td class="r b">${fmt(item.total)}</td>${hasPf?`<td class="c">${pfCell(item)}</td>`:''}</tr>`).join('')).join('');
-    const today=new Date().toLocaleDateString('ko-KR');
+        <td class="r b">${fmt(item.total)}</td>${hasPf?`<td class="c">${pfCell(item)}</td>`:''}</tr>`).join('')).join('')
+        +costList.map(([l,v])=>`<tr><td class="c">${++n}</td><td class="nw">시공비</td><td class="b">${l}</td><td></td><td class="r">1</td><td class="r">${fmt(v)}</td><td class="r b">${fmt(v)}</td>${hasPf?'<td></td>':''}</tr>`).join('');
+    const today=new Date(date||Date.now()).toLocaleDateString('ko-KR'); // 작성일 = 발송일(또는 저장된 작성일)
     const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${escHtml(st.company)} 견적서</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
@@ -2594,7 +2694,8 @@ async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
     .pf-i{border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;}
     @media print{body{padding:12px;}}</style></head><body>
     <div class="hd"><div><div class="co">${escHtml(st.company)}</div>${st.companyInfo?`<div class="co-info">${escHtml(st.companyInfo)}</div>`:''}</div>
-    <div class="doc"><div class="doc-t">견적서</div><div class="doc-m">견적번호 <b>${escHtml(no)}</b></div><div class="doc-m">작성일 <b>${today}</b>${st.validDays?` · 유효기간 <b>${escHtml(st.validDays)}일</b>`:''}</div></div></div>
+    <div class="doc"><div class="doc-t">${escHtml(title||'견적서')}</div><div class="doc-m">견적번호 <b>${escHtml(no)}</b></div><div class="doc-m">작성일 <b>${today}</b>${st.validDays?` · 유효기간 <b>${escHtml(st.validDays)}일</b>`:''}</div>
+    ${shareUrl?`<div class="doc-m" style="color:#1d4ed8">📱 휴대폰으로 보기: <b style="color:#1d4ed8">${escHtml(shareUrl)}</b></div>`:''}</div></div>
     <div class="row2">
     <div class="sec"><div class="sec-t">고객 정보</div><div class="box"><div class="fl fl3">
     <div><label>고객명</label><span>${escHtml(client.name||'-')}</span></div>
@@ -2612,6 +2713,11 @@ async function printEstimateDoc(sb,{no,client,cats,items,portItems}){
     <div class="pc tot"><label>최종 견적금액 (VAT 포함)</label><span>${fmt(grandVat)}원</span></div></div></div></div>
     ${portItems.length>0?`<div class="sec"><div class="sec-t">포트폴리오</div><div class="box"><div class="pf">
     ${portItems.map(p=>`<div class="pf-i">${p.image_url?`<img src="${p.image_url}" style="width:100%;height:120px;object-fit:cover;display:block">`:''}<div style="padding:8px;font-size:12px;font-weight:700">${escHtml(p.title)}</div></div>`).join('')}
+    </div></div></div>`:''}
+    ${tm.bank||rate||tm.asTerms?`<div class="sec"><div class="sec-t">결제 조건</div><div class="box"><div class="fl" style="grid-template-columns:1fr">
+    ${tm.bank?`<div><label>입금계좌</label><span>${escHtml(tm.bank)}</span></div>`:''}
+    ${rate?`<div><label>계약금</label><span>견적금액의 ${rate}% · ${fmt(Math.round(grandVat*rate/100))}원 (계약 시 입금)</span></div>`:''}
+    ${tm.asTerms?`<div><label>A/S 조건</label><div class="notes">${escHtml(tm.asTerms)}</div></div>`:''}
     </div></div></div>`:''}
     ${st.notes?`<div class="sec"><div class="sec-t">안내사항</div><div class="box"><div class="notes">${escHtml(st.notes)}</div></div></div>`:''}
     <script>window.onload=()=>{window.print();}<\/script></body></html>`;
@@ -2634,25 +2740,34 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
             if(!address)throw new Error('고객 주소를 먼저 입력하세요.');
             const target=await geocode(st.kakaoKey,address);
             if(!target)throw new Error('주소를 지도에서 찾지 못했습니다: '+address);
-            const{data:ests}=await sb.from('estimates').select('*');
+            let{data:ests,error:qe}=await sb.from('estimates').select('id,client_name,client_address,status_dates,status_checked,deposit_amount,balance_paid,extra_visits,meta');
+            if(qe)({data:ests}=await sb.from('estimates').select('*')); // meta 칸을 아직 안 만든 경우
             const now=new Date();const until=new Date(8640000000000000); // 주 단위로 넘겨 보므로 앞으로의 일정은 모두 불러옴
             const raw=[];
             (ests||[]).forEach(e=>{
                 if(e.id===estimateId)return;
-                const{sd,sc}=estStageInfo(e,0);
+                const{sd,sc,lost,deleted,meta:em}=estStageInfo(e,0);
+                if(lost||deleted)return; // 실주·휴지통 견적은 제외
+                // 며칠 걸리는 공사는 그 기간 동안 현장에 있으므로 하루 종일 일정으로 계산
+                if(sd['제작시작']&&prodDays(sd)>1&&!sc['설치완료']){
+                    const s0=new Date(String(sd['제작시작']).slice(0,10)+'T00:00'),ws=hm2min(st.workStart),we=hm2min(st.workEnd);
+                    for(let k=0;k<prodDays(sd);k++){const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,Math.floor(ws/60),ws%60);
+                        if(d>=new Date(now.getFullYear(),now.getMonth(),now.getDate()))raw.push({start:d,dur:we-ws,kind:'공사',name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});}
+                }
                 [['방문상담 및 실측','방문',Number(st.visitMin)||60],['설치완료','설치',Number(st.installMin)||240]].forEach(([k,kind,dur])=>{
                     if(!sd[k]||sc[k])return;const d=new Date(sd[k]);
                     if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
-                    raw.push({start:d,dur,kind,name:e.client_name||'고객',address:e.client_address||''});
+                    raw.push({start:d,dur,kind,name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});
                 });
                 pendingExtras(e).forEach(v=>{
                     const d=new Date(v.at);
                     if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
-                    raw.push({start:d,dur:Number(v.dur)||Number(st.visitMin)||60,kind:v.type,name:e.client_name||'고객',address:e.client_address||''});
+                    raw.push({start:d,dur:Number(v.dur)||Number(st.visitMin)||60,kind:v.type,name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});
                 });
             });
             const events=[];
-            for(const ev of raw){const c=await geocode(st.kakaoKey,ev.address);events.push({...ev,dist:c?distKm(target,c):999,noGeo:!c});}
+            // 좌표: 견적에 저장된 좌표(주소가 같을 때)를 먼저 쓰고, 없으면 카카오로 변환 (No.23 속도 개선)
+            for(const ev of raw){const c=(ev.geo&&ev.geo.addr===ev.address&&ev.geo.lat)?ev.geo:await geocode(st.kakaoKey,ev.address);events.push({...ev,dist:c?distKm(target,c):999,noGeo:!c});}
             setData({st,events});
         }catch(e){setErr(e.message||String(e));setData(null);}
         finally{setBusy(false);}
@@ -2726,12 +2841,17 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         try{const c=JSON.parse(sessionStorage.getItem('newEstClient')||'null');sessionStorage.removeItem('newEstClient');return c?{...blank,...c}:blank;}catch(e){return blank;}
     });
     const[statusDates,setStatusDates]=useState({});
-    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
+    const[st,setSt]=useState(SETTINGS_DEFAULT); // 환경설정 (보류·지연 기간, 결제 조건 기본값, 마진 기준 등)
+    const holdDays=st.holdDays;
+    const[meta,setMeta]=useState({}); // 부가 정보: lost(실주) · pay(입금 내역) · costs(시공비) · terms(결제 조건) · site(현장정보) · stock(재고) · shareToken
+    const updMeta=(k,v)=>setMeta(m=>({...m,[k]:typeof v==='function'?v(m[k]):v}));
+    const[sendHistory,setSendHistory]=useState([]); // 발송 이력
+    const loadedRef=useRef({updatedAt:null,createdAt:null}); // 동시 수정 감지·작성일 표시용
     const[loading,setLoading]=useState(mode==='edit');
     const[saving,setSaving]=useState(false);
     const[showPick,setShowPick]=useState(false);
-    const[estNo,setEstNo]=useState(()=>mode==='new'?genEstNo():''); // 수정 모드는 DB의 est_no를 불러와 씀
-    const shownNo=estNo||(estimateId||'').substr(0,8).toUpperCase(); // 견적번호가 없는 옛 견적만 내부 코드로 표시
+    const[estNo,setEstNo]=useState(''); // 새 견적은 저장할 때 날짜+순번으로 부여, 수정 모드는 DB의 est_no
+    const shownNo=estNo||(mode==='new'?'저장 시 부여':(estimateId||'').substr(0,8).toUpperCase()); // 견적번호가 없는 옛 견적만 내부 코드로 표시
     // ★ 현장사진 & 결제 정보
     const[sitePhotos,setSitePhotos]=useState([]);
     const[photoView,setPhotoView]=useState(null); // 크게 보는 현장사진 번호
@@ -2749,8 +2869,11 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const catsRef=useRef([]);catsRef.current=cats;
     const[statusOpen,setStatusOpen]=useState(()=>typeof window==='undefined'||window.innerWidth>=768);
     const[showPortPick,setShowPortPick]=useState(false);
+    const[lostForm,setLostForm]=useState(null); // 실주 처리 입력 중 {reason, memo}
 
-    useEffect(()=>{if(sb)loadSettings(sb).then(s=>setHoldDays(s.holdDays));},[sb]);
+    useEffect(()=>{if(sb)loadSettings(sb).then(s=>setSt(s));},[sb]);
+    // 새 견적: 결제 조건을 환경설정 기본값으로 채움 (견적서마다 수정 가능)
+    useEffect(()=>{if(mode==='new')setMeta(m=>m.terms?m:{...m,terms:{bank:st.bankAccount||'',depositRate:st.depositRate,asTerms:st.asTerms||''}});},[st]);
     // 담당자 선택 목록: 사용자 관리에서 승인된 직원(+관리자)의 프로필만
     const[staff,setStaff]=useState([]);
     useEffect(()=>{if(!sb)return;(async()=>{
@@ -2799,6 +2922,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
                 setPortItems(pi);
                 setExtraVisits(extraVisitsOf(est));
+                setMeta(parseJSON(est.meta,{}));setSendHistory(parseJSON(est.send_history,[]));
+                loadedRef.current={updatedAt:est.updated_at||null,createdAt:est.created_at||null};
                 let em=[];try{em=typeof est.est_materials==='string'?JSON.parse(est.est_materials||'[]'):(est.est_materials||[]);}catch{}
                 const _ep=parseJSON(est.est_prep,[]);origChecked.current=sc;setEstMaterials(em);setEstPrep(_ep);}
             const{data:cd}=await sb.from('est_cats').select('*').eq('estimate_id',estimateId).order('display_order');
@@ -2813,34 +2938,59 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const midNum=Number(midAmount)||0;
     const totalMat=items.reduce((s,i)=>s+(parseFloat(i.qty)||0)*(parseFloat(i.unitPrice)||0),0);
     const totalLab=items.reduce((s,i)=>s+(parseFloat(i.laborCost)||0),0);
-    const grand=totalMat+totalLab;const vat=Math.round(grand*.1);const grandVat=grand+vat;
+    // 시공비 (설치비·운반비·철거비): 공급가액에 포함, 0원이면 인쇄에서 제외
+    const costs=meta.costs||{};const costSum=COST_KEYS.reduce((s,[k])=>s+(Number(costs[k])||0),0);
+    const grand=totalMat+totalLab+costSum;const vat=Math.round(grand*.1);const grandVat=grand+vat;
     const balanceAmount=grandVat-depositNum-midNum;
     // ★ 진행 단계 (날짜·체크·계약금·잔금으로 자동 판정)
     const currentStage=getStage({sd:statusDates,sc:statusChecked,deposit:depositNum,balancePaid});
-    const onHold=isOnHold(currentStage,statusDates,holdDays);
-    const currentStatus=onHold?'보류':currentStage;
+    const isLost=!!meta.lost;
+    const onHold=!isLost&&isOnHold(currentStage,statusDates,holdDays);
+    const isLate=!isLost&&isDelayed(currentStage,statusDates,statusChecked,st.delayDays);
+    const currentStatus=isLost?'실주':onHold?'보류':currentStage;
 
-    // ★ 계약금 입력 시 결제상태 자동 변경
-    useEffect(()=>{
-        if(depositNum>0){setPaymentStatus(p=>p==='입금전'?'계약':p);}
-        else{setPaymentStatus(p=>p==='계약'?'입금전':p);}
-    },[depositNum]);
-
-    // ★ 잔금입금완료 체크 시 결제상태 완료로 변경
-    useEffect(()=>{
-        if(balancePaid){
-            setPaymentStatus('완료');
-        }else{
-            // 미체크 시 계약금에 따라 복원
-            setPaymentStatus(depositNum>0?'계약':'입금전');
+    // ★ 결제 상태는 입금 내역으로 자동 판정 (잔금 입금 확인 = 완료, 계약금 있음 = 계약)
+    const pay=meta.pay||{};
+    const updPay=(k,f,v)=>updMeta('pay',p=>({...(p||{}),[k]:{...((p||{})[k]||{}),[f]:v}}));
+    useEffect(()=>{setPaymentStatus(balancePaid?'완료':depositNum>0?'계약':'입금전');},[balancePaid,depositNum]);
+    // 잔금 입금 확인: 남은 금액과 받은 금액이 다르면 경고, 입금일은 오늘로
+    const confirmBalance=checked=>{
+        if(checked){
+            const got=pay.balance&&pay.balance.amount!==undefined&&pay.balance.amount!==''?Number(pay.balance.amount):null;
+            const left=Math.max(0,balanceAmount);
+            if(got!==null&&got!==left&&!window.confirm(`남은 잔금은 ${fmt(left)}원인데 받은 금액은 ${fmt(got)}원입니다.\n그래도 잔금 입금 완료로 처리할까요?`))return;
+            if(!(pay.balance&&pay.balance.date))updPay('balance','date',ymd(new Date()));
         }
-    },[balancePaid]);
+        setBalancePaid(checked);
+    };
     useEffect(()=>{onTotalChange&&onTotalChange(grandVat);},[items]);
     const catTotal=cid=>items.filter(i=>i.catId===cid).reduce((s,i)=>s+(parseFloat(i.total)||0),0);
     const updClient=(k,v)=>setClient(p=>({...p,[k]:v}));
-    // 저장하지 않고 다른 화면으로 이동할 때 확인
+    // ★ 저장하지 않은 변경 감지: 불러온 직후 상태와 지금 상태를 비교 (새 견적의 자동 담당자 입력은 제외)
+    const snapshot=JSON.stringify({cats,items,client:mode==='new'?{...client,manager:'',managerPhone:''}:client,statusDates,statusChecked,
+        depositAmount,midAmount,balancePaid,sitePhotos,portItems,estMaterials,estPrep,extraVisits,meta:mode==='new'?{...meta,terms:null}:meta});
+    const baseRef=useRef(null);
+    useEffect(()=>{if(!loading&&baseRef.current===null)baseRef.current=snapshot;},[loading,snapshot]);
+    const dirty=baseRef.current!==null&&snapshot!==baseRef.current;
+    useEffect(()=>{window.__estDirty=dirty;},[dirty]); // 사이드바·뒤로가기에서 확인용
+    useEffect(()=>{
+        const h=e=>{if(window.__estDirty){e.preventDefault();e.returnValue='';}}; // 새로고침·탭 닫기
+        window.addEventListener('beforeunload',h);
+        return()=>{window.removeEventListener('beforeunload',h);window.__estDirty=false;};
+    },[]);
+    // ★ 이번에 올린 사진·파일 추적: 저장하지 않고 나가면 저장소에서 삭제, 저장할 때는 결국 안 쓰게 된 것만 삭제
+    const pendingUp=useRef([]);
+    const uploadTracked=async(f,folder)=>{const url=await uploadImg(sb,f,folder);if(storagePathOf(url))pendingUp.current.push(url);return url;};
+    const removeFiles=urls=>{const paths=urls.map(storagePathOf).filter(Boolean);if(paths.length&&sb&&sb.storage)sb.storage.from(BUCKET).remove(paths).catch(()=>{});};
+    const settleUploads=()=>{const s=JSON.stringify({sitePhotos,items,meta});removeFiles(pendingUp.current.filter(u=>!s.includes(u)));pendingUp.current=[];};
+    useEffect(()=>()=>removeFiles(pendingUp.current),[]); // 저장하지 않고 화면을 떠나면 이번에 올린 파일 삭제
+    const markSaved=()=>{baseRef.current=snapshot;window.__estDirty=false;settleUploads();};
+    const rebase=useRef(false); // 저장 후 이 화면에 머물 때: 다음 화면 갱신 후의 상태를 '저장된 상태'로
+    useEffect(()=>{if(rebase.current){rebase.current=false;baseRef.current=snapshot;window.__estDirty=false;}});
+    // 저장하지 않고 다른 화면으로 이동할 때 확인 (바뀐 내용이 있을 때만)
     const leave=(page,id)=>{
-        if((mode==='edit'||items.length>0)&&!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이동하시겠습니까?'))return;
+        if(dirty&&!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이동하시겠습니까?'))return;
+        window.__estDirty=false;
         onNavigate(page,id);
     };
 
@@ -2865,12 +3015,27 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         setItems(p=>[...p,{id:uid(),catId,name:'새 품목',spec:'',qty:1,unitPrice:0,laborCost:0,total:0,imgUrl:''}]);
     };
     const updItem=(id,field,value)=>{
+        const cur=items.find(i=>i.id===id);
         setItems(prev=>prev.map(item=>{
             if(item.id!==id)return item;
             const ni={...item,[field]:value};
             if(!['imgUrl','name','spec'].includes(field)){ni.total=(parseFloat(ni.qty)||0)*(parseFloat(ni.unitPrice)||0)+(parseFloat(ni.laborCost)||0);}
             return ni;
         }));
+        // 품목 수량이 바뀌면 그 품목의 소요자재 = 상품 1개 기준 수량(baseQty) × 품목 수량 (공구·부자재는 수량과 무관)
+        if(field==='qty'&&cur){
+            const nq=parseFloat(value)||0;
+            setEstMaterials(p=>p.map(r=>{
+                if(r.itemId!==id)return r;
+                const base=r.baseQty!=null?Number(r.baseQty):Number(r.qty)||0; // 옛 데이터(baseQty 없음)는 지금 수량을 1개 기준으로 간주
+                return{...r,baseQty:base,qty:Math.round(base*nq*10)/10};
+            }));
+        }
+        // 품목 이름이 바뀌면 소요자재·공구의 상품명 묶음도 함께 변경
+        if(field==='name'&&cur){
+            const ren=r=>r.itemId===id?{...r,itemName:value}:r;
+            setEstMaterials(p=>p.map(ren));setEstPrep(p=>p.map(ren));
+        }
     };
     const delItem=id=>{
         if(!confirm('삭제?'))return;
@@ -2878,13 +3043,17 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         setItems(p=>p.filter(i=>i.id!==id));
         dropRowsOfItems([id],target?[target.name]:[]);
     };
-    const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadImg(sb,f,'est-items');updItem(iid,'imgUrl',url);};
+    const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadTracked(f,'est-items');updItem(iid,'imgUrl',url);};
 
     // ★ 상태 날짜 수정 (저장 버튼을 눌러야 DB에 반영)
     const updStatusDate=(status,datetime)=>setStatusDates(p=>{const nd={...p};if(datetime)nd[status]=datetime;else delete nd[status];return nd;});
 
     // ★ 진행상태 완료 체크 (저장 버튼을 눌러야 DB에 반영 · 설치완료 재고 차감도 저장 시 처리)
-    const updStatusChecked=(status,checked)=>setStatusChecked(p=>({...p,[status]:checked}));
+    // 방문함·설치함 체크만 해도 단계가 넘어가도록, 날짜가 비어 있으면 체크한 날로 자동 기록
+    const updStatusChecked=(status,checked)=>{
+        setStatusChecked(p=>({...p,[status]:checked}));
+        if(checked&&!statusDates[status])setStatusDates(p=>({...p,[status]:dtLocal(new Date())}));
+    };
 
     // ★ 상품 선택 → 견적 추가
     const addProductToEst=async(prod,prodCatName,targetCatId)=>{
@@ -2913,6 +3082,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     id:uid(),
                     name:m.material_name||'',
                     qty:Number(m.quantity)||1,
+                    baseQty:Number(m.quantity)||1, // 상품 1개 기준 수량 (품목 수량을 바꾸면 이 값 × 수량)
                     unit_price:(m.material_id&&_pr[m.material_id]!==undefined)?_pr[m.material_id]:(Number(m.unit_price)||0),
                     material_id:m.material_id||null,
                     itemId:actualItemId,  // edit모드에선 DB id, new모드에선 uid
@@ -2923,20 +3093,62 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         }
     };
 
-    // ★ 인쇄 팝업
-    // 인쇄 시 현재 단계에 맞춰 '가견적발송 / 본견적발송 완료 처리'를 물어봄 (보류 중이면 재발송 처리)
-    const printEstimate=()=>{
+    // ★ 인쇄 — 단계에 맞춰 '가견적발송 / 본견적발송 완료 처리'를 물어봄 (보류 중이면 재발송 처리)
+    //   발송 처리하면: 바뀐 내용이 있거나 새 견적이면 먼저 저장 → 그 순간의 품목·금액을 발송 이력으로 남김
+    //   새 견적은 발송 처리를 안 해도 인쇄 전에 저장 (고객에게 나간 견적번호가 반드시 DB에 남도록)
+    const printEstimate=async()=>{
         const step=sendStepOnPrint(currentStage,statusDates,statusChecked,onHold);
-        if(step&&window.confirm(onHold?`⏸ 보류 중인 견적입니다.\n${step}을 다시 발송 처리하시겠습니까?`:`${step} 완료 처리하시겠습니까?`)){
-            const nd={...statusDates,[step]:new Date().toISOString()};
-            setStatusDates(nd);
-            if(mode==='edit'){
-                sb.from('estimates').update({status:getStage({sd:nd,sc:statusChecked,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd)}).eq('id',estimateId)
-                    .then(({error})=>toast(error?'⚠️ 상태 저장 실패: '+error.message:'📤 '+step+' 처리됨'));
-            }else toast('📤 '+step+' 처리됨 — 💾 저장을 눌러야 반영됩니다');
+        const mark=!!step&&window.confirm(onHold?`⏸ 보류 중인 견적입니다.\n${step}을 다시 발송 처리하시겠습니까?`:`${step} 완료 처리하시겠습니까?`);
+        if(mode==='new'&&!mark&&!window.confirm('인쇄하려면 먼저 견적서를 저장합니다.\n저장하고 인쇄할까요?'))return;
+        const w=window.open('','_blank','width=920,height=720'); // 팝업 차단 방지: 클릭 직후 먼저 열어 둠
+        if(w)w.document.write('<p style="font-family:sans-serif;padding:24px;color:#334155">인쇄 준비 중...</p>');
+        const nowIso=new Date().toISOString();
+        let no=estNo,id=estimateId,nd=statusDates,hist=sendHistory;
+        if(mode==='new')no=await nextEstNo(sb);
+        if(mark){
+            nd={...statusDates,[step]:nowIso};
+            hist=[...sendHistory,{id:uid(),step,at:nowIso,no,client:{...client},
+                cats:cats.map(c=>({id:c.id,name:c.name})),
+                items:items.map(i=>({catId:i.catId,name:i.name,spec:i.spec,qty:i.qty,unitPrice:i.unitPrice,total:i.total})),
+                costs:{...costs},terms:{...(meta.terms||{})},grand,vat,grandVat}];
         }
-        printEstimateDoc(sb,{no:shownNo,client,cats,items,portItems});
+        if(mode==='new'||(mark&&dirty)){
+            const r=await doSave({stay:true,sd:nd,history:hist,estNo:no});
+            if(!r){if(w)w.close();return;}
+            no=r.no;id=r.id;
+        }else if(mark){
+            // 바뀐 내용이 없으면 발송일·발송 이력만 바로 저장
+            const{data:ud,error}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId).select('updated_at'),
+                {status:getStage({sd:nd,sc:statusChecked,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd),send_history:JSON.stringify(hist)});
+            if(error){toast('⚠️ 상태 저장 실패: '+error.message);}
+            else{loadedRef.current.updatedAt=(ud&&ud[0]&&ud[0].updated_at)||loadedRef.current.updatedAt;setStatusDates(nd);setSendHistory(hist);rebase.current=true;}
+        }
+        if(mark)toast('📤 '+step+' 처리됨');
+        const docStep=mark?step:(nd['본견적발송']?'본견적발송':nd['가견적발송']?'가견적발송':null);
+        printEstimateDoc(sb,{win:w,no:no||shownNo,client,cats,items,portItems,costs,terms:meta.terms,
+            title:docStep==='가견적발송'?'가견적서':'견적서',
+            date:mark?nowIso:((docStep&&nd[docStep])||loadedRef.current.createdAt||nowIso),
+            shareUrl:meta.shareToken?shareUrlOf(meta.shareToken):null});
+        if(mode==='new')onNavigate('est-edit',id);
     };
+    // ★ 고객용 웹 견적서 링크: 처음 누르면 추측할 수 없는 고유코드를 만들어 DB에 저장하고, 링크를 복사
+    //   (고객은 카톡·문자로 받은 링크를 휴대폰에서 열어 견적과 '시공 사례 보기'를 바로 누를 수 있음 — 이미지 견적서의 QR 대안)
+    const shareLink=async()=>{
+        if(mode==='new'){alert('먼저 💾 저장한 뒤 고객용 링크를 만들 수 있습니다.');return;}
+        let token=meta.shareToken;
+        if(!token){
+            const abc='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+            const rnd=new Uint32Array(24);crypto.getRandomValues(rnd);token=Array.from(rnd,n=>abc[n%abc.length]).join('');
+            if(!await persistMetaKey('shareToken',token))return;
+        }
+        const url=shareUrlOf(token);
+        try{await navigator.clipboard.writeText(url);toast('🔗 고객용 링크를 복사했습니다 — 카톡·문자에 붙여넣기 하세요');}
+        catch(e){window.prompt('아래 링크를 복사해서 보내세요',url);}
+    };
+    // 발송 이력 다시 보기 (그때 보낸 품목·금액 그대로 인쇄)
+    const reprintHistory=h=>printEstimateDoc(sb,{no:h.no||shownNo,client:h.client||client,cats:h.cats||[],items:h.items||[],portItems,
+        costs:h.costs||{},terms:h.terms||{},title:h.step==='가견적발송'?'가견적서':'견적서',date:h.at,
+        shareUrl:meta.shareToken?shareUrlOf(meta.shareToken):null});
 
     // ★ DB 안내 팝업
     const showSqlGuide=()=>alert(`📋 Supabase 설정 가이드\n\n` +
@@ -2966,44 +3178,88 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 `CREATE POLICY IF NOT EXISTS "allow_delete" ON storage.objects\n  FOR DELETE TO authenticated USING (bucket_id='lucky-star');`
     );
 
-    // ★ 저장 버튼
-    const save=async()=>{
+    // ★ meta 의 한 항목만 DB에 바로 저장 (다른 미저장 변경은 건드리지 않음) — 고객용 링크·재고 상태 등
+    const persistMetaKey=async(k,v)=>{
+        const{data:cur}=await sb.from('estimates').select('meta').eq('id',estimateId).maybeSingle();
+        const{error}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId),{meta:JSON.stringify({...parseJSON(cur&&cur.meta,{}),[k]:v})});
+        if(error){alert('저장 실패: '+error.message+'\n\n(DB에 meta 칸이 없다면 supabase/batch2_columns.sql 을 먼저 실행하세요)');return false;}
+        updMeta(k,v);
+        if(baseRef.current){const b=JSON.parse(baseRef.current);b.meta={...(b.meta||{}),[k]:v};baseRef.current=JSON.stringify(b);}
+        return true;
+    };
+    // ★ 재고 차감 / 되돌리기 — 입출고 기록에 남고, 견적서에 '차감 완료' 상태로 표시 (언제든 되돌리기 가능)
+    const[stockBusy,setStockBusy]=useState(false);
+    const deductStock=async(mats=estMaterials)=>{
+        const lines=stockLinesOf(mats);if(!lines.length){alert('재고를 차감할 자재(자재관리에 등록된 자재)가 없습니다.');return;}
+        setStockBusy(true);
+        try{
+            for(const l of lines)await adjustStock(sb,{materialId:l.material_id,delta:-l.qty,estimateId,reason:'설치 차감',memo:(estNo||'')+' '+(client.name||'')});
+            await persistMetaKey('stock',{done:true,at:new Date().toISOString(),lines});
+            toast('📦 재고 차감 완료 ('+lines.length+'종)');
+        }catch(e){alert('재고 차감 중 오류: '+e.message+'\n일부 자재만 차감되었을 수 있습니다. 자재관리에서 확인하세요.');}
+        finally{setStockBusy(false);}
+    };
+    const revertStock=async()=>{
+        const lines=(meta.stock&&meta.stock.lines)||[];if(!lines.length)return;
+        setStockBusy(true);
+        try{
+            for(const l of lines)await adjustStock(sb,{materialId:l.material_id,delta:l.qty,estimateId,reason:'차감 되돌리기',memo:(estNo||'')+' '+(client.name||'')});
+            await persistMetaKey('stock',{done:false,revertedAt:new Date().toISOString()});
+            toast('↩ 재고 차감을 되돌렸습니다');
+        }catch(e){alert('되돌리기 중 오류: '+e.message);}
+        finally{setStockBusy(false);}
+    };
+    // 저장 후: 설치함을 새로 체크했으면 차감 여부를 묻고, 설치함을 해제했는데 차감되어 있으면 되돌릴지 물음
+    const stockAfterSave=async mats=>{
+        const done=!!(meta.stock&&meta.stock.done);
+        if(statusChecked['설치완료']&&!origChecked.current['설치완료']&&!done&&stockLinesOf(mats).length){
+            if(window.confirm('설치완료로 저장되었습니다.\n소요된 자재를 재고에서 차감하시겠습니까? ('+stockLinesOf(mats).length+'종)\n\n(나중에 견적서의 📦 재고 차감 버튼으로 해도 됩니다)'))await deductStock(mats);
+        }else if(!statusChecked['설치완료']&&origChecked.current['설치완료']&&done){
+            if(window.confirm('설치함 체크를 해제했습니다.\n이 견적으로 차감했던 재고를 되돌릴까요?'))await revertStock();
+        }
+    };
+    // ★ 저장 — opts.stay: 저장 후 이 화면에 머묾(인쇄·발송 처리 때) · opts.sd / history / estNo: 저장할 값 지정
+    //   반환: {id, no} (실패하면 null)
+    const doSave=async(opts={})=>{
         setSaving(true);
         try{
             const now=new Date().toISOString();
-            // 계약금이 처음 입력되면 그날을 제작중(계약금 입금일)으로 기록
-            const sdSave=depositNum>0&&!statusDates['제작중']?{...statusDates,'제작중':now}:statusDates;
+            const sdBase=opts.sd||statusDates;
+            // 계약금이 처음 입력되면 계약금 입금일(없으면 오늘)을 제작중 날짜로 기록
+            const depDate=pay.deposit&&pay.deposit.date;
+            const sdSave=depositNum>0&&!sdBase['제작중']?{...sdBase,'제작중':depDate?new Date(depDate).toISOString():now}:sdBase;
             const stageSave=getStage({sd:sdSave,sc:statusChecked,deposit:depositNum,balancePaid});
+            const hist=opts.history||sendHistory;
+            // 주소 좌표를 견적에 저장해 두면 방문 추천이 매번 변환하지 않아도 됨 (주소가 바뀔 때만 다시 변환)
+            let metaSave=meta;
+            if(client.address&&!(meta.geo&&meta.geo.addr===client.address)){
+                try{const c=await geocode((_settingsCache||SETTINGS_DEFAULT).kakaoKey,client.address);if(c)metaSave={...meta,geo:{addr:client.address,lat:c.lat,lng:c.lng}};}catch(e){}
+            }
+            const common={
+                client_name:client.name||'',client_phone:client.phone||'',client_address:client.address||'',
+                client_model:client.model||'',client_caravan:client.caravan||'',
+                client_manager:client.manager||'',manager_phone:client.managerPhone||'',
+                status:stageSave,status_dates:JSON.stringify(sdSave),
+                total_supply:grand,total_vat:vat,total_amount:grandVat,
+                site_photos:JSON.stringify(sitePhotos),
+                payment_status:balancePaid?'완료':depositNum>0?'계약':'입금전',
+                deposit_amount:depositNum,mid_amount:midNum,balance_amount:balanceAmount,balance_paid:balancePaid,
+                status_checked:JSON.stringify(statusChecked),
+                portfolio_items:JSON.stringify(portItems),
+                extra_visits:JSON.stringify(extraVisits),
+                meta:JSON.stringify(metaSave),
+                send_history:JSON.stringify(hist),
+            };
             if(mode==='new'){
-                // ── 1. 견적 헤더 저장 ──
-                const _ins={
-                    est_no:estNo,
-                    status:stageSave,
-                    status_dates:JSON.stringify(sdSave),
-                    client_name:client.name||'',
-                    client_phone:client.phone||'',
-                    client_address:client.address||'',
-                    client_model:client.model||'',
-                    client_caravan:client.caravan||'',
-                    client_manager:client.manager||'',
-                    manager_phone:client.managerPhone||'',
-                    total_supply:grand,
-                    total_vat:vat,
-                    total_amount:grandVat,
-                    site_photos:JSON.stringify(sitePhotos),
-                    payment_status:paymentStatus,
-                    deposit_amount:depositNum,
-                    mid_amount:midNum,
-                    balance_amount:balanceAmount,
-                    balance_paid:balancePaid,
-                    status_checked:JSON.stringify(statusChecked),
-                    portfolio_items:JSON.stringify(portItems),
-                    extra_visits:JSON.stringify(extraVisits),
-                    est_materials:JSON.stringify(estMaterials),
-                    est_prep:JSON.stringify(estPrep)
-                };
-                const{data:ed,error:e1}=await prepSafe(p=>sb.from('estimates').insert([p]).select(),_ins);
-                if(e1) throw new Error('[estimates] '+e1.message+(e1.code?' ('+e1.code+')':''));
+                // ── 1. 견적 헤더 저장 (견적번호: 날짜 + 그날 순번, 동시에 같은 번호가 나면 다음 번호로 다시 시도) ──
+                let no=opts.estNo||await nextEstNo(sb),ed=null;
+                for(let n=0;n<3;n++){
+                    const r=await prepSafe(p=>sb.from('estimates').insert([p]).select(),{...common,est_no:no,
+                        est_materials:JSON.stringify(estMaterials),est_prep:JSON.stringify(estPrep)});
+                    if(!r.error){ed=r.data;break;}
+                    if(String(r.error.code)!=='23505')throw new Error('[estimates] '+r.error.message+(r.error.code?' ('+r.error.code+')':''));
+                    no=await nextEstNo(sb);
+                }
                 if(!ed||!ed[0]) throw new Error('견적 데이터가 반환되지 않았습니다');
                 const eid=ed[0].id;
                 const cidMap={};
@@ -3018,20 +3274,37 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     cidMap[cats[i].id]=cd[0].id;
                 }
 
-                // ── 3. 품목 저장 ──
-                const irows=items.filter(i=>cidMap[i.catId]).map(i=>({
+                // ── 3. 품목 저장 (순서 포함) ──
+                const saveItems=items.filter(i=>cidMap[i.catId]);
+                const irows=saveItems.map((i,n)=>({
                     cat_id:cidMap[i.catId],name:i.name,specification:i.spec||'',
-                    quantity:Number(i.qty)||1,unit_price:Number(i.unitPrice)||0,
+                    quantity:Number(i.qty)||0,unit_price:Number(i.unitPrice)||0,
                     labor_cost:Number(i.laborCost)||0,total_amount:Number(i.total)||0,
-                    image_url:i.imgUrl||''
+                    image_url:i.imgUrl||'',display_order:n
                 }));
                 if(irows.length>0){
-                    const{error:e3}=await sb.from('est_items').insert(irows);
+                    const{data:idt,error:e3}=await sb.from('est_items').insert(irows).select('id,display_order');
                     if(e3) throw new Error('[est_items] '+e3.message);
+                    // ── 4. 소요자재·공구의 품목 연결을 임시 ID → DB ID로 교체 (수정 저장과 동일) ──
+                    const itemIdMap={};(idt||[]).forEach(r=>{const it=saveItems[r.display_order];if(it)itemIdMap[it.id]=r.id;});
+                    const remap=r=>(r.itemId&&itemIdMap[r.itemId])?{...r,itemId:itemIdMap[r.itemId]}:r;
+                    if(Object.keys(itemIdMap).length&&(estMaterials.some(r=>r.itemId)||estPrep.some(r=>r.itemId))){
+                        const{error:e4}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',eid),{est_materials:JSON.stringify(estMaterials.map(remap)),est_prep:JSON.stringify(estPrep.map(remap))});
+                        if(e4) throw new Error('[estimates 자재 연결] '+e4.message);
+                    }
                 }
-                toast('✅ 견적서가 저장되었습니다');
-                onNavigate('est-list');
+                setEstNo(no);
+                markSaved();
+                return{id:eid,no};
             } else {
+                // ── 동시 수정 확인: 이 견적서를 연 뒤에 다른 사람이 먼저 저장했는지 ──
+                const{data:curRow}=await sb.from('estimates').select('updated_at,est_materials,est_prep').eq('id',estimateId).maybeSingle();
+                if(curRow&&loadedRef.current.updatedAt&&curRow.updated_at&&curRow.updated_at!==loadedRef.current.updatedAt){
+                    if(!window.confirm('⚠️ 이 견적서를 연 뒤에 다른 사람이 먼저 수정·저장했습니다.\n\n[확인] 지금 내 화면 내용으로 덮어쓰기\n[취소] 저장하지 않기 (새로고침해서 최신 내용을 먼저 확인하세요)'))return null;
+                }
+                // 시공 체크리스트의 체크는 체크리스트 화면에서 바로 저장되므로, 최신 체크 상태를 합쳐서 덮어쓰지 않음
+                const chk=rows=>{const m={};parseJSON(rows,[]).forEach(r=>{if(r&&r.id)m[r.id]=!!r.checked;});return m;};
+                const cm=chk(curRow&&curRow.est_materials),cp=chk(curRow&&curRow.est_prep);
                 // ── 수정 저장 ── (화면에서 변경한 카테고리·품목·자재 등을 이 시점에 한꺼번에 DB에 반영)
                 const catIdMap={};
                 for(let i=0;i<cats.length;i++){
@@ -3069,50 +3342,24 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     const{error:ed2}=await sb.from('est_cats').delete().in('id',goneCats);
                     if(ed2)throw new Error('[est_cats 삭제] '+ed2.message);
                 }
-                // 새로 추가한 품목의 임시 ID → DB ID로 교체하여 자재/공구 연결 유지
+                // 새로 추가한 품목의 임시 ID → DB ID로 교체하여 자재/공구 연결 유지 + 최신 체크 상태 합치기
                 const remap=r=>(r.itemId&&itemIdMap[r.itemId])?{...r,itemId:itemIdMap[r.itemId]}:r;
-                const _upd={
-                    client_name:client.name||'',client_phone:client.phone||'',
-                    client_address:client.address||'',client_model:client.model||'',
-                    client_caravan:client.caravan||'',client_manager:client.manager||'',manager_phone:client.managerPhone||'',
-                    status:stageSave,
-                    status_dates:JSON.stringify(sdSave),
-                    total_supply:grand,total_vat:vat,total_amount:grandVat,
-                    site_photos:JSON.stringify(sitePhotos),
-                    payment_status:paymentStatus,
-                    deposit_amount:depositNum,
-                    mid_amount:midNum,
-                    balance_amount:balanceAmount,
-                    balance_paid:balancePaid,
-                    status_checked:JSON.stringify(statusChecked),
-                    portfolio_items:JSON.stringify(portItems),
-                    extra_visits:JSON.stringify(extraVisits),
-                    est_materials:JSON.stringify(estMaterials.map(remap)),
-                    updated_at:now,
-                    est_prep:JSON.stringify(estPrep.map(remap))
-                };
-                const{error:e4}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId),_upd);
+                const mats=estMaterials.map(remap).map(r=>r.id in cm?{...r,checked:cm[r.id]}:r);
+                const preps=estPrep.map(remap).map(r=>r.id in cp?{...r,checked:cp[r.id]}:r);
+                const{data:ud,error:e4}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId).select('updated_at'),
+                    {...common,est_materials:JSON.stringify(mats),est_prep:JSON.stringify(preps),updated_at:now});
                 if(e4) throw new Error('[estimates update] '+e4.message);
-                // ★ 설치완료를 새로 체크하고 저장한 경우에만 소요 자재 재고 차감 (중복 차감 방지)
-                if(statusChecked['설치완료']&&!origChecked.current['설치완료']){
-                    const sumMap={};
-                    estMaterials.forEach(m=>{
-                        if(!m.material_id||!m.qty) return;
-                        if(!sumMap[m.material_id]) sumMap[m.material_id]={material_id:m.material_id,name:m.name,qty:0};
-                        sumMap[m.material_id].qty+=Number(m.qty)||0;
-                    });
-                    const sumList=Object.values(sumMap).filter(m=>m.qty>0);
-                    if(sumList.length>0&&window.confirm('설치완료로 저장되었습니다.\n소요된 자재를 재고에서 차감하시겠습니까? ('+sumList.length+'종)')){
-                        for(const m of sumList){
-                            const{data:cur}=await sb.from('materials').select('stock_qty').eq('id',m.material_id).maybeSingle();
-                            const newQty=Math.max(0,(cur?.stock_qty||0)-m.qty);
-                            await sb.from('materials').update({stock_qty:newQty}).eq('id',m.material_id);
-                        }
-                        toast('재고 차감 완료 ('+sumList.length+'종)');
-                    }
-                }
-                toast('✅ 견적서가 수정되었습니다');
-                onNavigate('est-list');
+                loadedRef.current.updatedAt=(ud&&ud[0]&&ud[0].updated_at)||now;
+                await stockAfterSave(mats);
+                if(opts.stay){
+                    // 이 화면에 머무는 경우: 임시 ID를 DB ID로 바꿔 두어야 다음 저장 때 중복 저장되지 않음
+                    const nc=cats.map(c=>({...c,id:catIdMap[c.id]||c.id}));
+                    const ni=items.map(it=>({...it,id:itemIdMap[it.id]||it.id,catId:catIdMap[it.catId]||it.catId}));
+                    setCats(nc);setItems(ni);setEstMaterials(mats);setEstPrep(preps);setStatusDates(sdSave);setSendHistory(hist);setMeta(metaSave);
+                    origCatIds.current=new Set(nc.map(c=>c.id));origItemIds.current=new Set(ni.map(i=>i.id));origChecked.current={...statusChecked};
+                    rebase.current=true;settleUploads();
+                }else markSaved();
+                return{id:estimateId,no:estNo};
             }
         }catch(e){
             const msg=e.message||String(e);
@@ -3123,13 +3370,44 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             } else if(msg.includes('relation')||msg.includes('does not exist')||msg.includes('42P01')){
                 alert('⚠️ 저장 실패: 테이블이 없습니다\n\n채팅 아래쪽에 안내된 SQL 3개를 Supabase SQL Editor에서 먼저 실행하세요.');
             } else {
-                alert('⚠️ 저장 실패\n\n오류 내용: '+msg+'\n\n브라우저 콘솔(F12)에서 자세한 내용을 확인하세요.');
+                // 수정 저장은 여러 단계로 나뉘어 있어 중간에 실패하면 일부만 저장될 수 있음 → 다시 저장하면 맞춰짐
+                alert('⚠️ 저장 실패\n\n오류 내용: '+msg+(mode==='edit'?'\n\n일부 내용만 저장되었을 수 있습니다. 인터넷 연결을 확인한 뒤 다시 💾 저장을 눌러 주세요.':'')+'\n\n브라우저 콘솔(F12)에서 자세한 내용을 확인하세요.');
             }
+            return null;
         }finally{setSaving(false);}
     };
+    const save=async()=>{
+        const r=await doSave();
+        if(r){toast(mode==='new'?'✅ 견적서가 저장되었습니다 ('+r.no+')':'✅ 견적서가 수정되었습니다');onNavigate('est-list');}
+    };
 
-    // Excel
-    const exportExcel=()=>{const wb=XLSX.utils.book_new();const en=mode==='new'?estNo:client.name||'견적';const rows=[['럭키스타 캠핑카라반 견적서'],[`고객: ${client.name||''}`,`연락처: ${client.phone||''}`],[`상태: ${currentStatus}`],[],['카테고리','품목명','규격','수량','단가','합계']];cats.forEach(cat=>items.filter(i=>i.catId===cat.id).forEach(item=>rows.push([cat.name,item.name,item.spec||'',item.qty,item.unitPrice,item.total])));rows.push([],[``,``,``,``,`공급가액`,grand],[``,``,``,``,`VAT`,vat],[``,``,``,``,`합계(VAT포함)`,grandVat]);const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:22},{wch:18},{wch:7},{wch:13},{wch:13},{wch:15}];XLSX.utils.book_append_sheet(wb,ws,'견적서');XLSX.writeFile(wb,`럭키스타_${en}.xlsx`);toast('📊 엑셀 저장됨');};
+    // 엑셀 — 인쇄 양식과 같은 순서: 상호·회사정보 / 제목·견적번호·작성일 / 고객·담당자 / 상품 / 가격 / 결제 조건 / 안내사항
+    const exportExcel=()=>{
+        const no=estNo||shownNo,tm=meta.terms||{},rate=Number(tm.depositRate)||0;
+        const docStep=statusDates['본견적발송']?'본견적발송':statusDates['가견적발송']?'가견적발송':null;
+        const date=(docStep&&statusDates[docStep])||loadedRef.current.createdAt||new Date().toISOString();
+        const rows=[[st.company],...String(st.companyInfo||'').split('\n').filter(Boolean).map(l=>[l]),[],
+            [docStep==='가견적발송'?'가견적서':'견적서','','','','견적번호',no],
+            ['작성일',fmtD(date),'','','유효기간',st.validDays?st.validDays+'일':''],[],
+            ['■ 고객 정보'],['고객명',client.name||'','연락처',client.phone||'','주소',client.address||''],
+            ['■ 담당자 정보'],['담당자',client.manager||'','연락처',client.managerPhone||''],[],
+            ['■ 상품 정보'],['No','카테고리','품목명','규격/재질','수량','단가(원)','금액(원)']];
+        let n=0;
+        cats.forEach(cat=>items.filter(i=>i.catId===cat.id).forEach(i=>rows.push([++n,cat.name,i.name,i.spec||'',Number(i.qty)||0,Number(i.unitPrice)||0,Number(i.total)||0])));
+        COST_KEYS.forEach(([k,l])=>{const v=Number(costs[k])||0;if(v>0)rows.push([++n,'시공비',l,'',1,v,v]);});
+        rows.push([],['■ 가격 정보'],['공급가액',grand,'부가세 (10%)',vat,'최종 견적금액 (VAT 포함)',grandVat]);
+        if(tm.bank||rate||tm.asTerms){
+            rows.push([],['■ 결제 조건']);
+            if(tm.bank)rows.push(['입금계좌',tm.bank]);
+            if(rate)rows.push(['계약금',`견적금액의 ${rate}% · ${fmt(Math.round(grandVat*rate/100))}원`]);
+            if(tm.asTerms)rows.push(['A/S 조건',tm.asTerms]);
+        }
+        if(st.notes)rows.push([],['■ 안내사항'],...String(st.notes).split('\n').map(l=>[l]));
+        const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols']=[{wch:10},{wch:14},{wch:26},{wch:22},{wch:12},{wch:14},{wch:16}];
+        XLSX.utils.book_append_sheet(wb,ws,'견적서');
+        XLSX.writeFile(wb,`${no}_${client.name||'고객'}.xlsx`.replace(/[\\/:*?"<>|]/g,'_'));toast('📊 엑셀 저장됨');
+    };
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
@@ -3190,9 +3468,45 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
                 📊 진행 상태 관리 <StatusBadge status={currentStatus}/> <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
             </div>
+            {/* 실주(진행 안 함) · 본견적 지연 */}
+            {isLost?<div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',background:'#fee2e2',border:'1.5px solid #fca5a5',borderRadius:10,padding:'8px 12px',marginBottom:10,fontSize:13}}>
+                <b style={{color:'#b91c1c'}}>❌ 실주 처리된 견적</b>
+                <span>사유: <b>{meta.lost.reason||'-'}</b>{meta.lost.memo?' · '+meta.lost.memo:''} · {fmtD(meta.lost.at)}</span>
+                <button className="btn btn-outline btn-xs" onClick={()=>{if(confirm('실주 처리를 되돌릴까요?'))updMeta('lost',undefined);}}>↩ 되돌리기</button>
+            </div>
+            :lostForm?<div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',background:'#fff7ed',border:'1.5px solid #fed7aa',borderRadius:10,padding:'8px 12px',marginBottom:10}}>
+                <b style={{fontSize:12}}>❌ 실주 사유</b>
+                <select className="status-dt-input" style={{width:'auto'}} value={lostForm.reason} onChange={e=>setLostForm(f=>({...f,reason:e.target.value}))}>{LOST_REASONS.map(r=><option key={r}>{r}</option>)}</select>
+                <input className="status-dt-input" style={{flex:1,minWidth:160}} placeholder="메모 (선택)" value={lostForm.memo} onChange={e=>setLostForm(f=>({...f,memo:e.target.value}))}/>
+                <button className="btn btn-sm" style={{background:'#b91c1c',color:'#fff'}} onClick={async()=>{
+                    if(meta.stock&&meta.stock.done&&confirm('이 견적으로 차감한 재고를 되돌릴까요?'))await revertStock();
+                    updMeta('lost',{reason:lostForm.reason,memo:lostForm.memo,at:new Date().toISOString()});setLostForm(null);toast('❌ 실주 처리됨 — 💾 저장을 눌러야 반영됩니다');}}>실주 처리</button>
+                <button className="btn btn-outline btn-sm" onClick={()=>setLostForm(null)}>취소</button>
+            </div>
+            :<div style={{display:'flex',justifyContent:'flex-end',gap:8,alignItems:'center',marginBottom:statusOpen?6:0}}>
+                {isLate&&<span style={{fontSize:12,fontWeight:700,color:'#b45309',background:'#fef3c7',borderRadius:8,padding:'3px 10px'}}>⚠ 방문 후 {st.delayDays}일이 지났는데 본견적을 아직 보내지 않았습니다</span>}
+                <button className="btn btn-outline btn-xs" style={{color:'#b91c1c'}} onClick={()=>setLostForm({reason:LOST_REASONS[0],memo:''})}>❌ 실주 처리</button>
+            </div>}
             {statusOpen&&<StatusTrack sd={statusDates} sc={statusChecked} stage={currentStage} hold={onHold} balancePaid={balancePaid} holdDays={holdDays}
-                editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={setBalancePaid}/>}
-            {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🎉 설치 예정일은 일정표에 표시</div>}
+                editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={confirmBalance}/>}
+            {/* 제작·공사 일정: 하루 작업은 시작=완료(당일작업), 며칠 걸리는 공사는 기간 → 일정표에 기간으로 표시 */}
+            {statusOpen&&<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:10,fontSize:12}}>
+                <b style={{color:'var(--navy)'}}>🔨 제작·공사 일정</b>
+                <span>시작일</span><input type="date" className={`status-dt-input ${statusDates['제작시작']?'has-value':''}`} style={{width:'auto'}} value={dtLocal(statusDates['제작시작']).slice(0,10)} onChange={e=>updStatusDate('제작시작',e.target.value)}/>
+                <span>완료일</span><input type="date" className={`status-dt-input ${statusDates['제작완료']?'has-value':''}`} style={{width:'auto'}} value={dtLocal(statusDates['제작완료']).slice(0,10)} onChange={e=>updStatusDate('제작완료',e.target.value)}/>
+                <button className="btn btn-outline btn-xs" onClick={()=>{const s=statusDates['제작시작']?dtLocal(statusDates['제작시작']).slice(0,10):ymd(new Date());updStatusDate('제작시작',s);updStatusDate('제작완료',s);}}>📅 당일작업</button>
+                {statusDates['제작시작']&&statusDates['제작완료']&&<span style={{color:'var(--muted)'}}>{prodDays(statusDates)>1?`기간 작업 ${prodDays(statusDates)}일 (일정표에 기간으로 표시)`:'당일 작업'}</span>}
+            </div>}
+            {/* 📦 재고 차감 상태 (설치 후 소요 자재를 재고에서 차감 · 되돌리기 가능, 입출고 기록에 남음) */}
+            {statusOpen&&mode==='edit'&&stockLinesOf(estMaterials).length>0&&<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8,fontSize:12}}>
+                <b style={{color:'var(--navy)'}}>📦 재고</b>
+                {meta.stock&&meta.stock.done
+                    ?<><span style={{color:'var(--green)',fontWeight:700}}>✅ 차감 완료 ({fmtD(meta.stock.at)} · {meta.stock.lines.length}종)</span>
+                        <button className="btn btn-outline btn-xs" disabled={stockBusy} onClick={()=>{if(confirm('이 견적으로 차감한 재고를 되돌릴까요?'))revertStock();}}>↩ 차감 되돌리기</button></>
+                    :<><span style={{color:'var(--muted)'}}>미차감 ({stockLinesOf(estMaterials).length}종)</span>
+                        <button className="btn btn-outline btn-xs" disabled={stockBusy} onClick={()=>{if(confirm('소요 자재 '+stockLinesOf(estMaterials).length+'종을 재고에서 차감할까요?'))deductStock();}}>📦 재고 차감</button></>}
+            </div>}
+            {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🔨 제작·🎉 설치 일정은 일정표에 표시</div>}
             {statusOpen&&!statusChecked['방문상담 및 실측']&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={statusDates['방문상담 및 실측']} onPick={v=>updStatusDate('방문상담 및 실측',v)}/>}
         </div>
 
@@ -3222,7 +3536,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginTop:10}}>
                 <button className="btn btn-outline btn-sm" onClick={()=>setExtraVisits(p=>[...p,{id:uid(),type:'AS',at:'',dur:60,reason:'',done:false}])}>＋ 추가 방문</button>
                 {mode==='edit'&&<button className="btn btn-outline btn-sm" onClick={()=>{
-                    if(!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이 고객 정보로 새 견적을 만들까요?'))return;
+                    if(!window.confirm((dirty?'저장하지 않은 변경 내용은 사라집니다.\n':'')+'이 고객 정보로 새 견적을 만들까요?'))return;
+                    window.__estDirty=false;
                     sessionStorage.setItem('newEstClient',JSON.stringify({name:client.name,phone:client.phone,address:client.address,manager:client.manager,managerPhone:client.managerPhone}));
                     onNavigate('est-new');
                 }}>📋 이 고객으로 새 견적 만들기</button>}
@@ -3254,52 +3569,101 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             </div>
         );})}
 
+        {/* ★ 시공비 · 결제 조건 (견적서 인쇄에 표시, 시공비 0원은 인쇄 제외) */}
+        <div className="card" style={{marginTop:16}}>
+            <div className="card-title">🧾 시공비 · 결제 조건 <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none',letterSpacing:0}}>(견적서 인쇄에 표시 · 시공비는 공급가액에 포함, 0원이면 인쇄에서 빠짐)</span></div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'8px 14px',marginBottom:10}}>
+                {COST_KEYS.map(([k,l])=><div className="info-field" key={k}><label>{l} (원)</label><input type="number" min="0" value={costs[k]??''} placeholder="0" onChange={e=>updMeta('costs',c=>({...(c||{}),[k]:e.target.value}))}/></div>)}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'2fr 120px',gap:'8px 14px'}}>
+                <div className="info-field"><label>입금계좌</label><input value={(meta.terms||{}).bank||''} placeholder="예) 농협 000-0000-0000-00 (예금주)" onChange={e=>updMeta('terms',t=>({...(t||{}),bank:e.target.value}))}/></div>
+                <div className="info-field"><label>계약금 비율 (%)</label><input type="number" min="0" max="100" value={(meta.terms||{}).depositRate??''} onChange={e=>updMeta('terms',t=>({...(t||{}),depositRate:e.target.value}))}/></div>
+            </div>
+            <div className="info-field" style={{marginTop:8}}><label>A/S 조건</label><textarea rows={2} value={(meta.terms||{}).asTerms||''} placeholder="예) 설치 후 1년 무상 A/S (소모품 제외)" onChange={e=>updMeta('terms',t=>({...(t||{}),asTerms:e.target.value}))}
+                style={{width:'100%',border:'1.5px solid var(--border)',borderRadius:7,padding:'8px 12px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",resize:'vertical'}}/></div>
+            <div style={{fontSize:11,color:'var(--muted)',marginTop:6}}>기본값은 🔧 환경설정에서 바꿀 수 있습니다.</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:12,paddingTop:10,borderTop:'1px dashed var(--border)'}}>
+                <button className="btn btn-outline btn-sm" onClick={shareLink}>🔗 고객용 링크 복사</button>
+                <span style={{fontSize:11,color:'var(--muted)'}}>카톡·문자로 보내면 고객이 휴대폰에서 견적서를 열고 품목별 <b>시공 사례(포트폴리오)</b>를 바로 볼 수 있습니다. 링크를 만든 뒤 인쇄하면 견적서에도 주소가 표시됩니다.</span>
+                {meta.shareToken&&<a href={shareUrlOf(meta.shareToken)} target="_blank" rel="noreferrer" style={{fontSize:12,color:'var(--blue)'}}>미리 보기 ↗</a>}
+            </div>
+        </div>
+
+        {/* ★ 원가 분석 — 직원용 (인쇄·엑셀·고객용 링크에는 나가지 않음) */}
+        {grand>0&&(()=>{const cost=estMaterials.reduce((s,m)=>s+(Number(m.unit_price)||0)*(Number(m.qty)||0),0);
+            const margin=grand-cost,mr=grand?Math.round(margin/grand*1000)/10:0,low=mr<(Number(st.marginWarn)||0);
+            return(<div className="no-print" style={{display:'flex',gap:18,flexWrap:'wrap',alignItems:'center',background:low?'#fef2f2':'#f0fdf4',border:'1.5px solid '+(low?'#fca5a5':'#bbf7d0'),borderRadius:10,padding:'10px 16px',marginTop:16,fontSize:13}}>
+                <b>💹 원가 분석 <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>(직원용 · 인쇄 제외)</span></b>
+                <span>자재 원가 <b>{fmt(cost)}</b>원</span><span>공급가액 <b>{fmt(grand)}</b>원</span>
+                <span>마진 <b style={{color:low?'#b91c1c':'#15803d'}}>{fmt(margin)}</b>원</span>
+                <span>마진율 <b style={{fontSize:16,color:low?'#b91c1c':'#15803d'}}>{mr}%</b>{low&&<span style={{color:'#b91c1c'}}> (기준 {st.marginWarn}% 미만)</span>}</span>
+                {cost===0&&<span style={{fontSize:11,color:'var(--muted)'}}>소요 자재가 없으면 원가가 0으로 계산됩니다</span>}
+            </div>);})()}
+
         {grand>0&&<div className="grand-card">
             <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div><div className="grand-vat">공급가액 {fmt(grand)}원 + VAT {fmt(vat)}원</div></div>
             <div className="grand-breakdown">{[['공급가액',grand,false],['VAT 10%',vat,true]].map(([l,v,g])=><div className="bd-item" key={l}><div className="bd-label">{l}</div><div className="bd-val" style={g?{color:'var(--gold)'}:{}}>{fmt(v)}원</div></div>)}</div>
         </div>}
   
-        {/* ★ 결제 정보 */}
+        {/* ★ 결제 정보 — 입금 내역 한 곳에서 관리, 결제 상태는 자동 (계약금 있음 = 계약, 잔금 입금 확인 = 완료) */}
         <div className="card" style={{marginTop:16}}>
-            <div className="card-title">💳 결제 정보</div>
-            <div className="pay-status-row">
-                {['입금전','계약','완료'].map(s=>(
-                    <button key={s} className={'pay-status-btn '+(paymentStatus===s?'ps-'+s:'')} onClick={()=>setPaymentStatus(s)}>
-                        {s==='입금전'?'⏳ 입금전':s==='계약'?'📝 계약':'✅ 완료'}
-                    </button>
-                ))}
-            </div>
+            <div className="card-title">💳 결제 정보 <span className="status-badge" style={{marginLeft:6,background:paymentStatus==='완료'?'#dcfce7':paymentStatus==='계약'?'#fef9c3':'#fee2e2',color:paymentStatus==='완료'?'#15803d':paymentStatus==='계약'?'#854d0e':'#b91c1c',textTransform:'none',letterSpacing:0}}>{paymentStatus==='완료'?'✅ 완료':paymentStatus==='계약'?'📝 계약':'⏳ 입금전'}</span></div>
             <div className="pay-grid">
-                <div className="pay-field">
-                    <div className="pay-label">계약금</div>
-                    <input type="number" className="pay-input" value={depositAmount} min="0"
-                        onChange={e=>setDepositAmount(e.target.value)} placeholder="금액 입력"/>
-                    <div className="pay-sub">{fmt(depositNum)}원</div>
-                </div>
-                <div className="pay-field">
-                    <div className="pay-label">중도금</div>
-                    <input type="number" className="pay-input" value={midAmount} min="0"
-                        onChange={e=>setMidAmount(e.target.value)} placeholder="금액 입력"/>
-                    <div className="pay-sub">{fmt(midNum)}원</div>
-                </div>
+                {[['deposit','계약금',depositAmount,setDepositAmount],['mid','중도금',midAmount,setMidAmount]].map(([k,l,val,setVal])=>(
+                <div className="pay-field" key={k}>
+                    <div className="pay-label">{l}</div>
+                    <input type="number" className="pay-input" value={val} min="0" onChange={e=>setVal(e.target.value)} placeholder="금액 입력"/>
+                    <div className="pay-sub">{fmt(Number(val)||0)}원{k==='deposit'&&(meta.terms||{}).depositRate?` · 견적의 ${meta.terms.depositRate}% = ${fmt(Math.round(grandVat*meta.terms.depositRate/100))}원`:''}</div>
+                    <div style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:12}}>
+                        <span>입금일</span><input type="date" className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={(pay[k]||{}).date||''} onChange={e=>updPay(k,'date',e.target.value)}/>
+                    </div>
+                </div>))}
                 <div className="pay-field">
                     <div className="pay-label">잔금 (자동계산)</div>
                     <input readOnly className={'pay-input auto '+(balancePaid||balanceAmount<=0&&grandVat>0?'zero':'')}
                         value={balancePaid?'0원':(grandVat>0?fmt(Math.max(0,balanceAmount))+'원':'-')}/>
+                    <div style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:12,flexWrap:'wrap'}}>
+                        <span>받은 금액</span><input type="number" min="0" className="status-dt-input" style={{width:110,padding:'4px 6px'}} placeholder={String(Math.max(0,balanceAmount))} value={(pay.balance||{}).amount??''} onChange={e=>updPay('balance','amount',e.target.value)}/>
+                        <span>입금일</span><input type="date" className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={(pay.balance||{}).date||''} onChange={e=>updPay('balance','date',e.target.value)}/>
+                    </div>
                     <div className="pay-check-row">
-                        <input type="checkbox" id="bpaid" className="pay-check"
-                            checked={balancePaid} onChange={e=>setBalancePaid(e.target.checked)}/>
-                        <label htmlFor="bpaid" className={'pay-check-lbl'+(balancePaid?' on':'')} style={{cursor:'pointer'}}>
-                            잔금 입금 완료
-                        </label>
+                        <input type="checkbox" id="bpaid" className="pay-check" checked={balancePaid} onChange={e=>confirmBalance(e.target.checked)}/>
+                        <label htmlFor="bpaid" className={'pay-check-lbl'+(balancePaid?' on':'')} style={{cursor:'pointer'}}>잔금 입금 완료</label>
                     </div>
                 </div>
             </div>
         </div>
 
-        {/* ★ 현장사진 */}
+        {/* ★ 발송 이력 — 가견적·본견적을 보낸 순간의 품목·금액 (다시 보기·재인쇄) */}
+        {sendHistory.length>0&&<div className="card">
+            <div className="card-title">📜 발송 이력</div>
+            {sendHistory.slice().reverse().map((h,i,arr)=>{const prev=arr[i+1];return(
+                <div key={h.id||i} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                    <StatusBadge status={h.step}/>
+                    <span style={{fontWeight:700,minWidth:130}}>{fmtDT(h.at)}</span>
+                    <span>공급가액 <b>{fmt(h.grand)}</b>원 · VAT 포함 <b>{fmt(h.grandVat)}</b>원</span>
+                    {prev&&prev.grandVat!==h.grandVat&&<span style={{fontSize:12,color:h.grandVat>prev.grandVat?'#b91c1c':'#15803d'}}>({h.grandVat>prev.grandVat?'+':''}{fmt(h.grandVat-prev.grandVat)}원)</span>}
+                    <span style={{fontSize:12,color:'var(--muted)'}}>품목 {(h.items||[]).length}개</span>
+                    <button className="btn btn-outline btn-xs" style={{marginLeft:'auto'}} onClick={()=>reprintHistory(h)}>🖨 그때 견적서 보기</button>
+                </div>);})}
+        </div>}
+
+        {/* ★ 현장정보 — 접수(유입 경로·요청일·요청 내용), 실측 메모, 현장 사진(촬영·앨범), 첨부 파일(스캔·도면 등) */}
         <div className="card">
-            <div className="card-title">📸 현장사진</div>
+            <div className="card-title">📍 현장정보</div>
+            {(()=>{const si=meta.site||{};const upd=(k,v)=>updMeta('site',s=>({...(s||{}),[k]:v}));
+                const ta={width:'100%',border:'1.5px solid var(--border)',borderRadius:7,padding:'8px 12px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",resize:'vertical'};
+                return(<div style={{marginBottom:12}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'8px 14px',marginBottom:8}}>
+                    <div className="info-field"><label>유입 경로</label>
+                        <select className="mgr-select" value={si.source||''} onChange={e=>upd('source',e.target.value)}>
+                            <option value="">선택</option>{SITE_SOURCES.map(s=><option key={s}>{s}</option>)}</select></div>
+                    <div className="info-field"><label>요청일</label><input type="date" value={si.requestDate||''} onChange={e=>upd('requestDate',e.target.value)}/></div>
+                </div>
+                <div className="info-field" style={{marginBottom:8}}><label>고객 요청 내용</label><textarea rows={2} style={ta} value={si.request||''} placeholder="예) 캠핑카 후면 수납장, 상부장 2칸 추가 희망" onChange={e=>upd('request',e.target.value)}/></div>
+                <div className="info-field"><label>실측 메모 · 치수</label><textarea rows={3} style={ta} value={si.measure||''} placeholder="예) 벽 폭 2,400 / 높이 2,150 / 콘센트 위치 좌측 300" onChange={e=>upd('measure',e.target.value)}/></div>
+            </div>);})()}
+            <div style={{fontSize:12,fontWeight:700,color:'var(--navy)',margin:'4px 0 6px'}}>📸 현장 사진</div>
             <div className="site-photos-grid">
                 {sitePhotos.map((photo,i)=>(
                     <div key={i} className="site-photo-item" onClick={()=>setPhotoView(i)} title="크게 보기">
@@ -3308,20 +3672,38 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                             onClick={e=>{e.stopPropagation();setSitePhotos(p=>p.filter((_,j)=>j!==i));}}>✕</button>
                     </div>
                 ))}
-                <label className="site-photo-item site-photo-add no-print">
-                    <span className="site-photo-add-icon">📷</span>
-                    <span>사진 추가</span>
-                    <input type="file" accept="image/*" multiple style={{display:'none'}}
+                {/* 휴대폰: 카메라 바로 촬영 / 앨범에서 여러 장 선택 */}
+                {[['📷','카메라로 촬영',{capture:'environment'}],['🖼','앨범에서 선택',{multiple:true}]].map(([ic,lb,extra])=>(
+                <label key={lb} className="site-photo-item site-photo-add no-print">
+                    <span className="site-photo-add-icon">{ic}</span>
+                    <span>{lb}</span>
+                    <input type="file" accept="image/*" {...extra} style={{display:'none'}}
                         onChange={async e=>{
                             const files=Array.from(e.target.files);e.target.value='';
                             for(const f of files){
-                                const url=await uploadImg(sb,f,'site-photos');
+                                const url=await uploadTracked(f,'site-photos');
                                 setSitePhotos(p=>[...p,url]);
                             }
                         }}/>
+                </label>))}
+            </div>
+            {sitePhotos.length===0&&<p style={{fontSize:12,color:'var(--muted)',marginTop:8}}>현장에서 휴대폰으로 바로 촬영하거나 앨범에서 고를 수 있습니다.</p>}
+            {/* 첨부 파일 (스캔 PDF·도면·실측 파일 등 여러 개) */}
+            <div style={{fontSize:12,fontWeight:700,color:'var(--navy)',margin:'14px 0 6px'}}>📎 첨부 파일</div>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {((meta.site||{}).files||[]).map((f,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',border:'1px solid var(--border)',borderRadius:8,background:'#f8fafc'}}>
+                    <span style={{fontSize:16}}>📄</span>
+                    <a href={f.url} target="_blank" rel="noopener noreferrer" style={{flex:1,color:'var(--blue)',fontSize:13,textDecoration:'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name||'첨부파일'}</a>
+                    <button className="del-btn" title="삭제" onClick={()=>{if(confirm('이 파일을 목록에서 뺄까요?'))updMeta('site',s=>({...(s||{}),files:((s||{}).files||[]).filter((_,j)=>j!==i)}));}}>✕</button>
+                </div>)}
+                <label style={{display:'block',cursor:'pointer',padding:'12px',textAlign:'center',border:'1px dashed var(--border)',borderRadius:8,color:'var(--muted)',fontSize:13}}>
+                    📎 파일 첨부 (스캔 PDF · 도면 · 이미지 · 문서, 여러 개 가능)
+                    <input type="file" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.hwp,.dwg,.dxf,.3dm" style={{display:'none'}} onChange={async e=>{
+                        const files=Array.from(e.target.files);e.target.value='';
+                        for(const f of files){const url=await uploadTracked(f,'site-files');updMeta('site',s=>({...(s||{}),files:[...((s||{}).files||[]),{url,name:f.name}]}));}
+                    }}/>
                 </label>
             </div>
-            {sitePhotos.length===0&&<p style={{fontSize:12,color:'var(--muted)',marginTop:8}}>현장 사진을 추가하면 견적서에 함께 저장됩니다.</p>}
             {/* 사진 크게 보기 (◀ ▶ 로 넘기기, 바깥 클릭·✕ 로 닫기) */}
             {photoView!==null&&sitePhotos[photoView]&&<div className="modal-overlay" style={{zIndex:2000,background:'rgba(0,0,0,.88)',flexDirection:'column',gap:10}} onClick={()=>setPhotoView(null)}>
                 <img src={sitePhotos[photoView]} alt="" style={{maxWidth:'94vw',maxHeight:'82vh',objectFit:'contain',borderRadius:8}} onClick={e=>e.stopPropagation()}/>
@@ -3570,24 +3952,13 @@ function PrepCard({estPrep,setEstPrep,uid,items,cats}){
         estPrep.filter(r=>r.type===type).forEach(r=>{
             const k=r.type+'|'+r.name;
             if(!g[k])g[k]={key:k,name:r.name,qty:0,rows:[]};
-            g[k].qty+=Number(r.qty)||0;
+            g[k].qty=Math.max(g[k].qty,Number(r.qty)||0); // 여러 상품에 같은 공구·부자재가 있어도 1줄, 수량은 가장 큰 값
             g[k].rows.push(r);
         });
         return Object.values(g).map(x=>({...x,prods:collectProds(x.rows,items,cats)}));
     };
-    const setQty=(g,q)=>setEstPrep(prev=>{
-        const idxs=prev.map((r,i)=>(r.type+'|'+r.name)===g.key?i:-1).filter(i=>i>=0);
-        if(!idxs.length)return prev;
-        let remaining=q;
-        const next=prev.slice();
-        idxs.forEach((idx,n)=>{
-            const orig=Number(prev[idx].qty)||0;
-            const v=n===idxs.length-1?remaining:Math.min(orig,remaining);
-            remaining-=v;
-            next[idx]={...prev[idx],qty:v};
-        });
-        return next.filter(r=>!((r.type+'|'+r.name)===g.key&&!(Number(r.qty)>0)));
-    });
+    // 수량을 고치면 같은 공구·부자재 행 모두 그 수량으로 (0이면 삭제)
+    const setQty=(g,q)=>setEstPrep(prev=>prev.map(r=>(r.type+'|'+r.name)===g.key?{...r,qty:q}:r).filter(r=>!((r.type+'|'+r.name)===g.key&&!(Number(r.qty)>0))));
     const del=g=>setEstPrep(prev=>prev.filter(r=>(r.type+'|'+r.name)!==g.key));
     const add=()=>{
         const name=nf.name.trim();
@@ -3666,17 +4037,18 @@ function ChecklistPage({sb,estimateId,onNavigate}){
     };
     const matKey=r=>r.material_id||r.name;
     const prepKey=r=>r.type+'|'+r.name;
-    const group=(rows,keyFn)=>{
+    // 자재는 합산, 공구·부자재(once)는 같은 이름 1줄·가장 큰 수량
+    const group=(rows,keyFn,once)=>{
         const g={};
-        rows.forEach(r=>{const k=keyFn(r);if(!k)return;if(!g[k])g[k]={key:k,name:r.name,qty:0,rows:[]};g[k].qty=Math.round((g[k].qty+(Number(r.qty)||0))*10)/10;g[k].rows.push(r);});
+        rows.forEach(r=>{const k=keyFn(r);if(!k)return;if(!g[k])g[k]={key:k,name:r.name,qty:0,rows:[]};g[k].qty=once?Math.max(g[k].qty,Number(r.qty)||0):Math.round((g[k].qty+(Number(r.qty)||0))*10)/10;g[k].rows.push(r);});
         return Object.values(g).filter(x=>x.qty>0);
     };
     const isOn=g=>g.rows.every(r=>r.checked);
 
     const sections=[
         {title:'📦 필요 자재',groups:group(mats,matKey),toggle:g=>{const v=!isOn(g);const next=mats.map(r=>matKey(r)===g.key?{...r,checked:v}:r);setMats(next);persist('est_materials',next);},reset:()=>{const n=mats.map(r=>({...r,checked:false}));setMats(n);persist('est_materials',n);}},
-        {title:'🔧 공구',groups:group(prep.filter(r=>r.type==='tool'),prepKey),toggle:g=>{const v=!isOn(g);const next=prep.map(r=>prepKey(r)===g.key?{...r,checked:v}:r);setPrep(next);persist('est_prep',next);},reset:()=>{const n=prep.map(r=>r.type==='tool'?{...r,checked:false}:r);setPrep(n);persist('est_prep',n);}},
-        {title:'📎 부자재',groups:group(prep.filter(r=>r.type==='supply'),prepKey),toggle:g=>{const v=!isOn(g);const next=prep.map(r=>prepKey(r)===g.key?{...r,checked:v}:r);setPrep(next);persist('est_prep',next);},reset:()=>{const n=prep.map(r=>r.type==='supply'?{...r,checked:false}:r);setPrep(n);persist('est_prep',n);}},
+        {title:'🔧 공구',groups:group(prep.filter(r=>r.type==='tool'),prepKey,true),toggle:g=>{const v=!isOn(g);const next=prep.map(r=>prepKey(r)===g.key?{...r,checked:v}:r);setPrep(next);persist('est_prep',next);},reset:()=>{const n=prep.map(r=>r.type==='tool'?{...r,checked:false}:r);setPrep(n);persist('est_prep',n);}},
+        {title:'📎 부자재',groups:group(prep.filter(r=>r.type==='supply'),prepKey,true),toggle:g=>{const v=!isOn(g);const next=prep.map(r=>prepKey(r)===g.key?{...r,checked:v}:r);setPrep(next);persist('est_prep',next);},reset:()=>{const n=prep.map(r=>r.type==='supply'?{...r,checked:false}:r);setPrep(n);persist('est_prep',n);}},
     ];
     const total=sections.reduce((s,x)=>s+x.groups.length,0);
     const done=sections.reduce((s,x)=>s+x.groups.filter(isOn).length,0);
@@ -3906,6 +4278,72 @@ function PfPicker({all,categoryId,catName,selected,onClose,onConfirm}){
     </div>);
 }
 
+/* ═══════════════════════════════════════
+   ★ 고객용 웹 견적서 (?q=고유코드) — 카톡·문자로 링크를 보내면 고객이 휴대폰에서 바로 보고 포트폴리오를 누를 수 있음
+   데이터는 DB 함수 get_public_estimate 로 그 견적 1건의 공개용 정보만 받음
+═══════════════════════════════════════ */
+function PublicEstimatePage({sb,token}){
+    const[d,setD]=useState(undefined); // undefined=불러오는 중, null=없음
+    useEffect(()=>{
+        if(!sb)return;
+        sb.rpc('get_public_estimate',{p_token:token}).then(({data,error})=>setD(error?null:(data||null)));
+    },[sb]);
+    if(d===undefined)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
+    if(!d)return<div style={{maxWidth:520,margin:'60px auto',padding:20,textAlign:'center',fontFamily:"'Noto Sans KR',sans-serif",color:'var(--muted)'}}>견적서를 찾을 수 없습니다.<br/>링크가 바뀌었거나 만료되었을 수 있습니다. 담당자에게 문의해 주세요.</div>;
+    const st={...SETTINGS_DEFAULT,...parseJSON(d.settings,{})};
+    const costs=d.costs||{},tm=d.terms||{};
+    const costList=COST_KEYS.map(([k,l])=>[l,Number(costs[k])||0]).filter(([,v])=>v>0);
+    const items=d.items||[],cats=d.cats||[];
+    const grand=items.reduce((s,i)=>s+(Number(i.total_amount)||0),0)+costList.reduce((s,[,v])=>s+v,0);
+    const vat=Math.round(grand*.1),grandVat=grand+vat,rate=Number(tm.depositRate)||0;
+    const sd=normStatusObj(parseJSON(d.status_dates,{}));
+    const title=sd['본견적발송']?'견적서':sd['가견적발송']?'가견적서':'견적서';
+    const date=sd['본견적발송']||sd['가견적발송']||d.created_at;
+    const box={background:'#fff',border:'1.5px solid var(--border)',borderRadius:12,padding:'14px 16px',marginBottom:12};
+    const tel=(d.manager_phone||'').replace(/[^0-9+]/g,'');
+    return(<div style={{maxWidth:720,margin:'0 auto',padding:'20px 14px 50px',fontFamily:"'Noto Sans KR',sans-serif",color:'#111827'}}>
+        <div style={{borderBottom:'3px solid #1e3a8a',paddingBottom:10,marginBottom:14}}>
+            <div style={{fontSize:22,fontWeight:900,color:'#1e3a8a'}}>{st.company}</div>
+            {st.companyInfo&&<div style={{fontSize:12,color:'#374151',whiteSpace:'pre-wrap',marginTop:2}}>{st.companyInfo}</div>}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:10,flexWrap:'wrap',gap:6}}>
+                <b style={{fontSize:20,letterSpacing:4}}>{title}</b>
+                <span style={{fontSize:12,color:'#374151'}}>견적번호 <b>{d.est_no}</b> · {fmtD(date)}{st.validDays?` · 유효기간 ${st.validDays}일`:''}</span>
+            </div>
+        </div>
+        <div style={box}><b>{d.client_name||'고객'}</b> 고객님 견적입니다.
+            {d.client_manager&&<div style={{fontSize:13,marginTop:4}}>담당자 {d.client_manager} {tel&&<a href={'tel:'+tel} style={{color:'var(--blue)',fontWeight:700,textDecoration:'none'}}>📞 {d.manager_phone}</a>}</div>}</div>
+        <div style={box}>
+            <div style={{fontWeight:800,color:'#1e3a8a',marginBottom:8}}>상품 정보</div>
+            {cats.map(c=>{const ci=items.filter(i=>i.cat_id===c.id);if(!ci.length)return null;return(<div key={c.id} style={{marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:4}}>{c.name}</div>
+                {ci.map((i,n)=>{const ids=parseJSON(i.portfolio_ids,[]);return(<div key={n} style={{display:'flex',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid #e5e7eb'}}>
+                    {i.image_url&&<img src={i.image_url} alt="" style={{width:52,height:52,objectFit:'cover',borderRadius:8,flexShrink:0}}/>}
+                    <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700}}>{i.name}</div>
+                        {i.specification&&<div style={{fontSize:12,color:'#4b5563'}}>{i.specification}</div>}
+                        <div style={{fontSize:12,color:'#374151'}}>{fmt(i.unit_price)}원 × {i.quantity}</div>
+                        {ids.length>0&&<a href={pfUrl(ids)} target="_blank" rel="noreferrer" style={{display:'inline-block',marginTop:4,fontSize:12,fontWeight:700,color:'#fff',background:'#1e6fd9',borderRadius:6,padding:'4px 10px',textDecoration:'none'}}>🖼 시공 사례 보기</a>}
+                    </div>
+                    <b style={{whiteSpace:'nowrap'}}>{fmt(i.total_amount)}원</b>
+                </div>);})}
+            </div>);})}
+            {costList.map(([l,v])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderTop:'1px solid #e5e7eb',fontSize:14}}><span>{l}</span><b>{fmt(v)}원</b></div>)}
+        </div>
+        <div style={{...box,background:'#eff6ff',borderColor:'#bfdbfe'}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:14}}><span>공급가액</span><b>{fmt(grand)}원</b></div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:14}}><span>부가세 (10%)</span><b>{fmt(vat)}원</b></div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:18,color:'#1e3a8a',marginTop:6}}><b>최종 견적금액</b><b>{fmt(grandVat)}원</b></div>
+        </div>
+        {(tm.bank||rate||tm.asTerms)&&<div style={box}>
+            <div style={{fontWeight:800,color:'#1e3a8a',marginBottom:6}}>결제 조건</div>
+            {tm.bank&&<div style={{fontSize:14}}>입금계좌: <b>{tm.bank}</b></div>}
+            {rate>0&&<div style={{fontSize:14}}>계약금: 견적금액의 {rate}% · <b>{fmt(Math.round(grandVat*rate/100))}원</b></div>}
+            {tm.asTerms&&<div style={{fontSize:13,whiteSpace:'pre-wrap',marginTop:4}}>A/S: {tm.asTerms}</div>}
+        </div>}
+        {st.notes&&<div style={box}><div style={{fontWeight:800,color:'#1e3a8a',marginBottom:6}}>안내사항</div><div style={{fontSize:13,whiteSpace:'pre-wrap'}}>{st.notes}</div></div>}
+    </div>);
+}
+
 // 견적서 QR / 링크로 열리는 공개 페이지 (로그인 없이 열람)
 function PublicPortfolioPage({sb,ids}){
     const[items,setItems]=useState([]);
@@ -3940,108 +4378,222 @@ function PublicPortfolioPage({sb,ids}){
     </div>);
 }
 
-function EstimateList({sb,onEdit,onNew,onChecklist}){
+function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
     const[estimates,setEstimates]=useState([]);
     const[loading,setLoading]=useState(true);
     const[statusFilter,setStatusFilter]=useState(null);
     const[payFilter,setPayFilter]=useState(null);
     const[q,setQ]=useState('');
-    const[holdDays,setHoldDays]=useState(SETTINGS_DEFAULT.holdDays);
+    const[st,setSt]=useState(SETTINGS_DEFAULT);
+    const[sortKey,setSortKey]=useState('created'); // created · amount · name · status
+    const[period,setPeriod]=useState('all');       // all · thisMonth · lastMonth · custom
+    const[range,setRange]=useState({from:'',to:''});
+    const[showToday,setShowToday]=useState(true);
+    const[delDlg,setDelDlg]=useState(null);        // 삭제 버튼을 누른 견적 (실주 처리 / 휴지통 선택)
+    const[lostReason,setLostReason]=useState(LOST_REASONS[0]);
 
     useEffect(()=>{
         if(!sb)return;
-        (async()=>{setLoading(true);const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});if(data)setEstimates(data);setLoading(false);})();
-        loadSettings(sb).then(s=>setHoldDays(s.holdDays));
+        (async()=>{
+            setLoading(true);
+            const{data}=await sb.from('estimates').select('*').order('created_at',{ascending:false});
+            let rows=data||[];
+            // 휴지통에서 30일이 지난 견적은 관리자가 목록을 열 때 영구 삭제
+            if(isAdmin){
+                const old=rows.filter(e=>{const d=parseJSON(e.meta,{}).deletedAt;return d&&Date.now()-new Date(d).getTime()>30*86400000;});
+                if(old.length){await sb.from('estimates').delete().in('id',old.map(e=>e.id));rows=rows.filter(e=>!old.includes(e));toast('🗑 휴지통에서 30일 지난 견적 '+old.length+'건을 영구 삭제했습니다');}
+            }
+            setEstimates(rows);setLoading(false);
+        })();
+        loadSettings(sb).then(setSt);
     },[sb]);
-    const labelOf=e=>estStageInfo(e,holdDays).label;
-    const del=async id=>{
-        if(!confirm('견적서를 삭제하시겠습니까?'))return;
-        await sb.from('estimates').delete().eq('id',id);
-        setEstimates(p=>p.filter(e=>e.id!==id));toast('🗑 삭제됨');
+
+    const info=Object.fromEntries(estimates.map(e=>[e.id,estStageInfo(e,st.holdDays,st.delayDays)]));
+    const live=estimates.filter(e=>!info[e.id].deleted);
+    const labels=Object.fromEntries(estimates.map(e=>[e.id,info[e.id].label]));
+    const hasExtra=e=>pendingExtras(e).length>0;
+
+    // 견적 meta 고치기 (실주·휴지통): DB와 화면 모두
+    const patchMeta=async(est,fn)=>{
+        const m=fn(parseJSON(est.meta,{}));
+        const{error}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',est.id),{meta:JSON.stringify(m)});
+        if(error){alert('저장 실패: '+error.message);return false;}
+        setEstimates(p=>p.map(e=>e.id===est.id?{...e,meta:JSON.stringify(m)}:e));return true;
+    };
+    // 이 견적으로 재고를 차감했다면 되돌릴지 물어봄 (실주·휴지통 이동 시)
+    const revertStockOf=async(est,m)=>{
+        const s=m.stock;if(!(s&&s.done&&(s.lines||[]).length))return m;
+        if(!confirm('이 견적으로 차감한 재고('+s.lines.length+'종)를 되돌릴까요?'))return m;
+        for(const l of s.lines)await adjustStock(sb,{materialId:l.material_id,delta:l.qty,estimateId:est.id,reason:'차감 되돌리기',memo:(est.est_no||'')+' '+(est.client_name||'')});
+        toast('↩ 재고 차감을 되돌렸습니다');return{...m,stock:{done:false,revertedAt:new Date().toISOString()}};
+    };
+    const markLost=async est=>{const m0=await revertStockOf(est,parseJSON(est.meta,{}));if(await patchMeta(est,()=>({...m0,lost:{reason:lostReason,memo:'',at:new Date().toISOString()}})))toast('❌ 실주 처리됨');setDelDlg(null);};
+    const toTrash=async est=>{const m0=await revertStockOf(est,parseJSON(est.meta,{}));if(await patchMeta(est,()=>({...m0,deletedAt:new Date().toISOString()})))toast('🗑 휴지통으로 이동 (30일 뒤 영구 삭제)');setDelDlg(null);};
+    const restore=async est=>{if(await patchMeta(est,m=>{const{deletedAt,...r}=m;return r;}))toast('↩ 복구됨');};
+    const purge=async est=>{
+        if(!confirm('['+(est.client_name||'고객')+'] 견적을 영구 삭제합니다. 되돌릴 수 없습니다.\n삭제하시겠습니까?'))return;
+        await sb.from('estimates').delete().eq('id',est.id);setEstimates(p=>p.filter(e=>e.id!==est.id));toast('🗑 영구 삭제됨');
     };
 
-    const STATUS_DASH=['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','보류','추가방문'];
+    // ── 기간 필터 (작성일 기준) ──
+    const now=new Date();
+    const pr=period==='thisMonth'?[new Date(now.getFullYear(),now.getMonth(),1),new Date(now.getFullYear(),now.getMonth()+1,1)]
+        :period==='lastMonth'?[new Date(now.getFullYear(),now.getMonth()-1,1),new Date(now.getFullYear(),now.getMonth(),1)]
+        :period==='custom'?[range.from?new Date(range.from):null,range.to?new Date(new Date(range.to).getTime()+86400000):null]:[null,null];
+    const inPeriod=e=>{const c=new Date(e.created_at);return(!pr[0]||c>=pr[0])&&(!pr[1]||c<pr[1]);};
+
+    const STATUS_DASH=['가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','보류','실주','추가방문'];
     const PAY_DASH=['입금전','계약'];
-    const labels=Object.fromEntries(estimates.map(e=>[e.id,labelOf(e)]));
-    const hasExtra=e=>pendingExtras(e).length>0;
-    const sCount=s=>s==='추가방문'?estimates.filter(hasExtra).length:estimates.filter(e=>labels[e.id]===s).length;
-    const pCount=p=>estimates.filter(e=>(e.payment_status||'입금전')===p).length;
+    const sCount=s=>s==='추가방문'?live.filter(hasExtra).length:live.filter(e=>labels[e.id]===s).length;
+    const pCount=p=>live.filter(e=>(e.payment_status||'입금전')===p).length;
     const STATUS_DASH_STYLE={...Object.fromEntries(STATUS_DASH.map(s=>[s,{color:STATUS_COLOR[s],bg:STATUS_BG[s]}])),'추가방문':{color:EXTRA_TYPES['AS'].color,bg:EXTRA_TYPES['AS'].bg}};
     const DASH_TEXT={...STATUS_TEXT,'추가방문':'추가 방문 예정'};const DASH_ICON={...STATUS_ICON,'추가방문':'🔧'};
     const PAY_STYLE={'입금전':{color:'#b91c1c',bg:'#fee2e2'},'계약':{color:'#854d0e',bg:'#fef9c3'}};
 
-    // 검색: 고객명·연락처·주소·견적번호 (검색 중에는 보류 견적도 표시)
+    // 검색: 고객명·연락처·주소·견적번호 (검색 중에는 보류·실주 견적도 표시)
     const qs=q.trim().toLowerCase();const qd=qs.replace(/[^0-9]/g,'');
     const matchQ=e=>!qs||[e.client_name,e.client_address,e.est_no].some(v=>(v||'').toLowerCase().includes(qs))||(qd.length>=3&&(e.client_phone||'').replace(/[^0-9]/g,'').includes(qd));
-    const filtered=estimates.filter(e=>{
+    const trashMode=statusFilter==='휴지통';
+    const filtered=(trashMode?estimates.filter(e=>info[e.id].deleted):live).filter(e=>{
+        if(trashMode)return matchQ(e);
         if(statusFilter==='추가방문'){if(!hasExtra(e))return false;}
         else if(statusFilter&&labels[e.id]!==statusFilter)return false;
-        if(!statusFilter&&!qs&&labels[e.id]==='보류')return false; // 보류는 기본으로 숨김
+        if(!statusFilter&&!qs&&(labels[e.id]==='보류'||labels[e.id]==='실주'))return false; // 보류·실주는 기본으로 숨김
         if(payFilter&&(e.payment_status||'입금전')!==payFilter)return false;
+        if(!inPeriod(e))return false;
         return matchQ(e);
     });
-    const hiddenHold=!statusFilter&&!qs?sCount('보류'):0;
+    const ORDER=['작성중','가견적발송','방문상담 및 실측','본견적발송','제작중','설치완료','완료','보류','실주'];
+    const sorted=[...filtered].sort((a,b)=>sortKey==='amount'?(Number(b.total_supply)||0)-(Number(a.total_supply)||0)
+        :sortKey==='name'?String(a.client_name||'').localeCompare(String(b.client_name||''),'ko')
+        :sortKey==='status'?ORDER.indexOf(labels[a.id])-ORDER.indexOf(labels[b.id])
+        :new Date(b.created_at)-new Date(a.created_at));
+    const sumSupply=filtered.reduce((s,e)=>s+(Number(e.total_supply)||0),0),sumTotal=filtered.reduce((s,e)=>s+(Number(e.total_amount)||0),0);
+    const hiddenCnt=!statusFilter&&!qs?live.filter(e=>inPeriod(e)&&(labels[e.id]==='보류'||labels[e.id]==='실주')).length:0;
+    // 계약률: 기간 안에 작성된 견적 중 발송한 것 대비 계약(계약금 입금)된 것
+    const periodLive=live.filter(inPeriod);
+    const sent=periodLive.filter(e=>info[e.id].sd['가견적발송']||info[e.id].sd['본견적발송']||(Number(e.deposit_amount)||0)>0);
+    const won=sent.filter(e=>['제작중','설치완료','완료'].includes(info[e.id].stage));
+    const rate=sent.length?Math.round(won.length/sent.length*100):0;
+
+    // ── 📌 오늘 할 일 ──
+    const today=ymd(now);
+    const todo=[];
+    live.forEach(e=>{
+        const i=info[e.id];if(i.lost)return;
+        const nm=e.client_name||'고객';
+        if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측']&&ymd(new Date(i.sd['방문상담 및 실측']))===today)todo.push([e,'🏠 오늘 방문',fmtDT(i.sd['방문상담 및 실측'])]);
+        if(i.sd['설치완료']&&!i.sc['설치완료']&&ymd(new Date(i.sd['설치완료']))===today)todo.push([e,'🎉 오늘 설치',fmtDT(i.sd['설치완료'])]);
+        pendingExtras(e).forEach(v=>{if(ymd(new Date(v.at))===today)todo.push([e,'🔧 오늘 '+v.type,(v.reason||'')]);});
+        if(i.delayed)todo.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
+        if(i.stage==='설치완료')todo.push([e,'💰 잔금 미입금',fmt(Math.max(0,(Number(e.total_amount)||0)-(Number(e.deposit_amount)||0)-(Number(e.mid_amount)||0)))+'원']);
+        if(!i.hold&&(i.stage==='가견적발송'||i.stage==='본견적발송')&&Number(st.holdDays)>0){
+            const left=Math.ceil((lastSentAt(i.sd)+Number(st.holdDays)*86400000-Date.now())/86400000);
+            if(left>=0&&left<=5)todo.push([e,'⏳ 곧 보류',left+'일 남음 · 연락 필요']);
+        }
+    });
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
+    const resetAll=()=>{setStatusFilter(null);setPayFilter(null);setQ('');setPeriod('all');};
 
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
 
+    const sel={border:'1.5px solid var(--border)',borderRadius:8,padding:'8px 10px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",background:'#fff'};
     return(<div>
+        {delDlg&&<div className="modal-overlay" onClick={()=>setDelDlg(null)}>
+            <div className="modal-box sm" onClick={e=>e.stopPropagation()}>
+                <div className="modal-header"><div className="modal-title">🗑 {delDlg.client_name||'고객'} 견적 삭제</div><button className="modal-close" onClick={()=>setDelDlg(null)}>✕</button></div>
+                <div style={{fontSize:13,lineHeight:1.7,marginBottom:12}}>삭제하면 견적 기록이 사라져 계약률 등을 확인할 수 없습니다.<br/><b>고객이 진행하지 않기로 했다면 '실주 처리'를 권장합니다.</b></div>
+                <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:12}}>
+                    <span style={{fontSize:12,fontWeight:700}}>실주 사유</span>
+                    <select style={sel} value={lostReason} onChange={e=>setLostReason(e.target.value)}>{LOST_REASONS.map(r=><option key={r}>{r}</option>)}</select>
+                </div>
+                <div className="modal-btns">
+                    <button className="modal-cancel" onClick={()=>setDelDlg(null)}>취소</button>
+                    {isAdmin&&<button className="modal-cancel" style={{color:'var(--red)'}} onClick={()=>toTrash(delDlg)}>🗑 휴지통으로 이동</button>}
+                    <button className="modal-ok" style={{background:'#b91c1c'}} onClick={()=>markLost(delDlg)}>❌ 실주 처리</button>
+                </div>
+                {!isAdmin&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>견적 삭제(휴지통 이동)는 관리자만 할 수 있습니다.</div>}
+            </div>
+        </div>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📂 견적 목록</h1><p>카드 클릭으로 필터링 · 진행 상태는 견적서에서 자동으로 바뀝니다</p></div>
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
         </div>
 
-        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:16}}>
-            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 고객명 · 연락처 · 주소 · 견적번호 검색 (보류 견적 포함)"
-                style={{flex:1,maxWidth:520,border:'1.5px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",outline:'none',background:'#fff'}}/>
+        {/* 📌 오늘 할 일 */}
+        {todo.length>0&&<div className="card" style={{padding:'12px 16px',marginBottom:14,borderColor:'#fcd34d',background:'#fffbeb'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>setShowToday(o=>!o)}>
+                <b style={{color:'#b45309'}}>📌 오늘 할 일 {todo.length}건</b><span style={{fontSize:11,color:'var(--muted)'}}>{showToday?'▲ 접기':'▼ 펼치기'}</span></div>
+            {showToday&&<div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>
+                {todo.map(([e,kind,detail],i)=><div key={i} style={{display:'flex',gap:10,alignItems:'center',fontSize:13,cursor:'pointer'}} onClick={()=>onEdit(e.id)}>
+                    <span style={{fontWeight:800,minWidth:110}}>{kind}</span><span style={{fontWeight:700,color:'var(--blue)'}}>{e.client_name||'고객'}</span><span style={{color:'var(--muted)',fontSize:12}}>{detail}</span></div>)}
+            </div>}
+        </div>}
+
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 고객명 · 연락처 · 주소 · 견적번호 검색 (보류·실주 포함)"
+                style={{flex:1,minWidth:220,maxWidth:420,border:'1.5px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",outline:'none',background:'#fff'}}/>
             {q&&<button className="btn btn-outline btn-sm" onClick={()=>setQ('')}>✕ 지우기</button>}
+            <select style={sel} value={period} onChange={e=>setPeriod(e.target.value)} title="작성일 기준 기간">
+                <option value="all">전체 기간</option><option value="thisMonth">이번 달</option><option value="lastMonth">지난 달</option><option value="custom">기간 직접 선택</option></select>
+            {period==='custom'&&<><input type="date" style={sel} value={range.from} onChange={e=>setRange(r=>({...r,from:e.target.value}))}/><span>~</span><input type="date" style={sel} value={range.to} onChange={e=>setRange(r=>({...r,to:e.target.value}))}/></>}
+            <select style={sel} value={sortKey} onChange={e=>setSortKey(e.target.value)} title="정렬">
+                <option value="created">작성일 최신순</option><option value="amount">금액 큰 순</option><option value="name">고객명 순</option><option value="status">진행 단계 순</option></select>
         </div>
 
         <div className="dash-section-title">진행상태</div>
         <div className="dash-grid" style={{marginBottom:10}}>
             {STATUS_DASH.map(s=>{
-                const st=STATUS_DASH_STYLE[s]||{};const isActive=statusFilter===s;
+                const sty=STATUS_DASH_STYLE[s]||{};const isActive=statusFilter===s;
                 return(<div key={s} className={`dash-card ${isActive?'active':''}`}
-                    style={{color:st.color,background:isActive?st.bg:'#fff',borderColor:isActive?st.color:'var(--border)'}}
+                    style={{color:sty.color,background:isActive?sty.bg:'#fff',borderColor:isActive?sty.color:'var(--border)'}}
                     onClick={()=>toggleSF(s)}>
                     <div className="dash-card-type">진행상태</div>
                     <div className="dash-card-num">{sCount(s)}</div>
                     <div className="dash-card-label">{DASH_ICON[s]} {DASH_TEXT[s]||s}</div>
                 </div>);
             })}
+            {isAdmin&&<div className={`dash-card ${trashMode?'active':''}`} style={{color:'#6b7280',background:trashMode?'#f3f4f6':'#fff',borderColor:trashMode?'#6b7280':'var(--border)'}} onClick={()=>toggleSF('휴지통')}>
+                <div className="dash-card-type">관리자</div><div className="dash-card-num">{estimates.length-live.length}</div><div className="dash-card-label">🗑 휴지통</div></div>}
         </div>
 
-        <div className="dash-section-title" style={{marginTop:4}}>결제상태</div>
+        <div className="dash-section-title" style={{marginTop:4}}>결제상태 · 계약률</div>
         <div className="dash-grid" style={{gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',marginBottom:18}}>
             {PAY_DASH.map(p=>{
-                const st=PAY_STYLE[p]||{};const isActive=payFilter===p;
+                const sty=PAY_STYLE[p]||{};const isActive=payFilter===p;
                 return(<div key={p} className={`dash-card ${isActive?'active':''}`}
-                    style={{color:st.color,background:isActive?st.bg:'#fff',borderColor:isActive?st.color:'var(--border)'}}
+                    style={{color:sty.color,background:isActive?sty.bg:'#fff',borderColor:isActive?sty.color:'var(--border)'}}
                     onClick={()=>togglePF(p)}>
                     <div className="dash-card-type">결제상태</div>
                     <div className="dash-card-num">{pCount(p)}</div>
                     <div className="dash-card-label">{p==='입금전'?'⏳':'📝'} {p}</div>
                 </div>);
             })}
+            <div className="dash-card" style={{color:'#15803d',cursor:'default'}} title="선택한 기간에 작성된 견적 중 발송한 견적 대비 계약(계약금 입금)된 견적 비율">
+                <div className="dash-card-type">계약률 ({period==='all'?'전체 기간':period==='thisMonth'?'이번 달':period==='lastMonth'?'지난 달':'선택 기간'})</div>
+                <div className="dash-card-num">{rate}%</div>
+                <div className="dash-card-label">계약 {won.length} / 발송 {sent.length}</div>
+            </div>
         </div>
 
-        {(statusFilter||payFilter)&&(
+        {(statusFilter||payFilter||period!=='all')&&(
             <div className="filter-active-bar">
                 <span>🔍 필터:</span>
-                {statusFilter&&<span style={{color:STATUS_DASH_STYLE[statusFilter]?.color||'var(--navy)',fontWeight:800}}>{DASH_ICON[statusFilter]} {DASH_TEXT[statusFilter]||statusFilter}</span>}
-                {statusFilter&&payFilter&&<span>+</span>}
+                {statusFilter&&<span style={{color:STATUS_DASH_STYLE[statusFilter]?.color||'var(--navy)',fontWeight:800}}>{trashMode?'🗑 휴지통':(DASH_ICON[statusFilter]+' '+(DASH_TEXT[statusFilter]||statusFilter))}</span>}
                 {payFilter&&<span style={{color:PAY_STYLE[payFilter]?.color,fontWeight:800}}>{payFilter}</span>}
+                {period!=='all'&&<span style={{fontWeight:800}}>{period==='thisMonth'?'이번 달':period==='lastMonth'?'지난 달':(range.from||'…')+' ~ '+(range.to||'…')}</span>}
                 <span style={{marginLeft:'auto',color:'var(--muted)',fontSize:11}}>{filtered.length}건</span>
-                <button onClick={()=>{setStatusFilter(null);setPayFilter(null);}}>✕</button>
+                <button onClick={()=>{setStatusFilter(null);setPayFilter(null);setPeriod('all');}}>✕</button>
             </div>
         )}
 
-        {hiddenHold>0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>⏸ 보류 견적 {hiddenHold}건은 숨겨져 있습니다 — 위의 '보류' 카드를 누르거나 검색하면 볼 수 있습니다.</div>}
+        {hiddenCnt>0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>⏸ 보류·❌ 실주 견적 {hiddenCnt}건은 숨겨져 있습니다 — 위의 '보류'·'실주' 카드를 누르거나 검색하면 볼 수 있습니다.</div>}
+        {trashMode&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>🗑 휴지통의 견적은 30일이 지나면 영구 삭제됩니다. 복구하면 원래대로 목록에 나옵니다.</div>}
         {estimates.length===0
             ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.</div></div>
             :filtered.length===0
-            ?<div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">해당 조건의 견적서가 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={()=>{setStatusFilter(null);setPayFilter(null);setQ('');}}>필터 초기화</button></div></div>
+            ?<div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">해당 조건의 견적서가 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={resetAll}>필터 초기화</button></div></div>
             :<div className="est-list-wrap" style={{overflowX:'auto'}}><table style={{minWidth:600}}>
                 <thead><tr>
                     <th style={{textAlign:'left'}}>견적번호</th>
@@ -4054,26 +4606,38 @@ function EstimateList({sb,onEdit,onNew,onChecklist}){
                     <th className="tc" style={{width:110}}>관리</th>
                 </tr></thead>
                 <tbody>
-                    {filtered.map(est=>{
+                    {sorted.map(est=>{
                         const ps=est.payment_status||'입금전';
-                        const pst=PAY_STYLE[ps]||{};
-                        return(<tr key={est.id}>
+                        const pst=PAY_STYLE[ps]||{};const i=info[est.id];
+                        return(<tr key={est.id} style={trashMode?{opacity:.75}:undefined}>
                             <td><div className="est-no">{est.est_no||est.id?.substr(0,8).toUpperCase()}</div></td>
                             <td><div className="est-client" title="견적서 수정" style={{cursor:'pointer',color:'var(--blue)',textDecoration:'underline',textUnderlineOffset:3}} onClick={()=>onEdit(est.id)}>{est.client_name||'-'}</div></td>
                             <td style={{fontSize:12}}>{est.client_phone?<a href={'tel:'+est.client_phone.replace(/[^0-9+]/g,'')} title="전화 걸기" style={{color:'var(--blue)',textDecoration:'none',fontWeight:600,whiteSpace:'nowrap'}}>📞 {est.client_phone}</a>:<span style={{color:'var(--muted)'}}>-</span>}</td>
                             <td className="tr"><div className="est-amount">{fmt(est.total_supply||0)}</div></td>
                             <td><StatusBadge status={labels[est.id]}/>
+                                {i.delayed&&<span className="status-badge" style={{marginLeft:4,background:'#fef3c7',color:'#b45309'}}>⚠ 본견적 지연</span>}
+                                {i.lost&&i.meta.lost.reason&&<span style={{marginLeft:4,fontSize:11,color:'#b91c1c'}}>({i.meta.lost.reason})</span>}
                                 {pendingExtras(est).map(v=>{const tp=EXTRA_TYPES[v.type]||EXTRA_TYPES['기타'];return<span key={v.id} className="status-badge" title={v.reason||''} style={{marginLeft:4,background:tp.bg,color:tp.color}}>{tp.icon} {v.type} {fmtDT(v.at).split(' ').slice(0,2).join(' ')}</span>;})}</td>
                             <td><span style={{fontSize:11,fontWeight:700,color:pst.color,background:pst.bg,padding:'2px 8px',borderRadius:10,whiteSpace:'nowrap'}}>{ps==='입금전'?'⏳':ps==='계약'?'📝':'✅'} {ps}</span></td>
                             <td style={{fontSize:12,color:'var(--muted)'}}>{est.created_at?new Date(est.created_at).toLocaleDateString('ko-KR'):'-'}</td>
-                            <td className="tc">
-                                {onChecklist&&<button className="btn-icon" title="시공 체크리스트" onClick={()=>onChecklist(est.id)}>✅</button>}
-                                <button className="btn-icon" onClick={()=>onEdit(est.id)}>✏️</button>
-                                <button className="btn-icon" onClick={()=>del(est.id)}>🗑</button>
+                            <td className="tc" style={{whiteSpace:'nowrap'}}>
+                                {trashMode?<>
+                                    <button className="btn btn-outline btn-xs" onClick={()=>restore(est)}>↩ 복구</button>
+                                    <button className="btn-icon" title="영구 삭제" onClick={()=>purge(est)}>🗑</button>
+                                </>:<>
+                                    {onChecklist&&<button className="btn-icon" title="시공 체크리스트" onClick={()=>onChecklist(est.id)}>✅</button>}
+                                    <button className="btn-icon" onClick={()=>onEdit(est.id)}>✏️</button>
+                                    <button className="btn-icon" title="삭제 / 실주 처리" onClick={()=>{setLostReason(LOST_REASONS[0]);setDelDlg(est);}}>🗑</button>
+                                </>}
                             </td>
                         </tr>);
                     })}
                 </tbody>
+                <tfoot><tr style={{background:'#f8faff',borderTop:'2px solid var(--border)'}}>
+                    <td colSpan={3} style={{fontSize:12,fontWeight:700,color:'var(--muted)'}}>합계 ({filtered.length}건)</td>
+                    <td className="tr" style={{fontWeight:900,color:'var(--navy)'}}>{fmt(sumSupply)}</td>
+                    <td colSpan={4} style={{fontSize:12,color:'var(--muted)'}}>VAT 포함 <b style={{color:'var(--navy)'}}>{fmt(sumTotal)}</b>원</td>
+                </tr></tfoot>
             </table></div>}
     </div>);
 }
@@ -4083,6 +4647,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist}){
    ★ 일정표
 ═══════════════════════════════════════ */
 // 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
+const PROD_STYLE={color:'#7c2d12',bg:'#fed7aa'}; // 제작·공사 일정 색 (기간 작업은 매일 같은 색)
 const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'설치',color:'#15803d',bg:'#dcfce7'}};
 
 function Schedule({sb,view,onSetView,onEditEst}){
@@ -4114,7 +4679,17 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const getEvents=()=>{
         const evts=[];
         estimates.forEach(est=>{
-            const{sd,sc}=estStageInfo(est,0);
+            const{sd,sc,lost,deleted,stage}=estStageInfo(est,0);
+            if(lost||deleted)return; // 실주·휴지통 견적은 일정에서 제외
+            // 제작·공사: 하루 작업은 그날 하나, 며칠 걸리는 공사는 시작~완료 매일 같은 색으로 표시 (설치까지 끝난 견적은 제외)
+            if(sd['제작시작']&&!sc['설치완료']&&stage!=='완료'){
+                const s0=new Date(String(sd['제작시작']).slice(0,10)+'T00:00'),days=prodDays(sd)||1;
+                for(let k=0;k<days;k++){
+                    const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,8,0);
+                    evts.push({date:d,label:days>1?`🔨 공사 ${k+1}/${days}일`:'🔨 제작',color:PROD_STYLE.color,bg:PROD_STYLE.bg,span:days>1?(k===0?'start':k===days-1?'end':'mid'):null,
+                        clientName:est.client_name||'고객',time:days>1?(k===0?'시작':k===days-1?'완료':''):'당일',est});
+                }
+            }
             // 예정일이 입력되면 바로 표시 · 방문함/설치함 체크된(끝난) 일정은 표시하지 않음
             Object.keys(SCHED_MAP).forEach(key=>{
                 if(!sd[key]||sc[key])return;
@@ -4133,7 +4708,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const events=getEvents();
     const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
 
-    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color}} onClick={()=>{setPopExtra(ev.extra||null);setPopup(ev.est);}}>
+    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color,...(ev.span?{borderLeft:ev.span==="start"?"4px solid "+ev.color:"none",borderRight:ev.span==="end"?"4px solid "+ev.color:"none",fontWeight:700}:{})}} onClick={()=>{setPopExtra(ev.extra||null);setPopup(ev.est);}}>
         <span className="cal-event-time">{ev.time}</span>
         <span className="cal-event-label">{ev.label}</span>
         <span className="cal-event-client">{ev.clientName}</span>
@@ -4242,8 +4817,9 @@ function Schedule({sb,view,onSetView,onEditEst}){
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}
+            <span className="cal-legend-item" style={{background:PROD_STYLE.bg,color:PROD_STYLE.color}}>🔨 제작·공사</span>
             {Object.entries(EXTRA_TYPES).map(([t,tp])=>(<span key={t} className="cal-legend-item" style={{background:tp.bg,color:tp.color}}>{tp.icon} {t}</span>))}
-            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치·추가 방문 예정만 표시 · 방문함/설치함 체크된 일정은 숨김</span>
+            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·제작·공사·설치·추가 방문 예정 표시 (공사는 기간 동안 같은 색) · 방문함/설치함 체크된 일정은 숨김</span>
         </div>
 
         <div className="cal-header" style={{marginBottom:14}}>
@@ -4297,6 +4873,16 @@ function SettingsPage({sb}){
         <div className="card"><div className="card-title">진행 상태</div>
             <div className="field" style={{maxWidth:260}}><label>자동 보류 기간 (일)</label><input type="number" min="0" value={st.holdDays} onChange={e=>upd('holdDays',e.target.value)}/></div>
             <div style={{fontSize:12,color:'var(--muted)'}}>가견적·본견적을 발송한 뒤 이 기간 동안 방문 예정·재발송·계약금 입력이 없으면 견적이 자동으로 ⏸ 보류됩니다. 0이면 자동 보류를 쓰지 않습니다.</div>
+            <div className="field" style={{maxWidth:260,marginTop:12}}><label>본견적 지연 기준 (일)</label><input type="number" min="0" value={st.delayDays} onChange={e=>upd('delayDays',e.target.value)}/></div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>방문함을 체크한 뒤 이 기간이 지나도 본견적을 보내지 않으면 '⚠ 본견적 지연'으로 표시하고 견적 목록의 '오늘 할 일'에 보여줍니다. 0이면 쓰지 않습니다.</div>
+        </div>
+        <div className="card"><div className="card-title">💳 견적서 결제 조건 (기본값)</div>
+            <div className="field"><label>입금계좌</label><input value={st.bankAccount||''} placeholder="예) 농협 000-0000-0000-00 (예금주)" onChange={e=>upd('bankAccount',e.target.value)}/></div>
+            <div className="field" style={{maxWidth:200}}><label>계약금 비율 (%)</label><input type="number" min="0" max="100" value={st.depositRate} onChange={e=>upd('depositRate',e.target.value)}/></div>
+            <div className="field"><label>A/S 조건</label><textarea rows={3} style={ta} value={st.asTerms||''} placeholder="예) 설치 후 1년 무상 A/S (소모품·고객 과실 제외)" onChange={e=>upd('asTerms',e.target.value)}/></div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>새 견적을 만들 때 이 값이 들어가고, 견적서마다 따로 고칠 수 있습니다. 인쇄물의 '결제 조건'에 표시됩니다.</div>
+            <div className="field" style={{maxWidth:260,marginTop:12}}><label>마진율 경고 기준 (%)</label><input type="number" min="0" max="100" value={st.marginWarn} onChange={e=>upd('marginWarn',e.target.value)}/></div>
+            <div style={{fontSize:12,color:'var(--muted)'}}>견적 수정 화면의 💹 원가 분석에서 마진율이 이 값보다 낮으면 빨간색으로 표시합니다 (직원용, 인쇄 제외).</div>
         </div>
         <div className="card"><div className="card-title">📍 방문 예약 추천</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'0 14px'}}>
@@ -4309,6 +4895,58 @@ function SettingsPage({sb}){
         <div className="card"><div className="card-title">견적서 공통내용 (하단 안내사항)</div>
             <textarea rows={10} style={ta} value={st.notes} onChange={e=>upd('notes',e.target.value)} placeholder={'예)\n· 입금 계좌: OO은행 000-0000-0000 (예금주)\n· 계약금 입금 후 제작이 시작됩니다.\n· 현장 상황에 따라 금액이 변동될 수 있습니다.'}/>
             <div style={{fontSize:12,color:'var(--muted)',marginTop:6}}>모든 견적서 인쇄물의 맨 아래에 그대로 표시됩니다. 비워두면 표시하지 않습니다.</div>
+        </div>
+        <StorageCleanup sb={sb}/>
+    </div>);
+}
+
+// ★ 안 쓰는 파일 정리 (관리자): 저장소의 사진·파일 중 어떤 견적·자재·상품·공구·포트폴리오·공급사·외주에도 연결되지 않은 것을 찾아 삭제
+//   (사진을 올린 뒤 저장하지 않고 브라우저를 닫은 경우 등에 남는 파일)
+function StorageCleanup({sb}){
+    const[isAdmin,setIsAdmin]=useState(false);
+    const[scan,setScan]=useState(null); // {orphans:[{path,size}], total}
+    const[busy,setBusy]=useState(false);
+    useEffect(()=>{if(sb)sb.auth.getUser().then(({data})=>setIsAdmin((data&&data.user&&data.user.email)===ADMIN_EMAIL));},[sb]);
+    if(!isAdmin)return null;
+    const FOLDERS=['uploads','files','materials','products','tools','portfolio','site-photos','site-files','est-items','supplier-cards','outsourcing','out-quotes','quotes'];
+    const doScan=async()=>{
+        setBusy(true);setScan(null);
+        try{
+            const files=[];
+            for(const f of FOLDERS){
+                for(let off=0;;off+=1000){
+                    const{data,error}=await sb.storage.from(BUCKET).list(f,{limit:1000,offset:off});
+                    if(error||!data||!data.length)break;
+                    data.filter(x=>x.id).forEach(x=>files.push({path:f+'/'+x.name,size:(x.metadata&&x.metadata.size)||0,at:x.created_at}));
+                    if(data.length<1000)break;
+                }
+            }
+            // 모든 표의 내용을 한 문자열로 모아, 파일 경로가 어디에도 없으면 '안 쓰는 파일'
+            let refs='';
+            for(const t of ['estimates','est_items','materials','products','tools','portfolios','suppliers','outsourcing_items']){
+                const{data}=await sb.from(t).select('*');refs+=JSON.stringify(data||[]);
+            }
+            const dayAgo=Date.now()-86400000; // 지금 누군가 작성 중일 수 있으니 하루 안에 올린 파일은 제외
+            const orphans=files.filter(x=>!refs.includes(x.path)&&!refs.includes(encodeURI(x.path))&&(!x.at||new Date(x.at).getTime()<dayAgo));
+            setScan({orphans,total:files.length});
+        }catch(e){alert('검사 실패: '+e.message);}
+        finally{setBusy(false);}
+    };
+    const doDelete=async()=>{
+        if(!scan||!scan.orphans.length)return;
+        if(!confirm('안 쓰는 파일 '+scan.orphans.length+'개를 저장소에서 삭제합니다.\n삭제한 파일은 되돌릴 수 없습니다. 진행할까요?'))return;
+        setBusy(true);
+        const paths=scan.orphans.map(x=>x.path);
+        for(let i=0;i<paths.length;i+=100){const{error}=await sb.storage.from(BUCKET).remove(paths.slice(i,i+100));if(error){alert('삭제 실패: '+error.message);break;}}
+        setBusy(false);toast('🗑 안 쓰는 파일 '+paths.length+'개 삭제');setScan(null);
+    };
+    const mb=b=>(b/1048576).toFixed(1)+'MB';
+    return(<div className="card"><div className="card-title">🧹 안 쓰는 파일 정리 (관리자)</div>
+        <div style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>사진·파일을 올린 뒤 저장하지 않고 브라우저를 닫으면 저장소에 파일만 남습니다. 어디에도 연결되지 않은 파일을 찾아 정리합니다 (최근 하루 안에 올린 파일은 제외).</div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <button className="btn btn-outline btn-sm" disabled={busy} onClick={doScan}>{busy&&!scan?'검사 중...':'🔍 안 쓰는 파일 찾기'}</button>
+            {scan&&<span style={{fontSize:13}}>전체 {scan.total}개 중 <b>{scan.orphans.length}개</b> ({mb(scan.orphans.reduce((s,x)=>s+x.size,0))})</span>}
+            {scan&&scan.orphans.length>0&&<button className="btn btn-sm" style={{background:'#b91c1c',color:'#fff'}} disabled={busy} onClick={doDelete}>🗑 삭제</button>}
         </div>
     </div>);
 }
@@ -4474,6 +5112,7 @@ function App(){
     const[user,setUser]=useState(null);
     const[authLoading,setAuthLoading]=useState(true);
     const[isApproved,setIsApproved]=useState(false);
+    const[qParam]=useState(()=>{try{return new URLSearchParams(window.location.search).get('q');}catch(e){return null;}}); // 고객용 웹 견적서
     const[pfParam]=useState(()=>{try{return new URLSearchParams(window.location.search).get('pf');}catch(e){return null;}});
     const[initRoute]=useState(()=>{try{return parseHash(window.location.hash,false);}catch(e){return null;}});
     const[openMatId,setOpenMatId]=useState(()=>{
@@ -4553,9 +5192,11 @@ function App(){
 
     // 화면이 바뀌면 브라우저 기록에 추가 (같은 주소면 추가하지 않음)
     const firstRoute=useRef(true);
+    const curHash=useRef(''); // 뒤로가기를 취소했을 때 되돌릴 주소
     useEffect(()=>{
         if(!user||!isApproved)return;
         const h=buildHash(page,editEstId,activeCatId);
+        curHash.current=h;
         if(window.location.hash===h){firstRoute.current=false;return;}
         if(firstRoute.current){window.history.replaceState(null,'',h);firstRoute.current=false;}
         else window.history.pushState(null,'',h);
@@ -4565,6 +5206,8 @@ function App(){
         const onPop=()=>{
             const r=parseHash(window.location.hash,user&&user.email===ADMIN_EMAIL);
             if(!r)return;
+            // 견적서에 저장하지 않은 내용이 있으면 확인 (휴대폰 뒤로가기 포함), 취소하면 주소를 되돌림
+            if(!okLeave()){window.history.pushState(null,'',curHash.current);return;}
             setPage(r.page);
             if(r.estId)setEditEstId(r.estId);
             if(r.listKey)setActiveCatId({mat:null,prod:null,tool:null,[r.listKey]:r.catId});
@@ -4575,6 +5218,12 @@ function App(){
     },[user]);
 
     const navigate=(p,id)=>{if(id)setEditEstId(id);setPage(p);setSbOpen(false);};
+    // 견적서에 저장하지 않은 변경이 있으면 이동 전에 확인 (사이드바·뒤로가기·로그아웃)
+    function okLeave(){
+        if(!window.__estDirty)return true;
+        if(!window.confirm('저장하지 않은 변경 내용은 사라집니다.\n이동하시겠습니까?'))return false;
+        window.__estDirty=false;return true;
+    }
 
     const addMatCat=async name=>{
         const{data}=await sb.from('material_categories').insert([{name,display_order:matCats.length}]).select();
@@ -4638,7 +5287,7 @@ function App(){
         if(error){alert('수정 실패: '+error.message);return;}
         setToolCats(p=>p.map(c=>c.id===id?{...c,name}:c));setEditToolCat(null);toast('✅ 공구/부자재 분류명 수정됨');
     };
-    const handleLogout=async()=>{if(sb)await sb.auth.signOut();setUser(null);};
+    const handleLogout=async()=>{if(!okLeave())return;if(sb)await sb.auth.signOut();setUser(null);};
 
     const renderPage=()=>{
         switch(page){
@@ -4650,17 +5299,18 @@ function App(){
             case 'prod-list':return<ProductList sb={sb} matCats={matCats} prodCats={prodCats} toolCats={toolCats} onAddProdCat={()=>setAddProdModal(true)} initialCatId={activeCatId.prod}/>;
             case 'portfolio':return<Portfolio sb={sb} prodCats={prodCats}/>;
             case 'est-new':return<EstimateForm key="new" sb={sb} prodCats={prodCats} mode="new" onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
-            case 'est-list':return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
+            case 'est-list':return<EstimateList isAdmin={user?.email===ADMIN_EMAIL} sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
             case 'est-edit':return<EstimateForm key={editEstId} sb={sb} prodCats={prodCats} mode="edit" estimateId={editEstId} onNavigate={navigate} onTotalChange={setGrandWithVat} userProfile={userProfile}/>;
             case 'est-checklist':return<ChecklistPage key={editEstId} sb={sb} estimateId={editEstId} onNavigate={navigate}/>;
             case 'sched-biweek':
             case 'sched-month':return<Schedule sb={sb} view={page==='sched-month'?'month':'biweek'} onSetView={v=>navigate(v==='month'?'sched-month':'sched-biweek')} onEditEst={id=>navigate('est-edit',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
             case 'settings':return<SettingsPage sb={sb}/>;
-            default:return<EstimateList sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
+            default:return<EstimateList isAdmin={user?.email===ADMIN_EMAIL} sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
         }
     };
 
+    if(qParam)return sb?<PublicEstimatePage sb={sb} token={qParam}/>:<div className="loading-wrap"><div className="loading-spinner"/></div>;
     if(pfParam)return sb?<PublicPortfolioPage sb={sb} ids={pfParam.split(',').filter(Boolean)}/>:<div className="loading-wrap"><div className="loading-spinner"/></div>;
     if(authLoading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     if(!config)return<SetupScreen onDone={c=>{localStorage.setItem('supabase_config',JSON.stringify(c));setConfig(c);}}/>;
@@ -4683,7 +5333,7 @@ function App(){
         {editOutCat&&<AddNameModal title="외주 분류명 수정" placeholder="분류명 입력" initial={editOutCat.name} onClose={()=>setEditOutCat(null)} onSave={n=>renameOutCat(editOutCat.id,n)}/>}
         {addToolModal&&<AddNameModal title="공구/부자재 분류 추가" placeholder="분류명 입력 (예: 공구, 부자재)" onClose={()=>setAddToolModal(false)} onSave={addToolCat}/>}
         {addProdModal&&<AddNameModal title="상품 카테고리 추가" placeholder="카테고리명 입력" onClose={()=>setAddProdModal(false)} onSave={addProdCat}/>}
-        <Sidebar user={user} page={page} setPage={p=>{setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={c=>{setEditMatCat(c);setSbOpen(false);}} onEditToolCat={c=>{setEditToolCat(c);setSbOpen(false);}} onEditProdCat={c=>{setEditProdCat(c);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} toolCats={toolCats} onAddToolCat={()=>{setAddToolModal(true);setSbOpen(false);}} onDelToolCat={delToolCat} outCats={outCats} onAddOutCat={()=>{setAddOutModal(true);setSbOpen(false);}} onDelOutCat={delOutCat} onEditOutCat={c=>{setEditOutCat(c);setSbOpen(false);}} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
+        <Sidebar user={user} page={page} setPage={p=>{if(!okLeave())return;setPage(p);setSbOpen(false);}} matCats={matCats} prodCats={prodCats} onAddMatCat={()=>{setAddMatModal(true);setSbOpen(false);}} onDelMatCat={delMatCat} onEditMatCat={c=>{setEditMatCat(c);setSbOpen(false);}} onEditToolCat={c=>{setEditToolCat(c);setSbOpen(false);}} onEditProdCat={c=>{setEditProdCat(c);setSbOpen(false);}} onAddProdCat={()=>{setAddProdModal(true);setSbOpen(false);}} onDelProdCat={delProdCat} toolCats={toolCats} onAddToolCat={()=>{setAddToolModal(true);setSbOpen(false);}} onDelToolCat={delToolCat} outCats={outCats} onAddOutCat={()=>{setAddOutModal(true);setSbOpen(false);}} onDelOutCat={delOutCat} onEditOutCat={c=>{setEditOutCat(c);setSbOpen(false);}} activeCatId={activeCatId} setActiveCatId={setActiveCatId} grandWithVat={grandWithVat} onLogout={handleLogout} sbOpen={sbOpen} onClose={()=>setSbOpen(false)}/>
         <main className="main">{renderPage()}</main>
     </div>);
 }

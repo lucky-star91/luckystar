@@ -291,6 +291,11 @@ td{padding:9px 14px;vertical-align:middle;}
 .month-cell.today .month-date{background:var(--blue);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;}
 /* 일정 이벤트 */
 .cal-event{padding:3px 6px;border-radius:5px;margin-bottom:3px;cursor:pointer;font-size:10px;line-height:1.4;transition:opacity .15s;}
+/* 달력 칸: 한 줄 요약 · 날짜 선택 */
+.cal-mini{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:600;}
+.cal-more{font-size:10px;color:var(--muted);font-weight:700;padding:0 4px;}
+.biweek-cell,.month-cell{cursor:pointer;}
+.cal-sel{outline:2px solid var(--blue);outline-offset:-2px;background:#f0f6ff!important;}
 .cal-event:hover{opacity:.8;}
 .cal-event-time{font-weight:700;display:block;}
 .cal-event-label{font-weight:600;display:block;}
@@ -4710,7 +4715,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
 ═══════════════════════════════════════ */
 // 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
 const PROD_STYLE={color:'#7c2d12',bg:'#fed7aa'}; // 제작·공사 일정 색 (기간 작업은 매일 같은 색)
-const SCHED_MAP={'방문상담 및 실측':{label:'방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'설치',color:'#15803d',bg:'#dcfce7'}};
+const SCHED_MAP={'방문상담 및 실측':{label:'🏠 방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'🎉 설치',color:'#15803d',bg:'#dcfce7'}};
 
 function Schedule({sb,view,onSetView,onEditEst}){
     const[base,setBase]=useState(new Date());
@@ -4719,6 +4724,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const[popup,setPopup]=useState(null);
     const[popItems,setPopItems]=useState(null); // 팝업 견적의 상품 목록 (null = 불러오는 중)
     const[popExtra,setPopExtra]=useState(null); // 추가 방문 일정을 눌렀을 때 그 방문 정보
+    const[selDay,setSelDay]=useState(()=>new Date()); // 달력에서 고른 날 → 달력 아래에 그날 일정 목록
 
     // 팝업을 열면 해당 견적의 상품 목록을 불러옴
     useEffect(()=>{
@@ -4770,11 +4776,39 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const events=getEvents();
     const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
 
-    const EventChip=({ev})=>(<div className="cal-event" style={{background:ev.bg,color:ev.color,...(ev.span?{borderLeft:ev.span==="start"?"4px solid "+ev.color:"none",borderRight:ev.span==="end"?"4px solid "+ev.color:"none",fontWeight:700}:{})}} onClick={()=>{setPopExtra(ev.extra||null);setPopup(ev.est);}}>
-        <span className="cal-event-time">{ev.time}</span>
-        <span className="cal-event-label">{ev.label}</span>
-        <span className="cal-event-client">{ev.clientName}</span>
+    // 달력 칸에는 최소 정보만: 아이콘 + 고객명 한 줄 (자세한 내용은 날짜를 누르면 달력 아래 목록에)
+    const MAX_CHIPS=3;
+    const EventChip=({ev})=>(<div className="cal-event cal-mini" title={ev.label+' · '+ev.clientName+(ev.time?' · '+ev.time:'')}
+        style={{background:ev.bg,color:ev.color,...(ev.span?{borderLeft:ev.span==="start"?"4px solid "+ev.color:"none",borderRight:ev.span==="end"?"4px solid "+ev.color:"none",fontWeight:700}:{})}}>
+        {String(ev.label).split(' ')[0]} {ev.clientName}
     </div>);
+    const CellEvents=({evts})=>(<>{evts.slice(0,MAX_CHIPS).map((ev,j)=><EventChip key={j} ev={ev}/>)}
+        {evts.length>MAX_CHIPS&&<div className="cal-more">외 {evts.length-MAX_CHIPS}건</div>}</>);
+    const isSel=day=>day.toDateString()===selDay.toDateString();
+    // 고른 날의 일정 목록 (달력 아래) — 시간·종류·고객·주소·연락처·사유와 바로가기 버튼
+    const DayList=()=>{
+        const evts=forDay(selDay);
+        return(<div className="card" style={{marginTop:14}}>
+            <div className="card-title">📋 {selDay.getMonth()+1}월 {selDay.getDate()}일({WEEK[selDay.getDay()]}) 일정 {evts.length}건</div>
+            {evts.length===0?<div style={{fontSize:13,color:'var(--muted)'}}>이날 일정이 없습니다. 달력에서 다른 날짜를 눌러 보세요.</div>
+            :<div style={{display:'flex',flexDirection:'column'}}>{evts.map((ev,i)=>{const e=ev.est;const tel=(e.client_phone||'').replace(/[^0-9+]/g,'');return(
+                <div key={i} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
+                    <span style={{fontWeight:800,minWidth:64,fontSize:13}}>{ev.time||''}</span>
+                    <span className="status-badge" style={{background:ev.bg,color:ev.color}}>{ev.label}</span>
+                    <div style={{flex:1,minWidth:200}}>
+                        <div style={{fontWeight:800,color:'var(--navy)'}}>{ev.clientName}{e.est_no&&<span style={{fontWeight:400,fontSize:11,color:'var(--muted)',marginLeft:6}}>{e.est_no}</span>}</div>
+                        <div style={{fontSize:12,color:'var(--text)'}}>{e.client_address||'주소 없음'}{ev.extra&&ev.extra.reason?' · 사유: '+ev.extra.reason:''}</div>
+                    </div>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {tel&&<a className="btn btn-outline btn-xs" href={'tel:'+tel} style={{textDecoration:'none'}}>📞 전화</a>}
+                        {e.client_address&&<button className="nav-btn" onClick={()=>openTmap(e.client_address)}>🗺T맵</button>}
+                        {e.client_address&&<button className="nav-btn" style={{background:'var(--green)'}} onClick={()=>window.open('https://map.kakao.com/?q='+encodeURIComponent(e.client_address),'_blank')}>🗺카카오</button>}
+                        <button className="btn btn-outline btn-xs" onClick={()=>{setPopExtra(ev.extra||null);setPopup(e);}}>📋 상세</button>
+                        <button className="btn btn-primary btn-xs" onClick={()=>onEditEst(e.id)}>✏️ 견적서</button>
+                    </div>
+                </div>);})}</div>}
+        </div>);
+    };
 
     const DAY_NAMES=['월','화','수','목','금','토','일'];
 
@@ -4787,9 +4821,9 @@ function Schedule({sb,view,onSetView,onEditEst}){
             </div>
             <div className="biweek-grid">
                 {days.map((day,i)=>{const isToday=day.toDateString()===new Date().toDateString();const evts=forDay(day);return(
-                    <div key={i} className={`biweek-cell ${isToday?'today':''} ${i%7>=5?'weekend':''}`}>
+                    <div key={i} className={`biweek-cell ${isToday?'today':''} ${i%7>=5?'weekend':''} ${isSel(day)?'cal-sel':''}`} onClick={()=>setSelDay(day)}>
                         <div className="biweek-date">{day.getDate()}</div>
-                        {evts.map((ev,j)=><EventChip key={j} ev={ev}/>)}
+                        <CellEvents evts={evts}/>
                     </div>);})}
             </div>
         </div>);
@@ -4804,9 +4838,9 @@ function Schedule({sb,view,onSetView,onEditEst}){
             <div className="month-grid">
                 {DAY_NAMES.map((d,i)=><div key={i} className={`month-hd ${i>=5?'weekend':''}`}>{d}</div>)}
                 {days.map((day,i)=>{const isToday=day.toDateString()===new Date().toDateString();const other=day.getMonth()!==m;const evts=forDay(day);return(
-                    <div key={i} className={`month-cell ${isToday?'today':''} ${other?'other-month':''} ${i%7>=5?'weekend':''}`}>
+                    <div key={i} className={`month-cell ${isToday?'today':''} ${other?'other-month':''} ${i%7>=5?'weekend':''} ${isSel(day)?'cal-sel':''}`} onClick={()=>setSelDay(day)}>
                         <div className="month-date">{day.getDate()}</div>
-                        {evts.map((ev,j)=><EventChip key={j} ev={ev}/>)}
+                        <CellEvents evts={evts}/>
                     </div>);})}
             </div>
         </div>);
@@ -4896,6 +4930,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
             </div>
         </div>
         {view==='biweek'?renderBiweek():renderMonth()}
+        <DayList/>
     </div>);
 }
 

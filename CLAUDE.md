@@ -15,7 +15,7 @@
 - 환경설정(상호·견적서 공통내용): `app_settings` 테이블, key='estimate' 행에 JSON 저장 (`loadSettings`, `SQL_SETTINGS`)
 - 진행 단계는 저장값이 아니라 `getStage`로 판정 (status_dates·status_checked·deposit_amount·balance_paid). 보류는 `isOnHold`로 계산(환경설정 holdDays). 옛 '견적예정' 키는 `normStatusObj`로 '본견적발송'으로 읽음
 - 방문 예약 추천(`VisitPlanner`): 카카오 지도 JS SDK로 주소→좌표(`geocode`, localStorage 캐시), 직선거리로 같은 날 동선 묶기. 카카오 JS 키는 도메인 제한 공개 키(등록 도메인: localhost:8080, project-hv4qh.vercel.app)
-- estimates.meta (JSON): lost(실주) · pay(입금 내역) · costs(설치·운반·철거비) · terms(결제 조건) · site(현장정보) · stock(재고 차감 상태) · shareToken(고객용 링크) · geo(좌표) · deletedAt(휴지통). estimates.send_history: 발송 이력. 일부 항목만 바로 저장할 때는 `persistMetaKey`
+- estimates.meta (JSON): lost(실주) · pay(입금 내역) · costs(설치·운반·철거비) · terms(결제 조건) · site(현장정보) · stock(재고 차감 상태) · shareToken(고객용 링크) · geo(좌표) · deletedAt(휴지통). estimates.send_history: 견적 이력. 일부 항목만 바로 저장할 때는 `persistMetaKey`
 - 재고 증감은 반드시 `adjustStock` (DB 함수 adjust_stock → stock_ledger 기록). 고객용 웹 견적서 `?q=토큰` → DB 함수 get_public_estimate. SQL은 supabase/batch2_columns.sql
 - 견적번호: 날짜+그날 순번 (`nextEstNo`), 저장할 때 부여
 - 노무비(labor_cost)는 사용하지 않음 — DB 컬럼만 남아 있고 화면·인쇄·엑셀에서는 제외

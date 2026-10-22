@@ -334,7 +334,7 @@ td{padding:9px 14px;vertical-align:middle;}
 .view-sticky .view-info-mgr{padding:8px 12px;}
 .view-info{display:flex;gap:18px;align-items:stretch;}
 .view-info-client{flex:1;min-width:0;}
-.view-info-client .info-grid{grid-template-columns:1fr 1fr 1.7fr;}
+.view-info-client .info-grid{grid-template-columns:1fr 1fr 1.7fr .9fr;}
 .view-info-mgr{width:340px;flex-shrink:0;background:#fff8e6;border:1.5px solid #f6dc9c;border-radius:10px;padding:12px 16px;}
 .view-info-mgr .card-title{color:#b07800;margin-bottom:10px;}.view-info-mgr .card-title::after{background:#f6dc9c;}
 .view-info-mgr .info-grid{grid-template-columns:1fr 1fr;}
@@ -752,7 +752,14 @@ const extraVisitsOf = est => parseJSON(est&&est.extra_visits,[]);
 // 시공비 항목 (meta.costs) — 공급가액에 포함, 0원이면 견적서 인쇄에서 제외
 const COST_KEYS = [['install','설치비'],['delivery','운반비'],['demolition','철거비']];
 const LOST_REASONS = ['가격','일정','다른 업체 선택','연락 두절','기타'];
-const SITE_SOURCES = ['숨고','지인 소개','블로그','인스타그램','전화 문의','기타']; // 현장정보 유입 경로
+const SITE_SOURCES = ['숨고','지인 소개','블로그','인스타그램','전화 문의','기타']; // 고객 유입 경로
+const PAY_METHODS = ['무통장입금','카드결제','현금결제']; // 결제수단
+// 입금 항목 한 줄의 입금일 · 결제수단
+const PayMeta = ({p,onSet}) => (<div style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:12,flexWrap:'wrap'}}>
+    <span>입금일</span><input type="date" className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={p.date||''} onChange={e=>onSet('date',e.target.value)}/>
+    <span>결제수단</span><select className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={p.method||''} onChange={e=>onSet('method',e.target.value)}>
+        <option value="">선택</option>{PAY_METHODS.map(m=><option key={m}>{m}</option>)}</select>
+</div>);
 // ★ 재고 증감: DB 함수(adjust_stock)가 수량 변경과 입출고 기록을 한 번에 처리 (동시에 해도 숫자가 틀리지 않음)
 //   DB 함수를 아직 안 만들었으면 예전 방식(읽고 쓰기)으로 처리하고 기록은 남기지 않음
 let _stockFallbackWarned=false;
@@ -1446,6 +1453,31 @@ function StockModal({sb,mat,onClose,onChanged}){
         catch(e){alert('재고 수정 실패: '+e.message);}
         finally{setBusy(false);}
     };
+    // 입출고 기록 수정·삭제: 기록을 고치거나 지운 만큼 현재 재고도 함께 맞춤
+    const[edit,setEdit]=useState(null); // {id, qty, memo}
+    const shiftStock=async diff=>{
+        const{data:c}=await sb.from('materials').select('stock_qty').eq('id',mat.id).maybeSingle();
+        const q=Math.max(0,Math.round(((Number(c&&c.stock_qty)||0)+diff)*10)/10);
+        const{error}=await sb.from('materials').update({stock_qty:q}).eq('id',mat.id);if(error)throw new Error(error.message);
+        onChanged(q);return q;
+    };
+    const saveEdit=async r=>{
+        const nq=Number(edit.qty);if(isNaN(nq)||nq===0){alert('수량을 입력하세요 (입고는 +, 차감은 −)');return;}
+        setBusy(true);
+        try{
+            const{error}=await sb.from('stock_ledger').update({qty_change:nq,memo:edit.memo||null}).eq('id',r.id);if(error)throw new Error(error.message);
+            if(nq!==Number(r.qty_change))await shiftStock(nq-Number(r.qty_change));
+            setEdit(null);loadLog();toast('✏️ 입출고 기록 수정됨');
+        }catch(e){alert('수정 실패: '+e.message);}finally{setBusy(false);}
+    };
+    const delRow=async r=>{
+        if(!confirm('이 입출고 기록을 삭제할까요?\n현재 재고가 '+(r.qty_change>0?'−':'+')+Math.abs(r.qty_change)+' 만큼 함께 바뀝니다.'+(r.estimate_id?'\n\n※ 견적서의 재고 차감 기록입니다. 견적서의 \'차감 완료\' 표시는 그대로 남습니다.':'')))return;
+        setBusy(true);
+        try{
+            const{error}=await sb.from('stock_ledger').delete().eq('id',r.id);if(error)throw new Error(error.message);
+            await shiftStock(-Number(r.qty_change));loadLog();toast('🗑 입출고 기록 삭제됨');
+        }catch(e){alert('삭제 실패: '+e.message);}finally{setBusy(false);}
+    };
     const sel={border:'1.5px solid var(--border)',borderRadius:8,padding:'8px 10px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif"};
     return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box" onClick={e=>e.stopPropagation()}>
@@ -1463,13 +1495,25 @@ function StockModal({sb,mat,onClose,onChanged}){
             {log===null?<div style={{fontSize:12,color:'var(--muted)'}}>불러오는 중...</div>
             :log===false?<div style={{fontSize:12,color:'var(--muted)'}}>입출고 기록 표가 아직 없습니다 (supabase/batch2_columns.sql 실행 필요).</div>
             :log.length===0?<div style={{fontSize:12,color:'var(--muted)'}}>기록이 없습니다.</div>
-            :<div style={{maxHeight:240,overflowY:'auto'}}><table style={{width:'100%',fontSize:12}}><tbody>{log.map(r=><tr key={r.id}>
+            :<div style={{maxHeight:260,overflowY:'auto'}}><table style={{width:'100%',fontSize:12}}><tbody>{log.map(r=>edit&&edit.id===r.id
+                ?<tr key={r.id} style={{background:'#f0f6ff'}}>
+                    <td style={{whiteSpace:'nowrap',padding:'4px 6px'}}>{fmtDT(r.created_at)}</td>
+                    <td style={{padding:'4px 6px'}}>{r.reason}</td>
+                    <td style={{padding:'4px 6px'}}><input type="number" step="0.1" style={{...sel,width:80,padding:'4px 6px'}} value={edit.qty} onChange={e=>setEdit(x=>({...x,qty:e.target.value}))} title="입고는 +, 차감은 −"/></td>
+                    <td colSpan={2} style={{padding:'4px 6px'}}><input style={{...sel,width:'100%',padding:'4px 6px'}} value={edit.memo} placeholder="메모" onChange={e=>setEdit(x=>({...x,memo:e.target.value}))}/></td>
+                    <td style={{padding:'4px 6px',whiteSpace:'nowrap'}}><button className="btn btn-primary btn-xs" disabled={busy} onClick={()=>saveEdit(r)}>저장</button> <button className="btn btn-outline btn-xs" onClick={()=>setEdit(null)}>취소</button></td>
+                </tr>
+                :<tr key={r.id}>
                 <td style={{whiteSpace:'nowrap',padding:'4px 6px'}}>{fmtDT(r.created_at)}</td>
                 <td style={{padding:'4px 6px'}}>{r.reason}</td>
                 <td className="tr" style={{padding:'4px 6px',fontWeight:700,color:r.qty_change<0?'#b91c1c':'#15803d'}}>{r.qty_change>0?'+':''}{r.qty_change}</td>
                 <td className="tr" style={{padding:'4px 6px'}}>→ {r.stock_after}</td>
                 <td style={{padding:'4px 6px',color:'var(--muted)'}}>{r.memo||''}{r.created_by?' · '+String(r.created_by).split('@')[0]:''}</td>
+                <td style={{padding:'4px 6px',whiteSpace:'nowrap'}}>
+                    <button className="btn-icon" style={{fontSize:12}} title="수정" disabled={busy} onClick={()=>setEdit({id:r.id,qty:r.qty_change,memo:r.memo||''})}>✏️</button>
+                    <button className="btn-icon" style={{fontSize:12}} title="삭제" disabled={busy} onClick={()=>delRow(r)}>🗑</button></td>
             </tr>)}</tbody></table></div>}
+            {log&&log.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginTop:6}}>기록을 고치거나 지우면 현재 재고도 그만큼 함께 바뀝니다. '→' 뒤의 숫자는 그 기록 당시의 재고입니다.</div>}
         </div>
     </div>);
 }
@@ -2845,7 +2889,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const holdDays=st.holdDays;
     const[meta,setMeta]=useState({}); // 부가 정보: lost(실주) · pay(입금 내역) · costs(시공비) · terms(결제 조건) · site(현장정보) · stock(재고) · shareToken
     const updMeta=(k,v)=>setMeta(m=>({...m,[k]:typeof v==='function'?v(m[k]):v}));
-    const[sendHistory,setSendHistory]=useState([]); // 발송 이력
+    const[sendHistory,setSendHistory]=useState([]); // 견적 이력
     const loadedRef=useRef({updatedAt:null,createdAt:null}); // 동시 수정 감지·작성일 표시용
     const[loading,setLoading]=useState(mode==='edit');
     const[saving,setSaving]=useState(false);
@@ -3094,7 +3138,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     };
 
     // ★ 인쇄 — 단계에 맞춰 '가견적발송 / 본견적발송 완료 처리'를 물어봄 (보류 중이면 재발송 처리)
-    //   발송 처리하면: 바뀐 내용이 있거나 새 견적이면 먼저 저장 → 그 순간의 품목·금액을 발송 이력으로 남김
+    //   발송 처리하면: 바뀐 내용이 있거나 새 견적이면 먼저 저장 → 그 순간의 품목·금액을 견적 이력으로 남김
     //   새 견적은 발송 처리를 안 해도 인쇄 전에 저장 (고객에게 나간 견적번호가 반드시 DB에 남도록)
     const printEstimate=async()=>{
         const step=sendStepOnPrint(currentStage,statusDates,statusChecked,onHold);
@@ -3117,7 +3161,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             if(!r){if(w)w.close();return;}
             no=r.no;id=r.id;
         }else if(mark){
-            // 바뀐 내용이 없으면 발송일·발송 이력만 바로 저장
+            // 바뀐 내용이 없으면 발송일·견적 이력만 바로 저장
             const{data:ud,error}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId).select('updated_at'),
                 {status:getStage({sd:nd,sc:statusChecked,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd),send_history:JSON.stringify(hist)});
             if(error){toast('⚠️ 상태 저장 실패: '+error.message);}
@@ -3145,7 +3189,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         try{await navigator.clipboard.writeText(url);toast('🔗 고객용 링크를 복사했습니다 — 카톡·문자에 붙여넣기 하세요');}
         catch(e){window.prompt('아래 링크를 복사해서 보내세요',url);}
     };
-    // 발송 이력 다시 보기 (그때 보낸 품목·금액 그대로 인쇄)
+    // 견적 이력 다시 보기 (그때 보낸 품목·금액 그대로 인쇄)
     const reprintHistory=h=>printEstimateDoc(sb,{no:h.no||shownNo,client:h.client||client,cats:h.cats||[],items:h.items||[],portItems,
         costs:h.costs||{},terms:h.terms||{},title:h.step==='가견적발송'?'가견적서':'견적서',date:h.at,
         shareUrl:meta.shareToken?shareUrlOf(meta.shareToken):null});
@@ -3434,14 +3478,17 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
         {/* 고객 정보 / 담당자 정보 */}
         <div className="card"><div className="view-info">
-            {[['고객 정보','view-info-client',[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시']]],
+            {[['고객 정보','view-info-client',[['name','고객명','홍길동'],['phone','연락처','010-0000-0000'],['address','주소/지역','경기도 파주시'],['source','유입 경로','']]],
               ['👤 담당자 정보','view-info-mgr',[['manager','담당자','담당자명'],['managerPhone','담당자연락처','010-0000-0000']]]].map(([title,cls,fields])=>(
             <div className={cls} key={cls}><div className="card-title">{title}</div>
                 <div className="info-grid">{fields.map(([k,l,p])=>(
                         <div className="info-field" key={k}>
                             <label>{l}</label>
                             <div style={{display:'flex',gap:5,alignItems:'center'}}>
-                                {k==='manager'
+                                {k==='source'
+                                    ?<select className="mgr-select" style={{flex:1}} value={(meta.site||{}).source||''} onChange={e=>updMeta('site',s=>({...(s||{}),source:e.target.value}))}>
+                                        <option value="">선택</option>{SITE_SOURCES.map(s=><option key={s}>{s}</option>)}</select>
+                                :k==='manager'
                                     ?<select className="mgr-select" style={{flex:1}} value={client.manager||''} onChange={e=>pickManager(e.target.value)}>
                                         <option value="">담당자 선택</option>
                                         {staff.map(s=><option key={s.email||s.name} value={s.name}>{s.name}</option>)}
@@ -3612,20 +3659,20 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 {[['deposit','계약금',depositAmount,setDepositAmount],['mid','중도금',midAmount,setMidAmount]].map(([k,l,val,setVal])=>(
                 <div className="pay-field" key={k}>
                     <div className="pay-label">{l}</div>
-                    <input type="number" className="pay-input" value={val} min="0" onChange={e=>setVal(e.target.value)} placeholder="금액 입력"/>
+                    {/* 금액을 입력하면 입금일이 비어 있을 때 오늘 날짜로 자동 입력 */}
+                    <input type="number" className="pay-input" value={val} min="0" onChange={e=>{setVal(e.target.value);if(e.target.value&&!(pay[k]||{}).date)updPay(k,'date',ymd(new Date()));}} placeholder="금액 입력"/>
                     <div className="pay-sub">{fmt(Number(val)||0)}원{k==='deposit'&&(meta.terms||{}).depositRate?` · 견적의 ${meta.terms.depositRate}% = ${fmt(Math.round(grandVat*meta.terms.depositRate/100))}원`:''}</div>
-                    <div style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:12}}>
-                        <span>입금일</span><input type="date" className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={(pay[k]||{}).date||''} onChange={e=>updPay(k,'date',e.target.value)}/>
-                    </div>
+                    <PayMeta p={pay[k]||{}} onSet={(f,v)=>updPay(k,f,v)}/>
                 </div>))}
                 <div className="pay-field">
                     <div className="pay-label">잔금 (자동계산)</div>
                     <input readOnly className={'pay-input auto '+(balancePaid||balanceAmount<=0&&grandVat>0?'zero':'')}
                         value={balancePaid?'0원':(grandVat>0?fmt(Math.max(0,balanceAmount))+'원':'-')}/>
                     <div style={{display:'flex',gap:6,alignItems:'center',marginTop:6,fontSize:12,flexWrap:'wrap'}}>
-                        <span>받은 금액</span><input type="number" min="0" className="status-dt-input" style={{width:110,padding:'4px 6px'}} placeholder={String(Math.max(0,balanceAmount))} value={(pay.balance||{}).amount??''} onChange={e=>updPay('balance','amount',e.target.value)}/>
-                        <span>입금일</span><input type="date" className="status-dt-input" style={{width:'auto',padding:'4px 6px'}} value={(pay.balance||{}).date||''} onChange={e=>updPay('balance','date',e.target.value)}/>
+                        <span>금액</span><input type="number" min="0" className="status-dt-input" style={{width:110,padding:'4px 6px'}} placeholder={String(Math.max(0,balanceAmount))} value={(pay.balance||{}).amount??''}
+                            onChange={e=>{updPay('balance','amount',e.target.value);if(e.target.value&&!(pay.balance||{}).date)updPay('balance','date',ymd(new Date()));}}/>
                     </div>
+                    <PayMeta p={pay.balance||{}} onSet={(f,v)=>updPay('balance',f,v)}/>
                     <div className="pay-check-row">
                         <input type="checkbox" id="bpaid" className="pay-check" checked={balancePaid} onChange={e=>confirmBalance(e.target.checked)}/>
                         <label htmlFor="bpaid" className={'pay-check-lbl'+(balancePaid?' on':'')} style={{cursor:'pointer'}}>잔금 입금 완료</label>
@@ -3634,9 +3681,9 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             </div>
         </div>
 
-        {/* ★ 발송 이력 — 가견적·본견적을 보낸 순간의 품목·금액 (다시 보기·재인쇄) */}
+        {/* ★ 견적 이력 — 가견적·본견적을 보낸 순간의 품목·금액 (다시 보기·재인쇄) */}
         {sendHistory.length>0&&<div className="card">
-            <div className="card-title">📜 발송 이력</div>
+            <div className="card-title">📜 견적 이력</div>
             {sendHistory.slice().reverse().map((h,i,arr)=>{const prev=arr[i+1];return(
                 <div key={h.id||i} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
                     <StatusBadge status={h.step}/>
@@ -3648,18 +3695,12 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 </div>);})}
         </div>}
 
-        {/* ★ 현장정보 — 접수(유입 경로·요청일·요청 내용), 실측 메모, 현장 사진(촬영·앨범), 첨부 파일(스캔·도면 등) */}
+        {/* ★ 현장정보 — 고객 요청 내용, 실측 메모, 현장 사진(촬영·앨범), 첨부 파일(스캔·도면 등) */}
         <div className="card">
             <div className="card-title">📍 현장정보</div>
             {(()=>{const si=meta.site||{};const upd=(k,v)=>updMeta('site',s=>({...(s||{}),[k]:v}));
                 const ta={width:'100%',border:'1.5px solid var(--border)',borderRadius:7,padding:'8px 12px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",resize:'vertical'};
                 return(<div style={{marginBottom:12}}>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'8px 14px',marginBottom:8}}>
-                    <div className="info-field"><label>유입 경로</label>
-                        <select className="mgr-select" value={si.source||''} onChange={e=>upd('source',e.target.value)}>
-                            <option value="">선택</option>{SITE_SOURCES.map(s=><option key={s}>{s}</option>)}</select></div>
-                    <div className="info-field"><label>요청일</label><input type="date" value={si.requestDate||''} onChange={e=>upd('requestDate',e.target.value)}/></div>
-                </div>
                 <div className="info-field" style={{marginBottom:8}}><label>고객 요청 내용</label><textarea rows={2} style={ta} value={si.request||''} placeholder="예) 캠핑카 후면 수납장, 상부장 2칸 추가 희망" onChange={e=>upd('request',e.target.value)}/></div>
                 <div className="info-field"><label>실측 메모 · 치수</label><textarea rows={3} style={ta} value={si.measure||''} placeholder="예) 벽 폭 2,400 / 높이 2,150 / 콘센트 위치 좌측 300" onChange={e=>upd('measure',e.target.value)}/></div>
             </div>);})()}
@@ -4476,22 +4517,27 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
     const won=sent.filter(e=>['제작중','설치완료','완료'].includes(info[e.id].stage));
     const rate=sent.length?Math.round(won.length/sent.length*100):0;
 
-    // ── 📌 오늘 할 일 ──
+    // ── 📌 오늘 할 일(오늘 일정) · 📅 주간 할 일(이번 주 남은 일정 + 연락할 일) · 💰 잔금 미입금 ──
     const today=ymd(now);
-    const todo=[];
+    const weekEnd=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()+(7-now.getDay())%7)); // 이번 주 일요일
+    const todayList=[],weekList=[],unpaid=[];
+    const sched=(e,kind,d,detail)=>{const k=ymd(new Date(d));if(k===today)todayList.push([e,kind,detail]);else if(k>today&&k<=weekEnd)weekList.push([e,kind,fmtDT(d).split(' ').slice(0,2).join(' ')+' '+(detail||''),new Date(d)]);};
     live.forEach(e=>{
         const i=info[e.id];if(i.lost)return;
-        const nm=e.client_name||'고객';
-        if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측']&&ymd(new Date(i.sd['방문상담 및 실측']))===today)todo.push([e,'🏠 오늘 방문',fmtDT(i.sd['방문상담 및 실측'])]);
-        if(i.sd['설치완료']&&!i.sc['설치완료']&&ymd(new Date(i.sd['설치완료']))===today)todo.push([e,'🎉 오늘 설치',fmtDT(i.sd['설치완료'])]);
-        pendingExtras(e).forEach(v=>{if(ymd(new Date(v.at))===today)todo.push([e,'🔧 오늘 '+v.type,(v.reason||'')]);});
-        if(i.delayed)todo.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
-        if(i.stage==='설치완료')todo.push([e,'💰 잔금 미입금',fmt(Math.max(0,(Number(e.total_amount)||0)-(Number(e.deposit_amount)||0)-(Number(e.mid_amount)||0)))+'원']);
+        if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측'])sched(e,'🏠 방문',i.sd['방문상담 및 실측'],fmtDT(i.sd['방문상담 및 실측']).split(' ').slice(2).join(' '));
+        if(i.sd['설치완료']&&!i.sc['설치완료'])sched(e,'🎉 설치',i.sd['설치완료'],fmtDT(i.sd['설치완료']).split(' ').slice(2).join(' '));
+        if(i.sd['제작시작']&&!i.sc['설치완료']){const s0=new Date(String(i.sd['제작시작']).slice(0,10)+'T09:00'),days=prodDays(i.sd)||1;
+            for(let k=0;k<days;k++)sched(e,days>1?'🔨 공사':'🔨 제작',new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,9),days>1?`${k+1}/${days}일`:'');}
+        pendingExtras(e).forEach(v=>sched(e,'🔧 '+v.type,v.at,v.reason||''));
+        // 연락·처리할 일은 주간 할 일에
+        if(i.delayed)weekList.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
         if(!i.hold&&(i.stage==='가견적발송'||i.stage==='본견적발송')&&Number(st.holdDays)>0){
             const left=Math.ceil((lastSentAt(i.sd)+Number(st.holdDays)*86400000-Date.now())/86400000);
-            if(left>=0&&left<=5)todo.push([e,'⏳ 곧 보류',left+'일 남음 · 연락 필요']);
+            if(left>=0&&left<=5)weekList.push([e,'⏳ 곧 보류',left+'일 남음 · 연락 필요']);
         }
+        if(i.stage==='설치완료')unpaid.push([e,'💰 잔금',fmt(Math.max(0,(Number(e.total_amount)||0)-(Number(e.deposit_amount)||0)-(Number(e.mid_amount)||0)))+'원']);
     });
+    weekList.sort((a,b)=>(a[3]||Infinity)-(b[3]||Infinity));
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
     const resetAll=()=>{setStatusFilter(null);setPayFilter(null);setQ('');setPeriod('all');};
@@ -4521,14 +4567,21 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
             <div className="btn-row"><button className="btn btn-primary" onClick={onNew}>＋ 새 견적서</button></div>
         </div>
 
-        {/* 📌 오늘 할 일 */}
-        {todo.length>0&&<div className="card" style={{padding:'12px 16px',marginBottom:14,borderColor:'#fcd34d',background:'#fffbeb'}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>setShowToday(o=>!o)}>
-                <b style={{color:'#b45309'}}>📌 오늘 할 일 {todo.length}건</b><span style={{fontSize:11,color:'var(--muted)'}}>{showToday?'▲ 접기':'▼ 펼치기'}</span></div>
-            {showToday&&<div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>
-                {todo.map(([e,kind,detail],i)=><div key={i} style={{display:'flex',gap:10,alignItems:'center',fontSize:13,cursor:'pointer'}} onClick={()=>onEdit(e.id)}>
-                    <span style={{fontWeight:800,minWidth:110}}>{kind}</span><span style={{fontWeight:700,color:'var(--blue)'}}>{e.client_name||'고객'}</span><span style={{color:'var(--muted)',fontSize:12}}>{detail}</span></div>)}
-            </div>}
+        {/* 📌 오늘 할 일 · 📅 주간 할 일 · 💰 잔금 미입금 */}
+        <div style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:6}} onClick={()=>setShowToday(o=>!o)}>
+            <b style={{fontSize:13,color:'var(--navy)'}}>할 일</b><span style={{fontSize:11,color:'var(--muted)'}}>{showToday?'▲ 접기':'▼ 펼치기'}</span></div>
+        {showToday&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:12,marginBottom:14}}>
+            {[['📌 오늘 할 일','#b45309','#fffbeb','#fcd34d',todayList,'오늘 일정이 없습니다'],
+              ['📅 주간 할 일','#1d4ed8','#eff6ff','#bfdbfe',weekList,'이번 주 남은 일정·연락할 일이 없습니다'],
+              ['💰 잔금 미입금','#b91c1c','#fef2f2','#fecaca',unpaid,'잔금 미입금 견적이 없습니다']].map(([title,color,bg,bd,list,empty])=>(
+            <div key={title} style={{background:bg,border:'1.5px solid '+bd,borderRadius:12,padding:'10px 14px'}}>
+                <b style={{color}}>{title} {list.length>0&&<span>{list.length}건</span>}</b>
+                <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:6,maxHeight:220,overflowY:'auto'}}>
+                    {list.length===0?<span style={{fontSize:12,color:'var(--muted)'}}>{empty}</span>
+                    :list.map(([e,kind,detail],i)=><div key={i} style={{display:'flex',gap:8,alignItems:'baseline',fontSize:13,cursor:'pointer',flexWrap:'wrap'}} onClick={()=>onEdit(e.id)}>
+                        <span style={{fontWeight:800,whiteSpace:'nowrap'}}>{kind}</span><span style={{fontWeight:700,color:'var(--blue)'}}>{e.client_name||'고객'}</span><span style={{color:'var(--muted)',fontSize:12}}>{detail}</span></div>)}
+                </div>
+            </div>))}
         </div>}
 
         <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>

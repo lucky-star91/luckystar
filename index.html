@@ -4566,11 +4566,16 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
         :new Date(b.created_at)-new Date(a.created_at));
     const sumSupply=filtered.reduce((s,e)=>s+(Number(e.total_supply)||0),0),sumTotal=filtered.reduce((s,e)=>s+(Number(e.total_amount)||0),0);
     const hiddenCnt=!statusFilter&&!qs?live.filter(e=>inPeriod(e)&&(labels[e.id]==='보류'||labels[e.id]==='실주')).length:0;
-    // 계약률: 기간 안에 작성된 견적 중 발송한 것 대비 계약(계약금 입금)된 것
+    // 기간 안에 작성된 견적 기준 — 본견적발송률: 가견적 보낸 것 중 본견적까지 간 비율 · 계약률: 본견적 보낸 것 중 계약(계약금 입금)된 비율
     const periodLive=live.filter(inPeriod);
-    const sent=periodLive.filter(e=>info[e.id].sd['가견적발송']||info[e.id].sd['본견적발송']||(Number(e.deposit_amount)||0)>0);
-    const won=sent.filter(e=>['제작중','설치완료','완료'].includes(info[e.id].stage));
+    const isWon=e=>['제작중','설치완료','완료'].includes(info[e.id].stage);
+    const gaSent=periodLive.filter(e=>info[e.id].sd['가견적발송']);
+    const gaToBon=gaSent.filter(e=>info[e.id].sd['본견적발송']);
+    const bonRate=gaSent.length?Math.round(gaToBon.length/gaSent.length*100):0;
+    const sent=periodLive.filter(e=>info[e.id].sd['본견적발송']);
+    const won=sent.filter(isWon);
     const rate=sent.length?Math.round(won.length/sent.length*100):0;
+    const periodName=period==='all'?'전체 기간':period==='thisMonth'?'이번 달':period==='lastMonth'?'지난 달':'선택 기간';
 
     const toggleSF=s=>setStatusFilter(p=>p===s?null:s);
     const togglePF=p=>setPayFilter(p2=>p2===p?null:p);
@@ -4642,10 +4647,15 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
                     <div className="dash-card-label">{p==='입금전'?'⏳':'📝'} {p}</div>
                 </div>);
             })}
-            <div className="dash-card" style={{color:'#15803d',cursor:'default'}} title="선택한 기간에 작성된 견적 중 발송한 견적 대비 계약(계약금 입금)된 견적 비율">
-                <div className="dash-card-type">계약률 ({period==='all'?'전체 기간':period==='thisMonth'?'이번 달':period==='lastMonth'?'지난 달':'선택 기간'})</div>
+            <div className="dash-card" style={{color:'#1d4ed8',cursor:'default'}} title="선택한 기간에 작성된 견적 중 가견적을 보낸 견적 대비 본견적까지 보낸 견적 비율">
+                <div className="dash-card-type">본견적발송률 ({periodName})</div>
+                <div className="dash-card-num">{bonRate}%</div>
+                <div className="dash-card-label">본견적 {gaToBon.length} / 가견적 {gaSent.length}</div>
+            </div>
+            <div className="dash-card" style={{color:'#15803d',cursor:'default'}} title="선택한 기간에 작성된 견적 중 본견적을 보낸 견적 대비 계약(계약금 입금)된 견적 비율">
+                <div className="dash-card-type">계약률 ({periodName})</div>
                 <div className="dash-card-num">{rate}%</div>
-                <div className="dash-card-label">계약 {won.length} / 발송 {sent.length}</div>
+                <div className="dash-card-label">계약 {won.length} / 본견적 {sent.length}</div>
             </div>
         </div>
 

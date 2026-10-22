@@ -268,7 +268,7 @@ td{padding:9px 14px;vertical-align:middle;}
 .cal-legend-item{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;}
 /* 2주간 */
 .biweek-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
-.biweek-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+.biweek-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
 .biweek-hd{padding:8px 4px;text-align:center;font-size:11px;font-weight:700;color:var(--muted);background:var(--navy);color:rgba(255,255,255,.6);letter-spacing:.5px;}
 .biweek-hd.weekend{color:rgba(255,100,100,.8);}
 .biweek-cell{min-height:90px;padding:6px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;position:relative;}
@@ -279,7 +279,7 @@ td{padding:9px 14px;vertical-align:middle;}
 .biweek-cell.today .biweek-date{background:var(--blue);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;}
 /* 월간 */
 .month-wrap{background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);}
-.month-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
 .month-hd{padding:10px 4px;text-align:center;font-size:11px;font-weight:700;background:var(--navy);color:rgba(255,255,255,.6);letter-spacing:.5px;}
 .month-hd.weekend{color:rgba(255,100,100,.8);}
 .month-cell{min-height:110px;padding:6px 5px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;}
@@ -294,7 +294,7 @@ td{padding:9px 14px;vertical-align:middle;}
 /* 달력 칸: 한 줄 요약 · 날짜 선택 */
 .cal-mini{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:600;}
 .cal-more{font-size:10px;color:var(--muted);font-weight:700;padding:0 4px;}
-.biweek-cell,.month-cell{cursor:pointer;}
+.biweek-cell,.month-cell{cursor:pointer;min-width:0;overflow:hidden;}
 .cal-sel{outline:2px solid var(--blue);outline-offset:-2px;background:#f0f6ff!important;}
 .cal-event:hover{opacity:.8;}
 .cal-event-time{font-weight:700;display:block;}
@@ -578,7 +578,8 @@ td{padding:9px 14px;vertical-align:middle;}
     .biweek-hd,.month-hd{font-size:10px;padding:6px 2px;}
     .biweek-cell{min-height:60px;padding:4px 3px;}
     .month-cell{min-height:70px;padding:4px 3px;}
-    .cal-event{font-size:9px;padding:2px 4px;}
+    .cal-event{font-size:9px;padding:2px 3px;}
+    .cal-ico{display:none;} /* 휴대폰: 아이콘 숨기고 이름을 더 보이게 (종류는 색으로 구분) */
     .cal-header{gap:8px;}
     .cal-title{font-size:14px;}
     .cal-nav{padding:5px 10px;font-size:12px;}
@@ -4797,7 +4798,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     const MAX_CHIPS=3;
     const EventChip=({ev})=>(<div className="cal-event cal-mini" title={ev.label+' · '+ev.clientName+(ev.time?' · '+ev.time:'')}
         style={{background:ev.bg,color:ev.color,...(ev.span?{borderLeft:ev.span==="start"?"4px solid "+ev.color:"none",borderRight:ev.span==="end"?"4px solid "+ev.color:"none",fontWeight:700}:{})}}>
-        {String(ev.label).split(' ')[0]} {ev.clientName}
+        <span className="cal-ico">{String(ev.label).split(' ')[0]} </span>{ev.clientName}
     </div>);
     const CellEvents=({evts})=>(<>{evts.slice(0,MAX_CHIPS).map((ev,j)=><EventChip key={j} ev={ev}/>)}
         {evts.length>MAX_CHIPS&&<div className="cal-more">외 {evts.length-MAX_CHIPS}건</div>}</>);
@@ -4833,7 +4834,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
         const today=new Date(base);const dow=today.getDay();const mon=new Date(today);mon.setDate(today.getDate()-(dow===0?6:dow-1));
         const days=Array.from({length:14},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;});
         return(<div className="biweek-wrap">
-            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))'}}>
                 {DAY_NAMES.map((d,i)=><div key={i} className={`biweek-hd ${i>=5?'weekend':''}`}>{d}</div>)}
             </div>
             <div className="biweek-grid">

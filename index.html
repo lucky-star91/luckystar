@@ -816,7 +816,9 @@ const isDelayed = (stage,sd,sc,delayDays) => {
 };
 // DB 견적 한 건 → {sd, sc, meta, stage, hold, lost, deleted, delayed, label}
 const estStageInfo = (est,holdDays,delayDays) => {
-    const sd=normStatusObj(parseJSON(est.status_dates,{})), sc=normStatusObj(parseJSON(est.status_checked,{}));
+    const sd=normStatusObj(parseJSON(est.status_dates,{}));
+    let sc=normStatusObj(parseJSON(est.status_checked,{}));
+    if(sd['본견적발송']&&!sc['방문상담 및 실측'])sc={...sc,'방문상담 및 실측':true}; // 본견적을 보냈으면 방문은 끝난 것
     const meta=parseJSON(est.meta,{});
     const stage=getStage({sd,sc,deposit:est.deposit_amount,balancePaid:est.balance_paid});
     const lost=!!meta.lost, deleted=!!meta.deletedAt;
@@ -2962,7 +2964,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 setMidAmount(est.mid_amount||'');
                 setBalancePaid(!!est.balance_paid);
                 let sc={};try{sc=typeof est.status_checked==='string'?JSON.parse(est.status_checked||'{}'):(est.status_checked||{});}catch(e){}
-                sc=normStatusObj(sc);setStatusChecked(sc);
+                sc=normStatusObj(sc);if(normStatusObj(sd)['본견적발송']&&!sc['방문상담 및 실측'])sc={...sc,'방문상담 및 실측':true}; // 본견적을 보냈으면 방문함 체크
+                setStatusChecked(sc);
                 let pi=[];try{pi=typeof est.portfolio_items==='string'?JSON.parse(est.portfolio_items||'[]'):(est.portfolio_items||[]);}catch{}
                 setPortItems(pi);
                 setExtraVisits(extraVisitsOf(est));
@@ -3090,7 +3093,11 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const handleImg=async(e,iid)=>{const f=e.target.files[0];if(!f)return;const url=await uploadTracked(f,'est-items');updItem(iid,'imgUrl',url);};
 
     // ★ 상태 날짜 수정 (저장 버튼을 눌러야 DB에 반영)
-    const updStatusDate=(status,datetime)=>setStatusDates(p=>{const nd={...p};if(datetime)nd[status]=datetime;else delete nd[status];return nd;});
+    const updStatusDate=(status,datetime)=>{
+        setStatusDates(p=>{const nd={...p};if(datetime)nd[status]=datetime;else delete nd[status];return nd;});
+        // 본견적을 보냈다면 방문·실측은 끝난 것 → 방문함 자동 체크
+        if(status==='본견적발송'&&datetime)setStatusChecked(p=>p['방문상담 및 실측']?p:{...p,'방문상담 및 실측':true});
+    };
 
     // ★ 진행상태 완료 체크 (저장 버튼을 눌러야 DB에 반영 · 설치완료 재고 차감도 저장 시 처리)
     // 방문함·설치함 체크만 해도 단계가 넘어가도록, 날짜가 비어 있으면 체크한 날로 자동 기록
@@ -3147,25 +3154,26 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         const w=window.open('','_blank','width=920,height=720'); // 팝업 차단 방지: 클릭 직후 먼저 열어 둠
         if(w)w.document.write('<p style="font-family:sans-serif;padding:24px;color:#334155">인쇄 준비 중...</p>');
         const nowIso=new Date().toISOString();
-        let no=estNo,id=estimateId,nd=statusDates,hist=sendHistory;
+        let no=estNo,id=estimateId,nd=statusDates,hist=sendHistory,scNew=statusChecked;
         if(mode==='new')no=await nextEstNo(sb);
         if(mark){
             nd={...statusDates,[step]:nowIso};
+            if(step==='본견적발송'&&!statusChecked['방문상담 및 실측'])scNew={...statusChecked,'방문상담 및 실측':true};
             hist=[...sendHistory,{id:uid(),step,at:nowIso,no,client:{...client},
                 cats:cats.map(c=>({id:c.id,name:c.name})),
                 items:items.map(i=>({catId:i.catId,name:i.name,spec:i.spec,qty:i.qty,unitPrice:i.unitPrice,total:i.total})),
                 costs:{...costs},terms:{...(meta.terms||{})},grand,vat,grandVat}];
         }
         if(mode==='new'||(mark&&dirty)){
-            const r=await doSave({stay:true,sd:nd,history:hist,estNo:no});
+            const r=await doSave({stay:true,sd:nd,sc:scNew,history:hist,estNo:no});
             if(!r){if(w)w.close();return;}
             no=r.no;id=r.id;
         }else if(mark){
             // 바뀐 내용이 없으면 발송일·견적 이력만 바로 저장
             const{data:ud,error}=await prepSafe(p=>sb.from('estimates').update(p).eq('id',estimateId).select('updated_at'),
-                {status:getStage({sd:nd,sc:statusChecked,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd),send_history:JSON.stringify(hist)});
+                {status:getStage({sd:nd,sc:scNew,deposit:depositNum,balancePaid}),status_dates:JSON.stringify(nd),status_checked:JSON.stringify(scNew),send_history:JSON.stringify(hist)});
             if(error){toast('⚠️ 상태 저장 실패: '+error.message);}
-            else{loadedRef.current.updatedAt=(ud&&ud[0]&&ud[0].updated_at)||loadedRef.current.updatedAt;setStatusDates(nd);setSendHistory(hist);rebase.current=true;}
+            else{loadedRef.current.updatedAt=(ud&&ud[0]&&ud[0].updated_at)||loadedRef.current.updatedAt;setStatusDates(nd);setStatusChecked(scNew);origChecked.current={...scNew};setSendHistory(hist);rebase.current=true;}
         }
         if(mark)toast('📤 '+step+' 처리됨');
         const docStep=mark?step:(nd['본견적발송']?'본견적발송':nd['가견적발송']?'가견적발송':null);
@@ -3272,7 +3280,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             // 계약금이 처음 입력되면 계약금 입금일(없으면 오늘)을 제작중 날짜로 기록
             const depDate=pay.deposit&&pay.deposit.date;
             const sdSave=depositNum>0&&!sdBase['제작중']?{...sdBase,'제작중':depDate?new Date(depDate).toISOString():now}:sdBase;
-            const stageSave=getStage({sd:sdSave,sc:statusChecked,deposit:depositNum,balancePaid});
+            const scSave=opts.sc||statusChecked;
+            const stageSave=getStage({sd:sdSave,sc:scSave,deposit:depositNum,balancePaid});
             const hist=opts.history||sendHistory;
             // 주소 좌표를 견적에 저장해 두면 방문 추천이 매번 변환하지 않아도 됨 (주소가 바뀔 때만 다시 변환)
             let metaSave=meta;
@@ -3288,7 +3297,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 site_photos:JSON.stringify(sitePhotos),
                 payment_status:balancePaid?'완료':depositNum>0?'계약':'입금전',
                 deposit_amount:depositNum,mid_amount:midNum,balance_amount:balanceAmount,balance_paid:balancePaid,
-                status_checked:JSON.stringify(statusChecked),
+                status_checked:JSON.stringify(scSave),
                 portfolio_items:JSON.stringify(portItems),
                 extra_visits:JSON.stringify(extraVisits),
                 meta:JSON.stringify(metaSave),
@@ -3400,7 +3409,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     const nc=cats.map(c=>({...c,id:catIdMap[c.id]||c.id}));
                     const ni=items.map(it=>({...it,id:itemIdMap[it.id]||it.id,catId:catIdMap[it.catId]||it.catId}));
                     setCats(nc);setItems(ni);setEstMaterials(mats);setEstPrep(preps);setStatusDates(sdSave);setSendHistory(hist);setMeta(metaSave);
-                    origCatIds.current=new Set(nc.map(c=>c.id));origItemIds.current=new Set(ni.map(i=>i.id));origChecked.current={...statusChecked};
+                    origCatIds.current=new Set(nc.map(c=>c.id));origItemIds.current=new Set(ni.map(i=>i.id));origChecked.current={...scSave};setStatusChecked(scSave);
                     rebase.current=true;settleUploads();
                 }else markSaved();
                 return{id:estimateId,no:estNo};

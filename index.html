@@ -1451,8 +1451,8 @@ function SupplierList({sb,suppliers,setSuppliers,matCats,outCats,initialFilter})
                 :<div className="table-wrap"><table style={{minWidth:400}}>
                     <thead><tr>
                         <th style={{textAlign:'left'}}>품명</th>
-                        <th style={{textAlign:'left'}}>규격/재질</th>
-                        <th style={{textAlign:'left'}}>두께</th>
+                        <th style={{textAlign:'left'}}>재질/색상</th>
+                        <th style={{textAlign:'left'}}>규격/두께</th>
                         <th className="tr">단가(원)</th>
                         <th className="tr">재고</th>
                     </tr></thead>
@@ -1585,8 +1585,8 @@ function MaterialModal({sb,matCats,suppliers,initial,defaultCatId,onAddSubCat,on
                     {initial&&!subId&&topId&&<div style={{fontSize:11,color:'#b45309',marginTop:3}}>하위분류 미지정 — 저장하려면 하위분류를 고르세요</div>}
                 </div>
                 <div className="mf"><label className="ml">품명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="자재명 입력"/></div>
-                <div className="mf"><label className="ml">규격/재질</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 입력"/></div>
-                <div className="mf"><label className="ml">두께</label><input className="mi" value={form.thickness||''} onChange={e=>set('thickness',e.target.value)} placeholder="예: 18mm, 2T"/></div>
+                <div className="mf"><label className="ml">재질/색상</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="예: 화이트, 오크, 스테인리스"/></div>
+                <div className="mf"><label className="ml">규격/두께</label><input className="mi" value={form.thickness||''} onChange={e=>set('thickness',e.target.value)} placeholder="예: 1220×2440, 18mm, 2T"/></div>
                 <div className="mf"><label className="ml">기타구분</label><input className="mi" value={form.category_extra||''} onChange={e=>set('category_extra',e.target.value)} placeholder="예: 외부용, 방수, A등급"/></div>
                 <div className="mf"><label className="ml">단가(원)</label><input className="mi" type="number" value={form.unit_price||0} onChange={e=>set('unit_price',Number(e.target.value))} min="0"/></div>
                 <div className="mf"><label className="ml">가공비(원)</label><input className="mi" type="number" value={form.processing_cost||0} onChange={e=>set('processing_cost',Number(e.target.value))} min="0"/></div>
@@ -1646,7 +1646,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
 
     // ★ 엑셀 내보내기 (분류 · 하위분류 따로)
     const exportExcel=()=>{
-        const headers=['자재ID','품명','분류','하위분류','규격/재질','두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
+        const headers=['자재ID','품명','분류','하위분류','재질/색상','규격/두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
         const nm=id=>(matCats.find(c=>c.id===id)||{}).name||'';
         const rows=materials.map(m=>[m.id,m.name||'',nm(matTopId(matCats,m.category_id)),isSub(m.category_id)?nm(m.category_id):'',m.specification||'',m.thickness||'',m.unit_price||0,m.processing_cost||0,m.stock_qty||0,m.manufacturer||'',m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
         const wb=XLSX.utils.book_new();
@@ -1685,8 +1685,8 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
                 const payload={
                     name,
                     category_id:subObj?subObj.id:catObj?catObj.id:null,
-                    specification:String(r[col('규격/재질')]||''),
-                    thickness:String(r[col('두께')]||''),
+                    specification:String(r[col('재질/색상')>=0?col('재질/색상'):col('규격/재질')]||''), // 예전 엑셀(규격/재질·두께)도 읽음
+                    thickness:String(r[col('규격/두께')>=0?col('규격/두께'):col('두께')]||''),
                     unit_price:Number(r[col('단가(원)')])||0,
                     processing_cost:Number(r[col('가공비(원)')])||0,
                     stock_qty:Number(r[col('재고수량')])||0,
@@ -1761,7 +1761,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
             <div class="info-row"><span class="info-label">발주처</span>${sup.order_to||'-'}</div>
         </div>
         <table>
-            <thead><tr><th>품명</th><th>규격/재질</th><th>두께</th><th style="text-align:right">발주수량</th></tr></thead>
+            <thead><tr><th>품명</th><th>재질/색상</th><th>규격/두께</th><th style="text-align:right">발주수량</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>
         <div class="footer">★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면</div>
@@ -1828,7 +1828,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
         })()}
         {/* 검색 */}
         <div style={{marginBottom:14}}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품명 · 규격 · 공급업체 검색..."
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품명 · 재질/색상 · 공급업체 검색..."
                 style={{width:'100%',padding:'9px 14px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:13,fontFamily:'Noto Sans KR,sans-serif',outline:'none'}}
                 onFocus={e=>e.target.style.borderColor='var(--blue)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
         </div>
@@ -1887,7 +1887,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
                             <div style={{overflowX:'auto'}}>
                             <table className="order-table" style={{minWidth:600}}>
                                 <thead><tr>
-                                    <th>품명</th><th>규격/재질</th><th>두께</th>
+                                    <th>품명</th><th>재질/색상</th><th>규격/두께</th>
                                     <th className="tr">발주수량</th>
                                     <th className="tr">단가(원)</th><th className="tr">가공비(원)</th>
                                     <th className="tr">금액(원)</th><th style={{width:40}}></th>
@@ -1931,8 +1931,8 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
                 <th style={{width:50}}>사진</th>
                 <th style={{textAlign:'left'}}>품명</th>
                 <th style={{textAlign:'left'}}>분류</th>
-                <th style={{textAlign:'left'}}>규격/재질</th>
-                <th style={{textAlign:'left'}}>두께</th>
+                <th style={{textAlign:'left'}}>재질/색상</th>
+                <th style={{textAlign:'left'}}>규격/두께</th>
                 <th className="tr">단가(원)</th>
                 <th className="tr">가공비(원)</th>
                 <th className="tr">재고</th>

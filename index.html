@@ -1631,12 +1631,12 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
 
     // ★ 엑셀 내보내기 (분류 · 하위분류 따로)
     const exportExcel=()=>{
-        const headers=['품명','분류','하위분류','규격/재질','두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
+        const headers=['자재ID','품명','분류','하위분류','규격/재질','두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
         const nm=id=>(matCats.find(c=>c.id===id)||{}).name||'';
-        const rows=materials.map(m=>[m.name||'',nm(matTopId(matCats,m.category_id)),isSub(m.category_id)?nm(m.category_id):'',m.specification||'',m.thickness||'',m.unit_price||0,m.processing_cost||0,m.stock_qty||0,m.manufacturer||'',m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
+        const rows=materials.map(m=>[m.id,m.name||'',nm(matTopId(matCats,m.category_id)),isSub(m.category_id)?nm(m.category_id):'',m.specification||'',m.thickness||'',m.unit_price||0,m.processing_cost||0,m.stock_qty||0,m.manufacturer||'',m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
         const wb=XLSX.utils.book_new();
         const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-        ws['!cols']=[{wch:22},{wch:12},{wch:12},{wch:16},{wch:8},{wch:10},{wch:10},{wch:8},{wch:14},{wch:14},{wch:12},{wch:18},{wch:30}];
+        ws['!cols']=[{wch:38},{wch:22},{wch:12},{wch:12},{wch:16},{wch:8},{wch:10},{wch:10},{wch:8},{wch:14},{wch:14},{wch:12},{wch:18},{wch:30}];
         XLSX.utils.book_append_sheet(wb,ws,'자재목록');
         XLSX.writeFile(wb,'럭키스타_자재목록.xlsx');
         toast('📊 엑셀 저장됨');
@@ -1681,7 +1681,9 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
                     memo:String(r[col('메모')]||''),
                     purchase_link:String(r[col('구매링크')]||''),
                 };
-                const existing=materials.find(m=>m.name===name);
+                // 자재ID 칸이 있으면 ID로 찾음(품명을 바꿔도 같은 자재), 비어 있으면 예전처럼 품명으로 찾음
+                const idStr=col('자재ID')>=0?String(r[col('자재ID')]||'').trim():'';
+                const existing=idStr?materials.find(m=>m.id===idStr):materials.find(m=>m.name===name);
                 if(existing){
                     const{error}=await sb.from('materials').update(payload).eq('id',existing.id);
                     if(!error)updated++;else errors++;

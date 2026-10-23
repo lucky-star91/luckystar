@@ -4957,7 +4957,122 @@ function Schedule({sb,view,onSetView,onEditEst}){
 /* ═══════════════════════════════════════
    ★ 환경설정 (상호 · 견적서 공통내용)
 ═══════════════════════════════════════ */
-function SettingsPage({sb}){
+/* ★ 카카오톡 할 일 알림 — 매일 아침 9시 서버 함수(supabase/functions/kakao)가 선택한 직원에게 '친구에게 보내기'로 발송
+   보내는 계정(사장님)이 카카오 로그인하면 토큰은 kakao_sender 표에 저장(화면에서는 못 읽음). 받는 직원은 카카오 개발자 앱 팀원 + 한 번 '알림 받기 동의' + 서로 카톡 친구 */
+const KAKAO_REST_KEY='2dc628e1327819fb2a62692f92f8112e';
+let _kakaoCbDone=false; // 카카오 로그인 코드는 한 번만 쓸 수 있음
+function KakaoNotify({sb,cb}){
+    const[me,setMe]=useState('');
+    const[stt,setStt]=useState(undefined); // 서버 함수 상태 (undefined=불러오는 중, null=함수 없음/오류)
+    const[err,setErr]=useState('');
+    const[cfg,setCfg]=useState({recipients:[],sendToMe:true,enabled:true});
+    const[members,setMembers]=useState([]);
+    const[friends,setFriends]=useState(null);
+    const[busy,setBusy]=useState('');
+    const[preview,setPreview]=useState(null);
+    const redirectUri=()=>window.location.origin+'/kakao-callback';
+    const call=async(action,extra)=>{
+        const{data,error}=await sb.functions.invoke('kakao',{body:{action,...(extra||{})}});
+        if(error){let m=error.message;try{const j=await error.context.json();if(j&&j.error)m=j.error;}catch(e){}throw new Error(m);}
+        if(data&&data.error)throw new Error(data.error);
+        return data;
+    };
+    const load=async()=>{
+        try{setStt(await call('status'));setErr('');}catch(e){setStt(null);setErr(e.message);}
+        const{data}=await sb.from('app_settings').select('value').eq('key','kakao_notify').maybeSingle();
+        if(data)setCfg(c=>({...c,...parseJSON(data.value,{})}));
+        const{data:mm}=await sb.from('kakao_members').select('*').order('updated_at',{ascending:false});setMembers(mm||[]);
+    };
+    useEffect(()=>{
+        if(!sb)return;
+        sb.auth.getUser().then(({data})=>setMe((data&&data.user&&data.user.email)||''));
+        (async()=>{
+            if(cb&&!_kakaoCbDone){
+                _kakaoCbDone=true;
+                const saved=sessionStorage.getItem('kakao_state');sessionStorage.removeItem('kakao_state');
+                if(cb.err)alert('카카오 연결 실패: '+cb.err);
+                else if(!saved||saved!==cb.state)alert('카카오 연결 확인값이 맞지 않습니다. 다시 시도해 주세요.');
+                else{
+                    setBusy('exchange');
+                    try{const r=await call('exchange',{code:cb.code,redirect_uri:redirectUri(),role:String(cb.state).split(':')[0]});
+                        toast(r.role==='sender'?'✅ 보내는 계정 연결됨: '+r.nickname:'✅ 알림 받기 동의 완료: '+r.nickname);}
+                    catch(e){alert('카카오 연결 실패: '+e.message);}
+                    setBusy('');
+                }
+            }
+            load();
+        })();
+    },[sb]);
+    const connect=role=>{
+        const state=role+':'+Math.random().toString(36).slice(2);
+        sessionStorage.setItem('kakao_state',state);
+        window.location.href='https://kauth.kakao.com/oauth/authorize?response_type=code&client_id='+KAKAO_REST_KEY+'&redirect_uri='+encodeURIComponent(redirectUri())+'&scope=talk_message,friends&state='+encodeURIComponent(state);
+    };
+    const loadFriends=async()=>{setBusy('friends');try{setFriends((await call('friends')).friends||[]);}catch(e){alert('친구 목록 불러오기 실패: '+e.message);}setBusy('');};
+    const toggleR=f=>setCfg(c=>{const has=(c.recipients||[]).some(r=>r.uuid===f.uuid);return{...c,recipients:has?c.recipients.filter(r=>r.uuid!==f.uuid):[...(c.recipients||[]),{uuid:f.uuid,nickname:f.nickname}]};});
+    const saveCfg=async()=>{
+        const{data}=await sb.from('app_settings').select('value').eq('key','kakao_notify').maybeSingle(); // 서버가 적은 마지막 발송 기록은 유지
+        const v={...parseJSON(data&&data.value,{}),recipients:cfg.recipients||[],sendToMe:!!cfg.sendToMe,enabled:cfg.enabled!==false};
+        const{error}=await sb.from('app_settings').upsert({key:'kakao_notify',value:JSON.stringify(v),updated_at:new Date().toISOString()});
+        if(error){alert('저장 실패: '+error.message);return;}toast('✅ 카카오 알림 설정 저장됨');
+    };
+    const doPreview=async()=>{setBusy('preview');try{setPreview((await call('preview')).messages||[]);}catch(e){alert('미리보기 실패: '+e.message);}setBusy('');};
+    const doTest=async()=>{
+        if(!window.confirm('지금 할 일 요약을 선택한 직원에게 카카오톡으로 보낼까요?\n(먼저 💾 알림 설정 저장을 눌러야 바뀐 받는 사람이 반영됩니다)'))return;
+        setBusy('test');
+        try{const r=await call('test');setPreview(r.messages||[]);
+            alert('발송 완료: 메시지 '+(r.messages||[]).length+'개 → 직원 '+r.sentTo+'명'+(r.sendToMe?' + 나에게':'')+(r.fails&&r.fails.length?'\n\n일부 실패: '+r.fails.join('\n'):''));load();}
+        catch(e){alert('발송 실패: '+e.message);}
+        setBusy('');
+    };
+    const isAdmin=me===ADMIN_EMAIL;
+    const s=stt&&stt.sender;
+    const leftDays=s&&s.refresh_expires_at?Math.floor((new Date(s.refresh_expires_at)-Date.now())/86400000):null;
+    const sel=(cfg.recipients||[]);
+    return(<div className="card"><div className="card-title">💬 카카오톡 할 일 알림</div>
+        <div style={{fontSize:12,color:'var(--muted)',marginBottom:10,lineHeight:1.7}}>매일 아침 9시에 오늘·1주일 할 일과 잔금 미입금을 선택한 직원에게 카카오톡으로 보냅니다 (PC가 꺼져 있어도 발송).<br/>받는 직원은 ① 카카오 개발자 앱 팀원 ② 아래 '알림 받기 동의' 한 번 ③ 보내는 계정과 카톡 친구여야 합니다.</div>
+        {busy==='exchange'&&<div style={{fontWeight:700,color:'var(--blue)',marginBottom:8}}>⏳ 카카오 연결 중...</div>}
+        {stt===undefined?<div style={{fontSize:13,color:'var(--muted)'}}>불러오는 중...</div>
+        :stt===null?<div style={{fontSize:13,color:'var(--red)'}}>⚠ 알림 서버 함수에 연결할 수 없습니다 ({err}). 서버 함수(kakao)가 아직 설치되지 않았을 수 있습니다.</div>
+        :<>
+            {!stt.secretSet&&<div style={{fontSize:13,color:'var(--red)',marginBottom:8}}>⚠ Supabase 서버 함수 비밀값 KAKAO_CLIENT_SECRET 이 아직 없습니다.</div>}
+            {!stt.cronSet&&<div style={{fontSize:13,color:'#b45309',marginBottom:8}}>⚠ 매일 9시 자동 발송 설정(CRON_SECRET)이 아직 없습니다. 테스트 발송은 됩니다.</div>}
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}}>
+                <b style={{fontSize:13}}>보내는 계정</b>
+                {s?<span style={{fontSize:13}}>{s.nickname} <span style={{color:'var(--muted)',fontSize:12}}>· 로그인 만료 {fmtD(s.refresh_expires_at)}{leftDays!==null&&leftDays<14&&<b style={{color:'var(--red)'}}> ({leftDays}일 남음 — 다시 연결해 주세요)</b>}</span></span>
+                  :<span style={{fontSize:13,color:'var(--muted)'}}>연결 안 됨</span>}
+                {isAdmin&&<button className="btn btn-outline btn-sm" disabled={!!busy} onClick={()=>connect('sender')}>{s?'🔄 다시 연결':'🔗 보내는 카카오 계정 연결'}</button>}
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+                <b style={{fontSize:13}}>알림 받기 동의</b>
+                <span style={{fontSize:13}}>{members.length?members.map(m=>m.nickname).join(', '):<span style={{color:'var(--muted)'}}>아직 없음</span>}</span>
+                <button className="btn btn-outline btn-sm" disabled={!!busy} onClick={()=>connect('member')}>🙋 내 카카오로 알림 받기 동의</button>
+            </div>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:10}}>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:6}}>
+                    <b style={{fontSize:13}}>받는 직원</b>
+                    <span style={{fontSize:13}}>{sel.length?sel.map(r=>r.nickname).join(', '):<span style={{color:'var(--muted)'}}>선택 안 됨</span>}</span>
+                    <button className="btn btn-outline btn-sm" disabled={!!busy||!s} onClick={loadFriends}>{busy==='friends'?'⏳ 불러오는 중':'👥 친구 목록에서 고르기'}</button>
+                </div>
+                {friends&&(friends.length===0?<div style={{fontSize:12,color:'var(--muted)',marginBottom:6}}>고를 수 있는 친구가 없습니다. 직원이 '알림 받기 동의'를 했는지, 보내는 계정과 카톡 친구인지 확인해 주세요.</div>
+                  :<div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>{friends.map(f=>{const on=sel.some(r=>r.uuid===f.uuid);return(
+                    <label key={f.uuid} style={{display:'flex',alignItems:'center',gap:5,border:'1.5px solid '+(on?'var(--blue)':'var(--border)'),background:on?'#eff6ff':'#fff',borderRadius:20,padding:'4px 10px',fontSize:13,cursor:'pointer'}}>
+                        <input type="checkbox" checked={on} onChange={()=>toggleR(f)}/>{f.img&&<img src={f.img} alt="" style={{width:20,height:20,borderRadius:'50%'}}/>}{f.nickname}</label>);})}</div>)}
+                <label style={{display:'flex',alignItems:'center',gap:6,fontSize:13,margin:'4px 0'}}><input type="checkbox" checked={!!cfg.sendToMe} onChange={e=>setCfg(c=>({...c,sendToMe:e.target.checked}))}/>보내는 계정(나)에게도 보내기</label>
+                <label style={{display:'flex',alignItems:'center',gap:6,fontSize:13,margin:'4px 0'}}><input type="checkbox" checked={cfg.enabled!==false} onChange={e=>setCfg(c=>({...c,enabled:e.target.checked}))}/>매일 아침 9시 자동 발송</label>
+                {cfg.lastSent&&<div style={{fontSize:12,color:'var(--muted)'}}>마지막 발송 {fmtDT(cfg.lastSent)}{cfg.lastError&&<span style={{color:'var(--red)'}}> · 일부 실패: {cfg.lastError}</span>}</div>}
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+                    <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={saveCfg}>💾 알림 설정 저장</button>
+                    <button className="btn btn-outline btn-sm" disabled={!!busy} onClick={doPreview}>{busy==='preview'?'⏳':'👀'} 메시지 미리보기</button>
+                    <button className="btn btn-outline btn-sm" disabled={!!busy||!s} onClick={doTest}>{busy==='test'?'⏳ 보내는 중':'📤 지금 테스트 발송'}</button>
+                </div>
+                {preview&&<div style={{marginTop:8,display:'flex',flexDirection:'column',gap:6}}>{preview.map((m,i)=><pre key={i} style={{background:'#fef9c3',border:'1px solid #fde68a',borderRadius:8,padding:10,fontSize:12,whiteSpace:'pre-wrap',margin:0}}>{m}</pre>)}</div>}
+            </div>
+        </>}
+    </div>);
+}
+
+function SettingsPage({sb,kakaoCb}){
     const[st,setSt]=useState(null);
     const[saving,setSaving]=useState(false);
     useEffect(()=>{if(sb)loadSettings(sb).then(setSt);},[sb]);
@@ -5013,6 +5128,7 @@ function SettingsPage({sb}){
             <textarea rows={10} style={ta} value={st.notes} onChange={e=>upd('notes',e.target.value)} placeholder={'예)\n· 입금 계좌: OO은행 000-0000-0000 (예금주)\n· 계약금 입금 후 제작이 시작됩니다.\n· 현장 상황에 따라 금액이 변동될 수 있습니다.'}/>
             <div style={{fontSize:12,color:'var(--muted)',marginTop:6}}>모든 견적서 인쇄물의 맨 아래에 그대로 표시됩니다. 비워두면 표시하지 않습니다.</div>
         </div>
+        <KakaoNotify sb={sb} cb={kakaoCb}/>
         <StorageCleanup sb={sb}/>
     </div>);
 }
@@ -5237,7 +5353,14 @@ function App(){
             if(id)window.history.replaceState(null,'',window.location.pathname);
             return id||null;}catch(e){return null;}
     });
-    const[page,setPage]=useState(()=>openMatId?'mat-list':(initRoute?initRoute.page:'sched-biweek')); // 첫 화면: 2주간 일정 (자재 링크로 열면 자재관리)
+    // 카카오 로그인 후 돌아옴: 배포 사이트는 /kakao-callback?code=…, 로컬은 kakao-callback/index.html 이 ?kakao_code=… 로 넘겨줌 → 환경설정에서 처리
+    const[kakaoCb]=useState(()=>{try{
+        const p=new URLSearchParams(window.location.search),onCb=/\/kakao-callback\/?$/.test(window.location.pathname);
+        const code=onCb?p.get('code'):p.get('kakao_code'),err=onCb?(p.get('error_description')||p.get('error')):p.get('kakao_error');
+        if(!code&&!err)return null;
+        window.history.replaceState(null,'','/#/settings');
+        return{code,state:onCb?p.get('state'):p.get('kakao_state'),err};}catch(e){return null;}});
+    const[page,setPage]=useState(()=>kakaoCb?'settings':openMatId?'mat-list':(initRoute?initRoute.page:'sched-biweek')); // 첫 화면: 2주간 일정 (자재 링크로 열면 자재관리)
     const[sbOpen,setSbOpen]=useState(false);
     const[editEstId,setEditEstId]=useState(()=>(initRoute&&initRoute.estId)||null);
     const[matCats,setMatCats]=useState([]);
@@ -5422,7 +5545,7 @@ function App(){
             case 'sched-biweek':
             case 'sched-month':return<Schedule sb={sb} view={page==='sched-month'?'month':'biweek'} onSetView={v=>navigate(v==='month'?'sched-month':'sched-biweek')} onEditEst={id=>navigate('est-edit',id)}/>
 ;            case 'user-approval':return<UserApprovalPage sb={sb} user={user}/>;
-            case 'settings':return<SettingsPage sb={sb}/>;
+            case 'settings':return<SettingsPage sb={sb} kakaoCb={kakaoCb}/>;
             default:return<EstimateList isAdmin={user?.email===ADMIN_EMAIL} sb={sb} onEdit={id=>navigate('est-edit',id)} onNew={()=>navigate('est-new')} onChecklist={id=>navigate('est-checklist',id)}/>;
         }
     };

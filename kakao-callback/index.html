@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>카카오 연결 중…</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;color:#555">카카오 연결 중…
+<script>
+// 카카오 로그인 후 돌아오는 주소(/kakao-callback) → 받은 코드를 들고 앱 환경설정으로 이동
+var p=new URLSearchParams(location.search);
+location.replace('/?kakao_code='+encodeURIComponent(p.get('code')||'')+'&kakao_state='+encodeURIComponent(p.get('state')||'')+'&kakao_error='+encodeURIComponent(p.get('error_description')||p.get('error')||'')+'#/settings');
+</script></body></html>

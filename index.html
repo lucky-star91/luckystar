@@ -806,7 +806,10 @@ const StatusBadge = ({status}) => (
 /* ★ 진행 단계 판정 — 업무 흐름: 가견적발송 → 방문상담 및 실측 → 본견적발송 → 제작중 → 설치완료 → (잔금) 완료
    status_dates 키별 의미: 가견적발송·본견적발송=발송일, 방문상담 및 실측·설치완료=예정일시, 제작중=계약금 입금일
    status_checked: 방문상담 및 실측=방문함, 설치완료=설치함 / 잔금은 balance_paid */
-const normStatusObj = o => { const r={...(o||{})}; if('견적예정' in r){ if(!('본견적발송' in r)) r['본견적발송']=r['견적예정']; delete r['견적예정']; } return r; };
+const normStatusObj = o => { const r={...(o||{})}; if('견적예정' in r){ if(!('본견적발송' in r)) r['본견적발송']=r['견적예정']; delete r['견적예정']; }
+    // 예전 '설치 예정'(설치완료 날짜)은 설치·공사 일정(제작시작~제작완료)으로 읽음 — status_checked 의 '설치완료'(설치함)는 그대로
+    if(typeof r['설치완료']==='string'){ if(!r['제작시작']&&r['설치완료']){ const d=dtLocal(r['설치완료']).slice(0,10); r['제작시작']=d; r['제작완료']=d; } delete r['설치완료']; }
+    return r; };
 const getStage = ({sd,sc,deposit,balancePaid}) => {
     if(sc['설치완료']) return balancePaid ? '완료' : '설치완료';
     if((Number(deposit)||0)>0 || sd['제작중']) return '제작중';
@@ -824,7 +827,7 @@ const isOnHold = (stage,sd,holdDays) => {
 };
 // DB 견적 한 건 → {sd, sc, stage, hold, label}
 // 본견적 지연: 방문함 체크 후 delayDays 일이 지나도 본견적을 안 보낸 건 (우리가 할 일을 놓친 건 · 보류와 별개 표시)
-// 제작·공사 기간 일수 (시작일~완료일, 같은 날이면 1)
+// 설치·공사 기간 일수 (시작일~완료일, 같은 날이면 1)
 const prodDays = sd => { const a=new Date(String(sd['제작시작']||'').slice(0,10)),b=new Date(String(sd['제작완료']||'').slice(0,10)); return isNaN(a)||isNaN(b)?0:Math.max(1,Math.round((b-a)/86400000)+1); };
 const isDelayed = (stage,sd,sc,delayDays) => {
     const days=Number(delayDays)||0; if(days<=0||stage!=='방문상담 및 실측'||!sc['방문상담 및 실측']||sd['본견적발송']) return false;
@@ -859,14 +862,14 @@ const TRACK_STEPS = [
     ['방문상담 및 실측','방문상담 및 실측','방문 예정','datetime','방문함'],
     ['본견적발송','본견적발송','발송일','date',null],
     ['제작중','제작중','계약금 입금일','date',null],
-    ['설치완료','설치','설치 예정','datetime','설치함'],
+    ['설치완료','설치·공사','설치·공사 일정','range','설치함'], // 날짜는 제작시작~제작완료 (하루 작업은 시작=완료)
 ];
 function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCheck,onBalance}){
     const order=['작성중',...STATUS_LIST,'완료'];
     const si=order.indexOf(stage);
     const cell=(key,title,dlabel,dkind,clabel)=>{
         const ki=order.indexOf(key);
-        const val=sd[key];const chk=!!sc[key];
+        const val=dkind==='range'?sd['제작시작']:sd[key];const chk=!!sc[key];
         const isCur=stage===key;
         const done=clabel?chk:!!val||(key==='제작중'&&si>=ki);
         const skipped=!done&&!val&&si>ki;
@@ -886,7 +889,19 @@ function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCh
                     :chk&&<span style={{fontSize:10,fontWeight:700,color:'var(--green)'}}>✅ {clabel}</span>)}
             </div>
             <div style={{fontSize:10,fontWeight:700,color:'var(--muted)'}}>{dlabel}</div>
-            {editable
+            {dkind==='range'?(()=>{ // 설치·공사: 시작일~완료일 (하루 작업은 📅 당일)
+                const s=dtLocal(sd['제작시작']).slice(0,10),e=dtLocal(sd['제작완료']).slice(0,10),n=prodDays(sd);
+                if(!editable)return<div style={{fontSize:12,fontWeight:600,color:s?'var(--navy)':'var(--muted)'}}>{s?(n>1?`${fmtD(s)} ~ ${fmtD(e)} (${n}일)`:fmtD(s)):'-'}</div>;
+                return(<div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <div style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:10,width:30,flexShrink:0}}>시작</span>
+                        <input type="date" className={`status-dt-input ${s?'has-value':''}`} value={s} onChange={ev=>{onDate('제작시작',ev.target.value);if(ev.target.value&&(!e||e<ev.target.value))onDate('제작완료',ev.target.value);}}/></div>
+                    <div style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:10,width:30,flexShrink:0}}>완료</span>
+                        <input type="date" className={`status-dt-input ${e?'has-value':''}`} value={e} min={s||undefined} onChange={ev=>onDate('제작완료',ev.target.value)}/></div>
+                    <div style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:'var(--muted)'}}>
+                        <button className="btn btn-outline btn-xs" onClick={()=>{const d=s||ymd(new Date());onDate('제작시작',d);onDate('제작완료',d);}}>📅 당일</button>
+                        {s&&e&&<span>{n>1?`기간 ${n}일`:'당일 작업'}</span>}</div>
+                </div>);})()
+            :editable
                 ?<input type={dkind==='date'?'date':'datetime-local'} className={`status-dt-input ${val?'has-value':''}`}
                     value={dkind==='date'?dtLocal(val).slice(0,10):dtLocal(val)} onChange={e=>onDate(key,e.target.value)} title={title+' '+dlabel}/>
                 :<div style={{fontSize:12,fontWeight:600,color:val?'var(--navy)':'var(--muted)'}}>{val?(dkind==='date'?fmtD(val):fmtDT(val)):'-'}</div>}
@@ -2860,13 +2875,13 @@ function VisitPlanner({sb,estimateId,address,value,onPick,dur}){
                 if(e.id===estimateId)return;
                 const{sd,sc,lost,deleted,meta:em}=estStageInfo(e,0);
                 if(lost||deleted)return; // 실주·휴지통 견적은 제외
-                // 며칠 걸리는 공사는 그 기간 동안 현장에 있으므로 하루 종일 일정으로 계산
-                if(sd['제작시작']&&prodDays(sd)>1&&!sc['설치완료']){
+                // 설치·공사: 하루 설치는 설치 소요 시간만큼, 며칠 걸리는 공사는 그 기간 동안 하루 종일 일정으로 계산
+                if(sd['제작시작']&&!sc['설치완료']){const days=prodDays(sd)||1,one=days===1;
                     const s0=new Date(String(sd['제작시작']).slice(0,10)+'T00:00'),ws=hm2min(st.workStart),we=hm2min(st.workEnd);
-                    for(let k=0;k<prodDays(sd);k++){const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,Math.floor(ws/60),ws%60);
-                        if(d>=new Date(now.getFullYear(),now.getMonth(),now.getDate()))raw.push({start:d,dur:we-ws,kind:'공사',name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});}
+                    for(let k=0;k<days;k++){const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,Math.floor(ws/60),ws%60);
+                        if(d>=new Date(now.getFullYear(),now.getMonth(),now.getDate()))raw.push({start:d,dur:one?(Number(st.installMin)||240):we-ws,kind:one?'설치':'공사',name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});}
                 }
-                [['방문상담 및 실측','방문',Number(st.visitMin)||60],['설치완료','설치',Number(st.installMin)||240]].forEach(([k,kind,dur])=>{
+                [['방문상담 및 실측','방문',Number(st.visitMin)||60]].forEach(([k,kind,dur])=>{
                     if(!sd[k]||sc[k])return;const d=new Date(sd[k]);
                     if(isNaN(d)||d<new Date(now.getFullYear(),now.getMonth(),now.getDate())||d>=until)return;
                     raw.push({start:d,dur,kind,name:e.client_name||'고객',address:e.client_address||'',geo:em.geo});
@@ -3169,6 +3184,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     // 방문함·설치함 체크만 해도 단계가 넘어가도록, 날짜가 비어 있으면 체크한 날로 자동 기록
     const updStatusChecked=(status,checked)=>{
         setStatusChecked(p=>({...p,[status]:checked}));
+        if(status==='설치완료'){if(checked&&!statusDates['제작시작']){const d=ymd(new Date());setStatusDates(p=>({...p,'제작시작':d,'제작완료':d}));}return;} // 설치 날짜는 설치·공사 일정
         if(checked&&!statusDates[status])setStatusDates(p=>({...p,[status]:dtLocal(new Date())}));
     };
 
@@ -3611,14 +3627,6 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             </div>}
             {statusOpen&&<StatusTrack sd={statusDates} sc={statusChecked} stage={currentStage} hold={onHold} balancePaid={balancePaid} holdDays={holdDays}
                 editable onDate={updStatusDate} onCheck={updStatusChecked} onBalance={confirmBalance}/>}
-            {/* 제작·공사 일정: 하루 작업은 시작=완료(당일작업), 며칠 걸리는 공사는 기간 → 일정표에 기간으로 표시 */}
-            {statusOpen&&<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:10,fontSize:12}}>
-                <b style={{color:'var(--navy)'}}>🔨 제작·공사 일정</b>
-                <span>시작일</span><input type="date" className={`status-dt-input ${statusDates['제작시작']?'has-value':''}`} style={{width:'auto'}} value={dtLocal(statusDates['제작시작']).slice(0,10)} onChange={e=>updStatusDate('제작시작',e.target.value)}/>
-                <span>완료일</span><input type="date" className={`status-dt-input ${statusDates['제작완료']?'has-value':''}`} style={{width:'auto'}} value={dtLocal(statusDates['제작완료']).slice(0,10)} onChange={e=>updStatusDate('제작완료',e.target.value)}/>
-                <button className="btn btn-outline btn-xs" onClick={()=>{const s=statusDates['제작시작']?dtLocal(statusDates['제작시작']).slice(0,10):ymd(new Date());updStatusDate('제작시작',s);updStatusDate('제작완료',s);}}>📅 당일작업</button>
-                {statusDates['제작시작']&&statusDates['제작완료']&&<span style={{color:'var(--muted)'}}>{prodDays(statusDates)>1?`기간 작업 ${prodDays(statusDates)}일 (일정표에 기간으로 표시)`:'당일 작업'}</span>}
-            </div>}
             {/* 📦 재고 차감 상태 (설치 후 소요 자재를 재고에서 차감 · 되돌리기 가능, 입출고 기록에 남음) */}
             {statusOpen&&mode==='edit'&&stockLinesOf(estMaterials).length>0&&<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8,fontSize:12}}>
                 <b style={{color:'var(--navy)'}}>📦 재고</b>
@@ -3628,7 +3636,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     :<><span style={{color:'var(--muted)'}}>미차감 ({stockLinesOf(estMaterials).length}종)</span>
                         <button className="btn btn-outline btn-xs" disabled={stockBusy} onClick={()=>{if(confirm('소요 자재 '+stockLinesOf(estMaterials).length+'종을 재고에서 차감할까요?'))deductStock();}}>📦 재고 차감</button></>}
             </div>}
-            {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🔨 제작·🎉 설치 일정은 일정표에 표시</div>}
+            {statusOpen&&<div style={{fontSize:11,color:'var(--muted)',marginTop:8}}>📤 가견적·📨 본견적 발송일은 🖨 인쇄할 때 확인하면 자동 기록 · 🔧 제작중은 계약금 입력 후 저장하면 자동 기록 · 🏠 방문·🎉 설치·공사 일정은 일정표에 표시 (하루 작업은 📅 당일)</div>}
             {statusOpen&&!statusChecked['방문상담 및 실측']&&<VisitPlanner sb={sb} estimateId={estimateId} address={client.address} value={statusDates['방문상담 및 실측']} onPick={v=>updStatusDate('방문상담 및 실측',v)}/>}
         </div>
 
@@ -4504,9 +4512,8 @@ function TodoPanels({estimates,st,onEdit}){
     estimates.forEach(e=>{
         const i=estStageInfo(e,st.holdDays,st.delayDays);if(i.lost||i.deleted)return;
         if(i.sd['방문상담 및 실측']&&!i.sc['방문상담 및 실측'])sched(e,'🏠 방문',i.sd['방문상담 및 실측'],fmtDT(i.sd['방문상담 및 실측']).split(' ').slice(2).join(' '));
-        if(i.sd['설치완료']&&!i.sc['설치완료'])sched(e,'🎉 설치',i.sd['설치완료'],fmtDT(i.sd['설치완료']).split(' ').slice(2).join(' '));
         if(i.sd['제작시작']&&!i.sc['설치완료']){const s0=new Date(String(i.sd['제작시작']).slice(0,10)+'T09:00'),days=prodDays(i.sd)||1;
-            for(let k=0;k<days;k++)sched(e,days>1?'🔨 공사':'🔨 제작',new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,9),days>1?`${k+1}/${days}일`:'');}
+            for(let k=0;k<days;k++)sched(e,days>1?'🔨 설치·공사':'🎉 설치',new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,9),days>1?`${k+1}/${days}일`:'');}
         pendingExtras(e).forEach(v=>sched(e,'🔧 '+v.type,v.at,v.reason||''));
         // 연락·처리할 일은 1주일 할 일에
         if(i.delayed)weekList.push([e,'⚠ 본견적 지연','방문 '+fmtD(i.sd['방문상담 및 실측'])]);
@@ -4789,9 +4796,10 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
 /* ═══════════════════════════════════════
    ★ 일정표
 ═══════════════════════════════════════ */
-// 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치 예정
-const PROD_STYLE={color:'#7c2d12',bg:'#fed7aa'}; // 제작·공사 일정 색 (기간 작업은 매일 같은 색)
-const SCHED_MAP={'방문상담 및 실측':{label:'🏠 방문상담',color:'#c2410c',bg:'#ffedd5'},'설치완료':{label:'🎉 설치',color:'#15803d',bg:'#dcfce7'}};
+// 일정표에는 현장에 가야 하는 예정만 표시: 방문상담·실측 예정, 설치·공사 일정
+const PROD_STYLE={color:'#7c2d12',bg:'#fed7aa'}; // 며칠 걸리는 설치·공사 색 (기간 동안 매일 같은 색)
+const SCHED_MAP={'방문상담 및 실측':{label:'🏠 방문상담',color:'#c2410c',bg:'#ffedd5'}};
+const INSTALL_STYLE={color:'#15803d',bg:'#dcfce7'}; // 하루 설치 (설치·공사 시작=완료)
 
 function Schedule({sb,view,onSetView,onEditEst}){
     const[base,setBase]=useState(new Date());
@@ -4827,12 +4835,12 @@ function Schedule({sb,view,onSetView,onEditEst}){
         estimates.forEach(est=>{
             const{sd,sc,lost,deleted,stage}=estStageInfo(est,0);
             if(lost||deleted)return; // 실주·휴지통 견적은 일정에서 제외
-            // 제작·공사: 하루 작업은 그날 하나, 며칠 걸리는 공사는 시작~완료 매일 같은 색으로 표시 (설치까지 끝난 견적은 제외)
+            // 설치·공사: 하루 작업은 '설치' 하나, 며칠 걸리는 공사는 시작~완료 매일 같은 색으로 표시 (설치함 체크된 견적은 제외)
             if(sd['제작시작']&&!sc['설치완료']&&stage!=='완료'){
                 const s0=new Date(String(sd['제작시작']).slice(0,10)+'T00:00'),days=prodDays(sd)||1;
                 for(let k=0;k<days;k++){
                     const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,8,0);
-                    evts.push({date:d,label:days>1?`🔨 공사 ${k+1}/${days}일`:'🔨 제작',color:PROD_STYLE.color,bg:PROD_STYLE.bg,span:days>1?(k===0?'start':k===days-1?'end':'mid'):null,
+                    evts.push({date:d,label:days>1?`🔨 설치·공사 ${k+1}/${days}일`:'🎉 설치',color:(days>1?PROD_STYLE:INSTALL_STYLE).color,bg:(days>1?PROD_STYLE:INSTALL_STYLE).bg,span:days>1?(k===0?'start':k===days-1?'end':'mid'):null,
                         clientName:est.client_name||'고객',time:days>1?(k===0?'시작':k===days-1?'완료':''):'당일',est});
                 }
             }
@@ -4993,9 +5001,10 @@ function Schedule({sb,view,onSetView,onEditEst}){
 
         <div className="cal-legend" style={{marginBottom:12}}>
             {Object.values(SCHED_MAP).map(info=>(<span key={info.label} className="cal-legend-item" style={{background:info.bg,color:info.color}}>● {info.label}</span>))}
-            <span className="cal-legend-item" style={{background:PROD_STYLE.bg,color:PROD_STYLE.color}}>🔨 제작·공사</span>
+            <span className="cal-legend-item" style={{background:INSTALL_STYLE.bg,color:INSTALL_STYLE.color}}>🎉 설치</span>
+            <span className="cal-legend-item" style={{background:PROD_STYLE.bg,color:PROD_STYLE.color}}>🔨 설치·공사(기간)</span>
             {Object.entries(EXTRA_TYPES).map(([t,tp])=>(<span key={t} className="cal-legend-item" style={{background:tp.bg,color:tp.color}}>{tp.icon} {t}</span>))}
-            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·제작·공사·설치·추가 방문 예정 표시 (공사는 기간 동안 같은 색) · 방문함/설치함 체크된 일정은 숨김</span>
+            <span style={{fontSize:11,color:'var(--muted)',alignSelf:'center'}}>※ 방문상담·설치·공사·추가 방문 예정 표시 (며칠 걸리는 공사는 기간 동안 같은 색) · 방문함/설치함 체크된 일정은 숨김</span>
         </div>
 
         <div className="cal-header" style={{marginBottom:14}}>

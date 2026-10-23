@@ -81,7 +81,12 @@ const hm = (t: number) => new Date(t + KST).toISOString().slice(11, 16);
 const md = (t: number) => { const d = new Date(t + KST); return (d.getUTCMonth() + 1) + "/" + d.getUTCDate(); };
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("ko-KR");
-const normStatusObj = (o: any) => { const r = { ...(o || {}) }; if ("견적예정" in r) { if (!("본견적발송" in r)) r["본견적발송"] = r["견적예정"]; delete r["견적예정"]; } return r; };
+const normStatusObj = (o: any) => {
+  const r = { ...(o || {}) }; if ("견적예정" in r) { if (!("본견적발송" in r)) r["본견적발송"] = r["견적예정"]; delete r["견적예정"]; }
+  // 예전 '설치 예정' 날짜는 설치·공사 일정(제작시작~제작완료)으로 읽음 (status_checked 의 설치함은 그대로)
+  if (typeof r["설치완료"] === "string") { if (!r["제작시작"] && r["설치완료"]) { const d = new Date(tOf(r["설치완료"]) + KST).toISOString().slice(0, 10); r["제작시작"] = d; r["제작완료"] = d; } delete r["설치완료"]; }
+  return r;
+};
 const getStage = (sd: any, sc: any, deposit: unknown, balancePaid: unknown) => {
   if (sc["설치완료"]) return balancePaid ? "완료" : "설치완료";
   if ((Number(deposit) || 0) > 0 || sd["제작중"]) return "제작중";
@@ -129,10 +134,9 @@ async function buildDigest(): Promise<Section[]> {
   for (const e of ests || []) {
     const i = info(e, holdDays, delayDays); if (i.lost || i.deleted) continue;
     if (i.sd["방문상담 및 실측"] && !i.sc["방문상담 및 실측"]) sched(e, "🏠 방문", tOf(i.sd["방문상담 및 실측"]));
-    if (i.sd["설치완료"] && !i.sc["설치완료"]) sched(e, "🎉 설치", tOf(i.sd["설치완료"]));
     if (i.sd["제작시작"] && !i.sc["설치완료"]) {
       const s0 = tOf(String(i.sd["제작시작"]).slice(0, 10) + "T09:00"), days = prodDays(i.sd) || 1;
-      for (let k = 0; k < days; k++) sched(e, days > 1 ? "🔨 공사" : "🔨 제작", s0 + k * 86400000, days > 1 ? `${k + 1}/${days}일` : "");
+      for (let k = 0; k < days; k++) sched(e, days > 1 ? "🔨 설치·공사" : "🎉 설치", s0 + k * 86400000, days > 1 ? `${k + 1}/${days}일` : "");
     }
     for (const v of parseJSON(e.extra_visits, []) as any[]) if (v.at && !v.done) sched(e, "🔧 " + (v.type || "방문"), tOf(v.at), v.reason || "");
     if (i.delayed) weekL.push({ t: Infinity, title: "⚠ 본견적 지연", desc: short(e.client_name), id: e.id });

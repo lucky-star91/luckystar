@@ -693,6 +693,11 @@ const parseHash=(hash,isAdmin)=>{
     return{page};
 };
 const parseJSON = (v,d) => { try{ return typeof v==='string' ? JSON.parse(v||JSON.stringify(d)) : (v||d); }catch(e){ return d; } };
+// ★ 자재분류 2단계: parent_id 없음 = 상위분류, 있음 = 하위분류. 자재는 하위분류에 등록 (예전 자재는 상위분류에 남아 '하위분류 미지정')
+const topMatCats = cats => (cats||[]).filter(c=>!c.parent_id);
+const subMatCats = (cats,pid) => (cats||[]).filter(c=>c.parent_id===pid);
+const matTopId = (cats,id) => { const c=(cats||[]).find(x=>x.id===id); return c?(c.parent_id||c.id):null; };
+const matCatLabel = (cats,id) => { const c=(cats||[]).find(x=>x.id===id); if(!c) return '미분류'; const p=c.parent_id&&cats.find(x=>x.id===c.parent_id); return p?p.name+' › '+c.name:c.name; };
 // 소요자재/공구·부자재 행 → 담긴 상품(상품분류·상품명) 정보
 const prodInfoOf=(r,items,cats)=>{
     const it=(items||[]).find(i=>i.id===r.itemId)||(r.itemName?(items||[]).find(i=>i.name===r.itemName):null);
@@ -1288,7 +1293,7 @@ function SupplierModal({sb,matCats,outCats,initial,onClose,onSave}){
                     </label>
                     {form.is_material_supplier&&(
                         <div className="cat-check-grid">
-                            {matCats.map(c=>(
+                            {topMatCats(matCats).map(c=>(
                                 <label key={c.id} className={`cat-check-item ${form._matIds.includes(c.id)?'checked':''}`} onClick={()=>toggleMatCat(c.id)}>
                                     {form._matIds.includes(c.id)?'✅':'⬜'} {c.name}
                                 </label>
@@ -1533,18 +1538,37 @@ function StockModal({sb,mat,onClose,onChanged}){
     </div>);
 }
 
-function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
-    const blank={category_id:'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
+function MaterialModal({sb,matCats,suppliers,initial,defaultCatId,onAddSubCat,onClose,onSave}){
+    const blank={category_id:defaultCatId||'',name:'',specification:'',unit_price:0,processing_cost:0,stock_qty:0,manufacturer:'',supplier:'',thickness:'',category_extra:'',purchase_link:'',image_url:'',memo:'',quote_file_url:'',quote_file_name:''};
     const[form,setForm]=useState(initial?{...initial}:blank);
     const set=(k,v)=>setForm(p=>({...p,[k]:v}));
+    // 분류는 상위 → 하위 두 단계로 고름 (자재는 하위분류에 등록)
+    const[topId,setTopId]=useState(()=>matTopId(matCats,form.category_id)||'');
+    const subs=subMatCats(matCats,topId);
+    const subId=subs.some(c=>c.id===form.category_id)?form.category_id:'';
+    const addSub=async()=>{
+        const name=(window.prompt('새 하위분류 이름')||'').trim();if(!name)return;
+        const c=await onAddSubCat(topId,name);if(c)set('category_id',c.id);
+    };
     // 수정할 때는 재고수량을 건드리지 않음 (재고는 목록의 ✏️ '재고 수정'으로 바꾸면 입출고 기록이 남음)
-    const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}const{stock_qty,...rest}=form;onSave(initial?rest:form);};
+    const ok=()=>{if(!form.name.trim()){alert('품명을 입력하세요');return;}
+        if(!subId){alert('하위분류를 선택하세요.\n(하위분류가 없으면 ＋ 새 하위분류로 먼저 만드세요)');return;}
+        const{stock_qty,...rest}=form;onSave(initial?rest:form);};
     return(<div className="modal-overlay" onClick={onClose}>
         <div className="modal-box lg" onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title">{initial?'자재 수정':'새 자재 등록'}</div><button className="modal-close" onClick={onClose}>✕</button></div>
             <div className="mf"><label className="ml">사진</label><ImgUpload sb={sb} folder="materials" value={form.image_url} onChange={v=>set('image_url',v)}/></div>
             <div className="modal-grid">
-                <div className="mf"><label className="ml">분류</label><select className="mi" value={form.category_id||''} onChange={e=>set('category_id',e.target.value)}><option value="">분류 선택</option>{matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                <div className="mf"><label className="ml">분류 *</label><select className="mi" value={topId} onChange={e=>{setTopId(e.target.value);set('category_id','');}}><option value="">분류 선택</option>{topMatCats(matCats).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                <div className="mf"><label className="ml">하위분류 *</label>
+                    <div style={{display:'flex',gap:6}}>
+                        <select className="mi" style={{flex:1}} value={subId} disabled={!topId} onChange={e=>set('category_id',e.target.value)}>
+                            <option value="">{!topId?'분류를 먼저 선택':subs.length?'하위분류 선택':'하위분류 없음 → ＋ 로 추가'}</option>
+                            {subs.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                        {topId&&<button type="button" className="btn btn-outline btn-sm" onClick={addSub}>＋</button>}
+                    </div>
+                    {initial&&!subId&&topId&&<div style={{fontSize:11,color:'#b45309',marginTop:3}}>하위분류 미지정 — 저장하려면 하위분류를 고르세요</div>}
+                </div>
                 <div className="mf"><label className="ml">품명 *</label><input className="mi" value={form.name||''} onChange={e=>set('name',e.target.value)} placeholder="자재명 입력"/></div>
                 <div className="mf"><label className="ml">규격/재질</label><input className="mi" value={form.specification||''} onChange={e=>set('specification',e.target.value)} placeholder="규격 입력"/></div>
                 <div className="mf"><label className="ml">두께</label><input className="mi" value={form.thickness||''} onChange={e=>set('thickness',e.target.value)} placeholder="예: 18mm, 2T"/></div>
@@ -1570,10 +1594,12 @@ function MaterialModal({sb,matCats,suppliers,initial,onClose,onSave}){
     </div>);
 }
 
-function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,onOpened}){
+function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatCat,onDelMatCat,initialCatId,openMatId,onOpened}){
     const[materials,setMaterials]=useState([]);const[loading,setLoading]=useState(true);
-    const[activeCat,setActiveCat]=useState(initialCatId||null);
+    const[activeCat,setActiveCat]=useState(initialCatId||null); // 상위분류
+    const[activeSub,setActiveSub]=useState(null);               // 하위분류 (null=전체, 'none'=하위분류 미지정)
     useEffect(()=>{setActiveCat(initialCatId||null);},[initialCatId]); // 사이드바 분류 클릭 시 목록 갱신
+    useEffect(()=>{setActiveSub(null);},[activeCat]);
     const[showModal,setShowModal]=useState(false);const[editing,setEditing]=useState(null);
     const[search,setSearch]=useState('');const[importing,setImporting]=useState(false);
     const[orderCart,setOrderCart]=useState([]); // 발주서 카트
@@ -1600,15 +1626,17 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
         }
     };
     const del=async id=>{if(!confirm('삭제?'))return;await sb.from('materials').delete().eq('id',id);setMaterials(p=>p.filter(m=>m.id!==id));toast('🗑 삭제됨');};
-    const catName=id=>matCats.find(c=>c.id===id)?.name||'미분류';
+    const catName=id=>matCatLabel(matCats,id);
+    const isSub=id=>!!(matCats.find(c=>c.id===id)||{}).parent_id;
 
-    // ★ 엑셀 내보내기
+    // ★ 엑셀 내보내기 (분류 · 하위분류 따로)
     const exportExcel=()=>{
-        const headers=['품명','분류','규격/재질','두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
-        const rows=materials.map(m=>[m.name||'',catName(m.category_id),m.specification||'',m.thickness||'',m.unit_price||0,m.processing_cost||0,m.stock_qty||0,m.manufacturer||'',m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
+        const headers=['품명','분류','하위분류','규격/재질','두께','단가(원)','가공비(원)','재고수량','제조사','공급업체','기타구분','메모','구매링크'];
+        const nm=id=>(matCats.find(c=>c.id===id)||{}).name||'';
+        const rows=materials.map(m=>[m.name||'',nm(matTopId(matCats,m.category_id)),isSub(m.category_id)?nm(m.category_id):'',m.specification||'',m.thickness||'',m.unit_price||0,m.processing_cost||0,m.stock_qty||0,m.manufacturer||'',m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
         const wb=XLSX.utils.book_new();
         const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-        ws['!cols']=[{wch:22},{wch:12},{wch:16},{wch:8},{wch:10},{wch:10},{wch:8},{wch:14},{wch:14},{wch:12},{wch:18},{wch:30}];
+        ws['!cols']=[{wch:22},{wch:12},{wch:12},{wch:16},{wch:8},{wch:10},{wch:10},{wch:8},{wch:14},{wch:14},{wch:12},{wch:18},{wch:30}];
         XLSX.utils.book_append_sheet(wb,ws,'자재목록');
         XLSX.writeFile(wb,'럭키스타_자재목록.xlsx');
         toast('📊 엑셀 저장됨');
@@ -1628,15 +1656,20 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
             const hdr=rows[0];
             const col=k=>hdr.indexOf(k);
             let added=0,updated=0,errors=0;
+            const cats=[...matCats]; // 가져오는 중 새로 만든 하위분류도 바로 찾을 수 있게
             for(let i=1;i<rows.length;i++){
                 const r=rows[i];
                 const name=String(r[col('품명')]||'').trim();
                 if(!name)continue;
                 const catStr=String(r[col('분류')]||'').trim();
-                const catObj=matCats.find(c=>c.name===catStr);
+                const subStr=col('하위분류')>=0?String(r[col('하위분류')]||'').trim():'';
+                const catObj=topMatCats(cats).find(c=>c.name===catStr);
+                // 하위분류: 이름이 있으면 그 상위분류 아래에서 찾고, 없으면 새로 만듦 (비어 있으면 상위분류에 '하위분류 미지정'으로)
+                let subObj=catObj&&subStr?subMatCats(cats,catObj.id).find(c=>c.name===subStr):null;
+                if(catObj&&subStr&&!subObj){subObj=await onAddSubCat(catObj.id,subStr,true);if(subObj)cats.push(subObj);}
                 const payload={
                     name,
-                    category_id:catObj?catObj.id:null,
+                    category_id:subObj?subObj.id:catObj?catObj.id:null,
                     specification:String(r[col('규격/재질')]||''),
                     thickness:String(r[col('두께')]||''),
                     unit_price:Number(r[col('단가(원)')])||0,
@@ -1669,7 +1702,8 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
 
     // ★ 필터 + 검색 + 정렬(이름순)
     const filtered=materials
-        .filter(m=>!activeCat||m.category_id===activeCat)
+        .filter(m=>!activeCat||matTopId(matCats,m.category_id)===activeCat)
+        .filter(m=>!activeSub||(activeSub==='none'?m.category_id===activeCat:m.category_id===activeSub))
         .filter(m=>!search||m.name.toLowerCase().includes(search.toLowerCase())||
             (m.specification||'').toLowerCase().includes(search.toLowerCase())||
             (m.supplier||'').toLowerCase().includes(search.toLowerCase()));
@@ -1736,7 +1770,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
     if(loading)return<div className="loading-wrap"><div className="loading-spinner"/></div>;
     return(<div>
         {stockMat&&<StockModal sb={sb} mat={stockMat} onClose={()=>setStockMat(null)} onChanged={q=>{setMaterials(p=>p.map(m=>m.id===stockMat.id?{...m,stock_qty:q}:m));setStockMat(s=>({...s,stock_qty:q}));}}/>}
-        {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
+        {showModal&&<MaterialModal sb={sb} matCats={matCats} suppliers={suppliers||[]} initial={editing} defaultCatId={activeSub&&activeSub!=='none'?activeSub:(activeCat||'')} onAddSubCat={onAddSubCat} onClose={()=>{setShowModal(false);setEditing(null);}} onSave={save}/>}
         <div className="page-header">
             <div className="page-title-wrap"><h1>📦 자재 관리</h1><p>자재 등록 · 단가 · 재고 · 이름순 정렬</p></div>
             <div className="btn-row">
@@ -1756,8 +1790,25 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
         {/* 카테고리 필터 */}
         <div className="cat-filter">
             <div className={`cat-tab ${!activeCat?'active':''}`} onClick={()=>setActiveCat(null)}>전체 <span className="cnt">{materials.length}</span></div>
-            {matCats.map(c=><div key={c.id} className={`cat-tab ${activeCat===c.id?'active':''}`} onClick={()=>setActiveCat(c.id)}>{c.name} <span className="cnt">{materials.filter(m=>m.category_id===c.id).length}</span></div>)}
+            {topMatCats(matCats).map(c=><div key={c.id} className={`cat-tab ${activeCat===c.id?'active':''}`} onClick={()=>setActiveCat(c.id)}>{c.name} <span className="cnt">{materials.filter(m=>matTopId(matCats,m.category_id)===c.id).length}</span></div>)}
         </div>
+        {/* 하위분류 — 상위분류를 고르면 표시 */}
+        {activeCat&&(()=>{
+            const subs=subMatCats(matCats,activeCat),noneCnt=materials.filter(m=>m.category_id===activeCat).length;
+            const chip=on=>({display:'inline-flex',alignItems:'center',gap:4,padding:'4px 12px',borderRadius:16,fontSize:12,fontWeight:700,cursor:'pointer',border:'1.5px solid '+(on?'var(--blue)':'var(--border)'),background:on?'#eff6ff':'#fff',color:on?'var(--blue)':'var(--text)'});
+            const sub=subs.find(c=>c.id===activeSub);
+            return(<div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',margin:'-4px 0 12px',padding:'8px 10px',background:'#f8fafc',borderRadius:10}}>
+                <span style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>하위분류</span>
+                <span style={chip(!activeSub)} onClick={()=>setActiveSub(null)}>전체</span>
+                {subs.map(c=><span key={c.id} style={chip(activeSub===c.id)} onClick={()=>setActiveSub(c.id)}>{c.name} <span style={{fontWeight:400,color:'var(--muted)'}}>{materials.filter(m=>m.category_id===c.id).length}</span></span>)}
+                {noneCnt>0&&<span style={{...chip(activeSub==='none'),color:activeSub==='none'?'#b45309':'#b45309',borderColor:activeSub==='none'?'#b45309':'#fcd34d'}} onClick={()=>setActiveSub('none')}>⚠ 하위분류 미지정 {noneCnt}</span>}
+                <span style={{...chip(false),borderStyle:'dashed',color:'var(--muted)'}} onClick={()=>{const n=(window.prompt('새 하위분류 이름')||'').trim();if(n)onAddSubCat(activeCat,n).then(c=>c&&setActiveSub(c.id));}}>＋ 하위분류</span>
+                {sub&&<>
+                    <button className="btn btn-outline btn-xs" onClick={()=>{const n=(window.prompt('하위분류 이름 수정',sub.name)||'').trim();if(n&&n!==sub.name)onRenameMatCat(sub.id,n);}}>✏️ 이름 수정</button>
+                    <button className="btn btn-outline btn-xs" style={{color:'var(--red)'}} onClick={()=>{onDelMatCat(sub.id);setActiveSub(null);}}>✕ 삭제</button>
+                </>}
+            </div>);
+        })()}
         {/* 검색 */}
         <div style={{marginBottom:14}}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 품명 · 규격 · 공급업체 검색..."
@@ -1879,7 +1930,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,initialCatId,openMatId,o
                 <tr key={m.id}>
                     <td style={{textAlign:'center'}}>{m.image_url?<img src={m.image_url} style={{width:36,height:36,objectFit:'cover',borderRadius:5,border:'1px solid var(--border)'}} alt=""/>:<span style={{fontSize:18}}>📦</span>}</td>
                     <td style={{fontWeight:700}}>{m.name}</td>
-                    <td style={{fontSize:12,color:'var(--muted)'}}>{catName(m.category_id)}</td>
+                    <td style={{fontSize:12,color:'var(--muted)'}}>{catName(m.category_id)}{m.category_id&&!isSub(m.category_id)&&matCats.some(c=>c.id===m.category_id)&&<div style={{color:'#b45309',fontSize:11}}>하위분류 미지정</div>}</td>
                     <td style={{fontSize:12,color:'var(--muted)'}}>{m.specification||'-'}</td>
                     <td style={{fontSize:12,color:'var(--muted)'}}>{m.thickness||'-'}</td>
                     <td className="tr" style={{fontWeight:700}}>{fmt(m.unit_price||0)}</td>
@@ -2099,7 +2150,7 @@ function ProductModal({sb,matCats,prodCats,toolCats,initial,onClose,onSave}){
                     // material_id로 자재 분류 복원
                     const found=(allMatsData||[]).find(x=>x.id===m.material_id);
                     return{
-                        _catId:found?.category_id||'',
+                        _catId:matTopId(matCats,found?.category_id)||'', // 자재분류 칸은 상위분류
                         material_id:m.material_id||'',
                         material_name:m.material_name||'',
                         unit_price:Number(found?.unit_price??m.unit_price)||0,
@@ -2166,21 +2217,21 @@ function ProductModal({sb,matCats,prodCats,toolCats,initial,onClose,onSave}){
                         <select className="mi" style={{fontSize:12}} value={m._catId||''}
                             onChange={e=>updMat(i,'_catId',e.target.value)}>
                             <option value="">── 분류 선택 ──</option>
-                            {matCats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                            {topMatCats(matCats).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                         {/* 2. 자재 품명 (분류 선택 후 필터링 / 기존값 표시) */}
                         <select className="mi" style={{fontSize:12}} value={m.material_id||''}
                             onChange={e=>{
                                 const mat=allMaterials.find(x=>x.id===e.target.value);
-                                if(mat)updMat(i,'__batch__',{_catId:mat.category_id||'',material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
+                                if(mat)updMat(i,'__batch__',{_catId:matTopId(matCats,mat.category_id)||'',material_id:mat.id,material_name:mat.name,unit_price:mat.unit_price||0});
                                 else updMat(i,'material_id','');
                             }}>
                             <option value="">{m._catId?'── 품명 선택 ──':'← 분류 먼저 선택'}</option>
                             {/* 저장된 값이 현재 목록에 없을 때도 표시 */}
-                            {m.material_id&&!allMaterials.filter(x=>x.category_id===m._catId).find(x=>x.id===m.material_id)&&
+                            {m.material_id&&!allMaterials.filter(x=>matTopId(matCats,x.category_id)===m._catId).find(x=>x.id===m.material_id)&&
                                 <option value={m.material_id}>{m.material_name} (저장됨)</option>}
-                            {allMaterials.filter(mat=>!m._catId||mat.category_id===m._catId).map(mat=>(
-                                <option key={mat.id} value={mat.id}>{mat.name}{mat.specification?' ('+mat.specification+')':''}</option>
+                            {allMaterials.filter(mat=>!m._catId||matTopId(matCats,mat.category_id)===m._catId).map(mat=>(
+                                <option key={mat.id} value={mat.id}>{(matCats.find(c=>c.id===mat.category_id&&c.parent_id)||{name:''}).name?'['+matCats.find(c=>c.id===mat.category_id).name+'] ':''}{mat.name}{mat.specification?' ('+mat.specification+')':''}</option>
                             ))}
                         </select>
                         {/* 3. 수량 */}
@@ -5233,7 +5284,7 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
                 </div>
                 <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
                     <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
-                    {matCats.map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
+                    {topMatCats(matCats).map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
                     <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
                 </div>
                 <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
@@ -5480,10 +5531,18 @@ function App(){
         if(data)setMatCats(p=>[...p,data[0]]);
         setAddMatModal(false);toast('📁 자재분류 추가됨');
     };
+    // 하위분류 추가 → 새 분류를 돌려줌 (자재 등록 창·엑셀 가져오기에서 바로 선택)
+    const addSubMatCat=async(parentId,name,quiet)=>{
+        const{data,error}=await sb.from('material_categories').insert([{name,parent_id:parentId,display_order:matCats.filter(c=>c.parent_id===parentId).length}]).select();
+        if(error){alert('하위분류 추가 실패: '+error.message+'\n\n(DB에 parent_id 칸이 없다면 supabase/material_subcategories.sql 을 먼저 실행하세요)');return null;}
+        setMatCats(p=>[...p,data[0]]);if(!quiet)toast('📁 하위분류 추가됨: '+name);
+        return data[0];
+    };
     const delMatCat=async id=>{
-        if(!confirm('분류를 삭제하시겠습니까?'))return;
-        await sb.from('material_categories').delete().eq('id',id);
-        setMatCats(p=>p.filter(c=>c.id!==id));toast('🗑 삭제됨');
+        const subs=matCats.filter(c=>c.parent_id===id);
+        if(!confirm(subs.length?`분류를 삭제하시겠습니까?\n하위분류 ${subs.length}개(${subs.map(c=>c.name).join(', ')})도 함께 삭제되고, 그 자재들은 '미분류'가 됩니다.`:'분류를 삭제하시겠습니까?\n(이 분류의 자재는 \'미분류\'가 됩니다)'))return;
+        await sb.from('material_categories').delete().eq('id',id); // 하위분류는 DB에서 함께 삭제됨
+        setMatCats(p=>p.filter(c=>c.id!==id&&c.parent_id!==id));toast('🗑 삭제됨');
     };
     const addProdCat=async name=>{
         const{data}=await sb.from('product_categories').insert([{name,display_order:prodCats.length}]).select();
@@ -5541,7 +5600,7 @@ function App(){
 
     const renderPage=()=>{
         switch(page){
-            case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} initialCatId={activeCatId.mat} openMatId={openMatId} onOpened={()=>setOpenMatId(null)}/>;
+            case 'mat-list':return<MaterialList sb={sb} matCats={matCats} suppliers={suppliers} onAddMatCat={()=>setAddMatModal(true)} onAddSubCat={addSubMatCat} onRenameMatCat={renameMatCat} onDelMatCat={delMatCat} initialCatId={activeCatId.mat} openMatId={openMatId} onOpened={()=>setOpenMatId(null)}/>;
             case 'tool-list':return<ToolList sb={sb} toolCats={toolCats} onAddToolCat={()=>setAddToolModal(true)} initialCatId={activeCatId.tool}/>;
             case 'out-list':return<OutsourcingList key={'out-'+(activeCatId.out||'all')} sb={sb} outCats={outCats} suppliers={suppliers} onAddOutCat={()=>setAddOutModal(true)} initialCatId={activeCatId.out||null}/>;
             case 'supplier-list':return<SupplierList key={'sup-'+(activeCatId.sup||'all')} sb={sb} suppliers={suppliers} setSuppliers={setSuppliers} matCats={matCats} outCats={outCats} initialFilter={activeCatId.sup||null}/>;

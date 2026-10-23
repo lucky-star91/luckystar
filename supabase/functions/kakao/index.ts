@@ -104,53 +104,77 @@ function info(e: any, holdDays: number, delayDays: number) {
   const delayed = !lost && delayDays > 0 && stage === "방문상담 및 실측" && !!sc["방문상담 및 실측"] && !sd["본견적발송"] && !isNaN(vt) && Date.now() - vt > delayDays * 86400000;
   return { sd, sc, stage, hold, lost, deleted, delayed };
 }
-const short = (s: string) => { s = String(s || "고객").trim(); return s.length > 10 ? s.slice(0, 10) + "…" : s; };
+const short = (s: string, n = 14) => { s = String(s || "고객").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
+const estUrl = (id: string) => `${SITE}/#/est-edit/${id}`;
+const SCHED_URL = `${SITE}/#/sched-biweek`;
 
-async function buildDigest() {
+// 할 일 한 줄: title(종류·시간) · desc(고객명 등) · id(누르면 열 견적)
+type Item = { t: number; title: string; desc: string; id: string };
+type Section = { title: string; items: Item[] };
+
+async function buildDigest(): Promise<Section[]> {
   const { data: stRow } = await admin.from("app_settings").select("value").eq("key", "estimate").maybeSingle();
   const st = parseJSON(stRow?.value, {});
   const holdDays = Number(st.holdDays ?? 30) || 0, delayDays = Number(st.delayDays ?? 0) || 0;
   const { data: ests, error } = await admin.from("estimates").select("*");
   if (error) throw new Error("견적 읽기 오류: " + error.message);
   const now = Date.now(), today = dayKey(now), weekEnd = dayKey(now + 7 * 86400000);
-  const todayL: [number, string][] = [], weekL: [number, string][] = [], unpaid: string[] = [];
-  const sched = (name: string, kind: string, t: number, detail = "") => {
+  const todayL: Item[] = [], weekL: Item[] = [], unpaid: Item[] = [];
+  const sched = (e: any, kind: string, t: number, detail = "") => {
     if (isNaN(t)) return; const k = dayKey(t);
-    if (k === today) todayL.push([t, `${hm(t)} ${kind}${short(name)}${detail ? "(" + detail + ")" : ""}`]);
-    else if (k > today && k <= weekEnd) weekL.push([t, `${md(t)} ${kind}${short(name)}`]);
+    const desc = short(e.client_name) + (detail ? " · " + detail : "");
+    if (k === today) todayL.push({ t, title: `${kind} ${hm(t)}`, desc, id: e.id });
+    else if (k > today && k <= weekEnd) weekL.push({ t, title: `${md(t)}(${WEEK[new Date(t + KST).getUTCDay()]}) ${kind}`, desc, id: e.id });
   };
   for (const e of ests || []) {
     const i = info(e, holdDays, delayDays); if (i.lost || i.deleted) continue;
-    const n = e.client_name || "고객";
-    if (i.sd["방문상담 및 실측"] && !i.sc["방문상담 및 실측"]) sched(n, "🏠", tOf(i.sd["방문상담 및 실측"]));
-    if (i.sd["설치완료"] && !i.sc["설치완료"]) sched(n, "🎉", tOf(i.sd["설치완료"]));
+    if (i.sd["방문상담 및 실측"] && !i.sc["방문상담 및 실측"]) sched(e, "🏠 방문", tOf(i.sd["방문상담 및 실측"]));
+    if (i.sd["설치완료"] && !i.sc["설치완료"]) sched(e, "🎉 설치", tOf(i.sd["설치완료"]));
     if (i.sd["제작시작"] && !i.sc["설치완료"]) {
       const s0 = tOf(String(i.sd["제작시작"]).slice(0, 10) + "T09:00"), days = prodDays(i.sd) || 1;
-      for (let k = 0; k < days; k++) sched(n, "🔨", s0 + k * 86400000, days > 1 ? `${k + 1}/${days}일` : "");
+      for (let k = 0; k < days; k++) sched(e, days > 1 ? "🔨 공사" : "🔨 제작", s0 + k * 86400000, days > 1 ? `${k + 1}/${days}일` : "");
     }
-    for (const v of parseJSON(e.extra_visits, []) as any[]) if (v.at && !v.done) sched(n, "🔧", tOf(v.at), v.type || "");
-    if (i.delayed) weekL.push([Infinity, `⚠지연 ${short(n)}`]);
+    for (const v of parseJSON(e.extra_visits, []) as any[]) if (v.at && !v.done) sched(e, "🔧 " + (v.type || "방문"), tOf(v.at), v.reason || "");
+    if (i.delayed) weekL.push({ t: Infinity, title: "⚠ 본견적 지연", desc: short(e.client_name), id: e.id });
     if (!i.hold && (i.stage === "가견적발송" || i.stage === "본견적발송") && holdDays > 0) {
       const left = Math.ceil((lastSentAt(i.sd) + holdDays * 86400000 - now) / 86400000);
-      if (left >= 0 && left <= 5) weekL.push([Infinity, `⏳보류${left}일 ${short(n)}`]);
+      if (left >= 0 && left <= 5) weekL.push({ t: Infinity, title: `⏳ 보류까지 ${left}일`, desc: short(e.client_name) + " · 연락 필요", id: e.id });
     }
-    if (i.stage === "설치완료") unpaid.push(`${short(n)} ${fmt(Math.max(0, (Number(e.total_amount) || 0) - (Number(e.deposit_amount) || 0) - (Number(e.mid_amount) || 0)))}원`);
+    if (i.stage === "설치완료") unpaid.push({ t: 0, title: "💰 " + short(e.client_name), desc: fmt(Math.max(0, (Number(e.total_amount) || 0) - (Number(e.deposit_amount) || 0) - (Number(e.mid_amount) || 0))) + "원", id: e.id });
   }
-  todayL.sort((a, b) => a[0] - b[0]); weekL.sort((a, b) => a[0] - b[0]);
-  const d = new Date(now + KST);
-  const head = `[럭키스타 ${d.getUTCMonth() + 1}/${d.getUTCDate()}(${WEEK[d.getUTCDay()]}) 할 일]`;
-  const sec = (t: string, l: string[]) => `${t} ${l.length}건: ` + (l.length ? l.join(", ") : "없음");
-  const lines = [head, sec("📌오늘", todayL.map((x) => x[1])), sec("📅1주일", weekL.map((x) => x[1])), sec("💰잔금", unpaid)];
-  return split(lines);
+  todayL.sort((a, b) => a.t - b.t); weekL.sort((a, b) => a.t - b.t);
+  const d = new Date(now + KST), day = `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${WEEK[d.getUTCDay()]})`;
+  return [
+    { title: `📌 ${day} 오늘 할 일 ${todayL.length}건`, items: todayL },
+    { title: `📅 1주일 할 일 ${weekL.length}건`, items: weekL },
+    { title: `💰 잔금 미입금 ${unpaid.length}건`, items: unpaid },
+  ];
 }
-// 메시지 하나 200자 제한 → 줄 단위로 나누고, 그래도 긴 줄은 '외 N건'으로 줄임 (최대 3개)
-function split(lines: string[]) {
-  const MAX = 190, out: string[] = [];
-  const fit = (s: string) => { if (s.length <= MAX) return s; const parts = s.split(", "); let r = parts[0]; let k = 1; for (; k < parts.length; k++) { const nx = r + ", " + parts[k]; if (nx.length + 8 > MAX) break; r = nx; } return r + ` 외 ${parts.length - k}건`; };
-  let cur = "";
-  for (const raw of lines) { const l = fit(raw); if (cur && (cur + "\n" + l).length > MAX) { out.push(cur); cur = l; } else cur = cur ? cur + "\n" + l : l; }
-  if (cur) out.push(cur);
-  return out.slice(0, 3);
+
+// 카카오 메시지 양식: 2건 이상 → 목록형(항목마다 견적 링크, 최대 3개 + '외 N건' 버튼), 1건 → 글자형(견적 링크 버튼), 0건 → 안 보냄
+const lnk = (u: string) => ({ web_url: u, mobile_web_url: u });
+function templates(secs: Section[]) {
+  const out: { tpl: string; preview: string }[] = [];
+  for (const s of secs) {
+    if (!s.items.length) continue;
+    const shown = s.items.slice(0, 3), more = s.items.length - shown.length;
+    const preview = [s.title, ...shown.map((x) => `· ${x.title} ${x.desc}  → 견적서`), more ? `[외 ${more}건 더 보기]` : shown.length >= 2 ? "[일정표 열기]" : "[견적서 열기]"].join("\n");
+    if (shown.length >= 2) {
+      out.push({ preview, tpl: JSON.stringify({
+        object_type: "list", header_title: s.title, header_link: lnk(SCHED_URL),
+        contents: shown.map((x) => ({ title: x.title, description: x.desc, link: lnk(estUrl(x.id)) })),
+        buttons: [{ title: more ? `외 ${more}건 더 보기` : "일정표 열기", link: lnk(SCHED_URL) }],
+      }) });
+    } else {
+      const x = shown[0];
+      out.push({ preview, tpl: JSON.stringify({ object_type: "text", text: `${s.title}\n${x.title}\n${x.desc}`, link: lnk(estUrl(x.id)), button_title: "견적서 열기" }) });
+    }
+  }
+  if (!out.length) {
+    const text = secs[0].title.replace(/ 오늘 할 일 0건$/, "") + " 오늘·1주일 할 일과 잔금 미입금이 없습니다.";
+    out.push({ preview: text, tpl: JSON.stringify({ object_type: "text", text, link: lnk(SCHED_URL), button_title: "일정표 열기" }) });
+  }
+  return out;
 }
 
 async function sendDigest() {
@@ -159,18 +183,17 @@ async function sendDigest() {
   const uuids: string[] = (cfg.recipients || []).map((r: any) => r.uuid).filter(Boolean);
   if (!uuids.length && !cfg.sendToMe) throw new Error("받는 사람이 없습니다. 환경설정에서 직원을 선택해 주세요.");
   const token = await senderToken();
-  const msgs = await buildDigest();
-  const tpl = (text: string) => JSON.stringify({ object_type: "text", text, link: { web_url: SITE, mobile_web_url: SITE }, button_title: "일정표 열기" });
+  const msgs = templates(await buildDigest());
   const fails: string[] = [];
-  for (const text of msgs) {
+  for (const m of msgs) {
     for (let i = 0; i < uuids.length; i += 5) {
-      const r = await kapi("/v1/api/talk/friends/message/default/send", token, { receiver_uuids: JSON.stringify(uuids.slice(i, i + 5)), template_object: tpl(text) }).catch((e) => ({ error: e.message }));
+      const r = await kapi("/v1/api/talk/friends/message/default/send", token, { receiver_uuids: JSON.stringify(uuids.slice(i, i + 5)), template_object: m.tpl }).catch((e) => ({ error: e.message }));
       if ((r as any).error) fails.push((r as any).error); else for (const f of (r as any).failure_info || []) fails.push(`${f.code} ${f.msg}`);
     }
-    if (cfg.sendToMe) await kapi("/v2/api/talk/memo/default/send", token, { template_object: tpl(text) }).catch((e) => fails.push(e.message));
+    if (cfg.sendToMe) await kapi("/v2/api/talk/memo/default/send", token, { template_object: m.tpl }).catch((e) => fails.push(e.message));
   }
   await admin.from("app_settings").upsert({ key: "kakao_notify", value: JSON.stringify({ ...cfg, lastSent: new Date().toISOString(), lastError: fails.join(" / ") || null }), updated_at: new Date().toISOString() });
-  return { messages: msgs, sentTo: uuids.length, sendToMe: !!cfg.sendToMe, fails };
+  return { messages: msgs.map((m) => m.preview), sentTo: uuids.length, sendToMe: !!cfg.sendToMe, fails };
 }
 
 Deno.serve(async (req) => {
@@ -212,7 +235,7 @@ Deno.serve(async (req) => {
       const d = await kapi("/v1/api/talk/friends?limit=100", token);
       return json({ friends: (d.elements || []).map((f: any) => ({ uuid: f.uuid, nickname: f.profile_nickname, img: f.profile_thumbnail_image || "" })) });
     }
-    if (action === "preview") return json({ messages: await buildDigest() });
+    if (action === "preview") return json({ messages: templates(await buildDigest()).map((m) => m.preview) });
     if (action === "test") return json(await sendDigest());
     return json({ error: "알 수 없는 요청" }, 400);
   } catch (e) {

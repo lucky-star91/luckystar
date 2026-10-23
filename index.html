@@ -4694,13 +4694,12 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
                 return(<div key={s} className={`dash-card ${isActive?'active':''}`}
                     style={{color:sty.color,background:isActive?sty.bg:'#fff',borderColor:isActive?sty.color:'var(--border)'}}
                     onClick={()=>toggleSF(s)}>
-                    <div className="dash-card-type">진행상태</div>
                     <div className="dash-card-num">{sCount(s)}</div>
                     <div className="dash-card-label">{DASH_ICON[s]} {DASH_TEXT[s]||s}</div>
                 </div>);
             })}
             {isAdmin&&<div className={`dash-card ${trashMode?'active':''}`} style={{color:'#6b7280',background:trashMode?'#f3f4f6':'#fff',borderColor:trashMode?'#6b7280':'var(--border)'}} onClick={()=>toggleSF('휴지통')}>
-                <div className="dash-card-type">관리자</div><div className="dash-card-num">{estimates.length-live.length}</div><div className="dash-card-label">🗑 휴지통</div></div>}
+                <div className="dash-card-num">{estimates.length-live.length}</div><div className="dash-card-label">🗑 휴지통</div></div>}
         </div>
 
         <div className="dash-section-title" style={{marginTop:4}}>결제상태 · 계약률</div>

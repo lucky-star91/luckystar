@@ -20,7 +20,7 @@
 - 견적번호: 날짜+그날 순번 (`nextEstNo`), 저장할 때 부여
 - 노무비(labor_cost)는 사용하지 않음 — DB 컬럼만 남아 있고 화면·인쇄·엑셀에서는 제외
 - RLS 적용됨(2026-10-22): `public.is_staff()`(관리자 이메일 또는 approved_users) 인 로그인 사용자만 접근. 예외: portfolios 누구나 보기, approved_users/user_profiles 본인 행. SQL은 `supabase/` 폴더 (rls_apply·rls_apply_old_tables·rls_rollback). 새 표를 만들면 같은 staff_all 규칙을 꼭 추가할 것
-- 카카오톡 할 일 알림: 서버 함수 `supabase/functions/kakao` (Supabase Edge Function, 비밀값 KAKAO_CLIENT_SECRET·CRON_SECRET) + 환경설정 `KakaoNotify`. 보내는 계정 토큰은 `kakao_sender`(규칙 없는 RLS — 서버 함수만 읽음), 받는 직원·켜기는 app_settings key='kakao_notify'. 할 일 계산 규칙(`todoLists`)을 바꾸면 서버 함수의 buildDigest 도 같이 고칠 것. 서버 함수 수정 후에는 다시 배포해야 함
+- 카카오톡 할 일 알림: 서버 함수 `supabase/functions/kakao` (Supabase Edge Function, 비밀값 KAKAO_CLIENT_SECRET·CRON_SECRET) + 환경설정 `KakaoNotify`. 보내는 계정 토큰은 `kakao_sender`(규칙 없는 RLS — 서버 함수만 읽음), 받는 직원·켜기는 app_settings key='kakao_notify'. 할 일 계산 규칙(`todoLists`)을 바꾸면 서버 함수의 buildDigest 도 같이 고칠 것. 서버 함수 수정 후에는 다시 배포해야 함. 메시지 속 링크 도메인은 카카오 개발자 앱 '제품 링크 관리 → 웹 도메인'에 등록돼 있어야 함(없으면 링크가 조용히 빠짐). 카톡 내부 브라우저는 index.html 상단 스크립트가 일반 브라우저로 넘김(구글 로그인 차단 때문)
 - 배포: GitHub `main` 브랜치 → Vercel
 
 ## 작업 규칙

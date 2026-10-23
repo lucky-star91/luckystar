@@ -27,3 +27,20 @@ CREATE TABLE IF NOT EXISTS kakao_members (
 ALTER TABLE kakao_members ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS staff_read ON kakao_members;
 CREATE POLICY staff_read ON kakao_members FOR SELECT TO authenticated USING (public.is_staff());
+
+-- ── 매일 아침 9시(한국) = 0시(UTC) 자동 발송 예약 ──
+-- app_private: 서버 함수와 예약 작업만 쓰는 비공개 값 (RLS 켜고 규칙 없음 → 화면에서 못 읽음)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE TABLE IF NOT EXISTS app_private (key TEXT PRIMARY KEY, value TEXT);
+ALTER TABLE app_private ENABLE ROW LEVEL SECURITY;
+INSERT INTO app_private(key, value) VALUES ('kakao_cron', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''))
+ON CONFLICT (key) DO NOTHING;
+SELECT cron.schedule('kakao-daily-todo', '0 0 * * *', $job$
+  SELECT net.http_post(
+    url := 'https://ubxoyogkygwzdlmfrtfn.supabase.co/functions/v1/kakao',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret',(SELECT value FROM public.app_private WHERE key='kakao_cron')),
+    body := '{"action":"daily"}'::jsonb,
+    timeout_milliseconds := 30000)
+$job$);
+-- 예약 끄기: SELECT cron.unschedule('kakao-daily-todo');

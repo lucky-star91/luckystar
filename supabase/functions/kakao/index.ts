@@ -1,6 +1,7 @@
 // ★ 카카오톡 직원 알림 서버 함수
 // action: status · exchange(카카오 로그인 코드 → 토큰) · friends(친구 목록) · test(지금 발송) · daily(매일 9시, pg_cron 이 호출)
-// 비밀값(Edge Function Secrets): KAKAO_CLIENT_SECRET, CRON_SECRET  ·  SUPABASE_URL / SERVICE_ROLE_KEY / ANON_KEY 는 자동 제공
+// 비밀값(Edge Function Secrets): KAKAO_CLIENT_SECRET  ·  SUPABASE_URL / SERVICE_ROLE_KEY / ANON_KEY 는 자동 제공
+// 매일 발송 확인값은 DB app_private key='kakao_cron' (supabase/kakao_notify.sql 의 예약 설정 참고)
 // 할 일 계산은 index.html 의 todoLists·estStageInfo 와 같은 규칙 — 그쪽을 바꾸면 여기도 같이 바꿀 것
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
@@ -45,6 +46,11 @@ async function kapi(path: string, token: string, form?: Record<string, string>) 
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error("카카오 API 오류(" + path + "): " + (d.msg || d.code || r.status));
   return d;
+}
+// 매일 9시 예약(pg_cron)이 보내는 비밀값 — app_private 표(화면에서 못 읽음)에 있음
+async function cronSecret() {
+  const { data } = await admin.from("app_private").select("value").eq("key", "kakao_cron").maybeSingle();
+  return (data?.value as string) || "";
 }
 const later = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 
@@ -174,7 +180,7 @@ Deno.serve(async (req) => {
     const action = body.action;
     // 매일 9시 — pg_cron 이 비밀값을 담아 호출
     if (action === "daily") {
-      const sec = Deno.env.get("CRON_SECRET");
+      const sec = await cronSecret();
       if (!sec || req.headers.get("x-cron-secret") !== sec) return json({ error: "forbidden" }, 403);
       const { data: cfgRow } = await admin.from("app_settings").select("value").eq("key", "kakao_notify").maybeSingle();
       if (parseJSON(cfgRow?.value, {}).enabled === false) return json({ skipped: "꺼져 있음" });
@@ -185,7 +191,7 @@ Deno.serve(async (req) => {
 
     if (action === "status") {
       const { data: s } = await admin.from("kakao_sender").select("nickname,connected_by,refresh_expires_at,updated_at").eq("id", 1).maybeSingle();
-      return json({ sender: s || null, secretSet: !!Deno.env.get("KAKAO_CLIENT_SECRET"), cronSet: !!Deno.env.get("CRON_SECRET") });
+      return json({ sender: s || null, secretSet: !!Deno.env.get("KAKAO_CLIENT_SECRET"), cronSet: !!(await cronSecret()) });
     }
     if (action === "exchange") {
       const t = await kauth({ grant_type: "authorization_code", code: String(body.code || ""), redirect_uri: String(body.redirect_uri || "") });

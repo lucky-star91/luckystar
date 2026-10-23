@@ -5275,62 +5275,20 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
             <button className="sb-logout" onClick={onLogout} title="로그아웃">⏻</button>
         </div>
         <nav className="sb-nav">
-            <div className={`nav-row ${activeGroup==='material'?'active':''} ${open==='material'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('material')}><span className="nav-icon">📦</span>자재관리<span className="nav-arrow">▶</span></div>
+            <div className={`nav-row ${activeGroup==='schedule'?'active':''} ${open==='schedule'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('schedule')}><span className="nav-icon">📅</span>일정표<span className="nav-arrow">▶</span></div>
             </div>
-            <div className={`nav-sub ${open==='material'?'open':''}`}>
-                <div className={`nav-grp-hd ${openSub.mat?'open':''}`} onClick={()=>toggleSub('mat')}>
-                    <span>📁 자재분류</span>
-                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddMatCat();}}>＋</button>
-                    <span className="nav-grp-arrow">▶</span>
-                </div>
-                <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
-                    <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
-                    {topMatCats(matCats).map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
-                    <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
-                </div>
-                <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
+            <div className={`nav-sub ${open==='schedule'?'open':''}`}>
+                <SI label="2주간 일정" isActive={page==='sched-biweek'} onNav={()=>go('sched-biweek')}/>
+                <SI label="월간 일정" isActive={page==='sched-month'} onNav={()=>go('sched-month')}/>
             </div>
 
-            <div className={`nav-row ${activeGroup==='tool'?'active':''} ${open==='tool'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('tool')}><span className="nav-icon">🧰</span>공구/부자재<span className="nav-arrow">▶</span></div>
+            <div className={`nav-row ${activeGroup==='estimate'?'active':''} ${open==='estimate'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('estimate')}><span className="nav-icon">📋</span>견적관리<span className="nav-arrow">▶</span></div>
             </div>
-            <div className={`nav-sub ${open==='tool'?'open':''}`}>
-                <div className={`nav-grp-hd ${openSub.tool?'open':''}`} onClick={()=>toggleSub('tool')}>
-                    <span>📁 분류</span>
-                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddToolCat();}}>＋</button>
-                    <span className="nav-grp-arrow">▶</span>
-                </div>
-                <div className={`nav-sub-sub ${openSub.tool?'open':''}`}>
-                    <SSI label="전체 공구/부자재" isActive={page==='tool-list'&&(activeCatId?.tool??null)===null} onNav={()=>goTool(null)}/>
-                    {(toolCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='tool-list'&&activeCatId?.tool===c.id} onNav={()=>goTool(c.id)} onEdit={()=>onEditToolCat(c)} onDel={()=>onDelToolCat(c.id)}/>)}
-                    <div className="ssi-add" onClick={onAddToolCat}>＋ 분류 추가</div>
-                </div>
-            </div>
-
-            <div className={`nav-row ${activeGroup==='outsourcing'?'active':''} ${open==='outsourcing'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('outsourcing')}><span className="nav-icon">🛠</span>외주관리<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='outsourcing'?'open':''}`}>
-                <div className={`nav-grp-hd ${openSub.out?'open':''}`} onClick={()=>toggleSub('out')}>
-                    <span>📁 외주분류</span>
-                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddOutCat();}}>＋</button>
-                    <span className="nav-grp-arrow">▶</span>
-                </div>
-                <div className={`nav-sub-sub ${openSub.out?'open':''}`}>
-                    <SSI label="전체 외주" isActive={page==='out-list'&&(activeCatId?.out??null)===null} onNav={()=>goOut(null)}/>
-                    {(outCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='out-list'&&activeCatId?.out===c.id} onNav={()=>goOut(c.id)} onEdit={()=>onEditOutCat(c)} onDel={()=>onDelOutCat(c.id)}/>)}
-                    <div className="ssi-add" onClick={onAddOutCat}>＋ 분류 추가</div>
-                </div>
-            </div>
-
-            <div className={`nav-row ${activeGroup==='supplier'?'active':''} ${open==='supplier'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('supplier')}><span className="nav-icon">🏢</span>공급사 관리<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='supplier'?'open':''}`}>
-                <SI label="전체 공급사" isActive={page==='supplier-list'&&!activeCatId?.sup} onNav={()=>goSup(null)}/>
-                <SI label="📦 자재업체" isActive={page==='supplier-list'&&activeCatId?.sup==='material'} onNav={()=>goSup('material')}/>
-                <SI label="🛠 외주업체" isActive={page==='supplier-list'&&activeCatId?.sup==='outsourcing'} onNav={()=>goSup('outsourcing')}/>
+            <div className={`nav-sub ${open==='estimate'?'open':''}`}>
+                <SI label="새 견적서" isActive={page==='est-new'} onNav={()=>go('est-new')}/>
+                <SI label="견적 목록" isActive={page==='est-list'} onNav={()=>go('est-list')}/>
             </div>
 
             <div className={`nav-row ${activeGroup==='product'?'active':''} ${open==='product'?'open':''}`}>
@@ -5349,6 +5307,64 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
                 </div>
             </div>
 
+            <div className={`nav-row ${activeGroup==='material'?'active':''} ${open==='material'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('material')}><span className="nav-icon">📦</span>자재관리<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='material'?'open':''}`}>
+                <div className={`nav-grp-hd ${openSub.mat?'open':''}`} onClick={()=>toggleSub('mat')}>
+                    <span>📁 자재분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddMatCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.mat?'open':''}`}>
+                    <SSI label="전체 자재" isActive={page==='mat-list'&&activeCatId?.mat===null} onNav={()=>goMat(null)}/>
+                    {topMatCats(matCats).map(c=><SSI key={c.id} label={c.name} isActive={page==='mat-list'&&activeCatId?.mat===c.id} onNav={()=>goMat(c.id)} onEdit={()=>onEditMatCat(c)} onDel={()=>onDelMatCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddMatCat}>＋ 분류 추가</div>
+                </div>
+                <SI label="🏭 재고 현황" isActive={page==='mat-stock'} onNav={()=>go('mat-stock')}/>
+            </div>
+
+            <div className={`nav-row ${activeGroup==='outsourcing'?'active':''} ${open==='outsourcing'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('outsourcing')}><span className="nav-icon">🛠</span>외주관리<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='outsourcing'?'open':''}`}>
+                <div className={`nav-grp-hd ${openSub.out?'open':''}`} onClick={()=>toggleSub('out')}>
+                    <span>📁 외주분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddOutCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.out?'open':''}`}>
+                    <SSI label="전체 외주" isActive={page==='out-list'&&(activeCatId?.out??null)===null} onNav={()=>goOut(null)}/>
+                    {(outCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='out-list'&&activeCatId?.out===c.id} onNav={()=>goOut(c.id)} onEdit={()=>onEditOutCat(c)} onDel={()=>onDelOutCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddOutCat}>＋ 분류 추가</div>
+                </div>
+            </div>
+
+            <div className={`nav-row ${activeGroup==='tool'?'active':''} ${open==='tool'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('tool')}><span className="nav-icon">🧰</span>공구/부자재<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='tool'?'open':''}`}>
+                <div className={`nav-grp-hd ${openSub.tool?'open':''}`} onClick={()=>toggleSub('tool')}>
+                    <span>📁 분류</span>
+                    <button style={{background:'none',border:'none',color:'rgba(255,255,255,.35)',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 6px'}} onClick={e=>{e.stopPropagation();onAddToolCat();}}>＋</button>
+                    <span className="nav-grp-arrow">▶</span>
+                </div>
+                <div className={`nav-sub-sub ${openSub.tool?'open':''}`}>
+                    <SSI label="전체 공구/부자재" isActive={page==='tool-list'&&(activeCatId?.tool??null)===null} onNav={()=>goTool(null)}/>
+                    {(toolCats||[]).map(c=><SSI key={c.id} label={c.name} isActive={page==='tool-list'&&activeCatId?.tool===c.id} onNav={()=>goTool(c.id)} onEdit={()=>onEditToolCat(c)} onDel={()=>onDelToolCat(c.id)}/>)}
+                    <div className="ssi-add" onClick={onAddToolCat}>＋ 분류 추가</div>
+                </div>
+            </div>
+
+            <div className={`nav-row ${activeGroup==='supplier'?'active':''} ${open==='supplier'?'open':''}`}>
+                <div className="nav-label" onClick={()=>toggle('supplier')}><span className="nav-icon">🏢</span>공급사 관리<span className="nav-arrow">▶</span></div>
+            </div>
+            <div className={`nav-sub ${open==='supplier'?'open':''}`}>
+                <SI label="전체 공급사" isActive={page==='supplier-list'&&!activeCatId?.sup} onNav={()=>goSup(null)}/>
+                <SI label="📦 자재업체" isActive={page==='supplier-list'&&activeCatId?.sup==='material'} onNav={()=>goSup('material')}/>
+                <SI label="🛠 외주업체" isActive={page==='supplier-list'&&activeCatId?.sup==='outsourcing'} onNav={()=>goSup('outsourcing')}/>
+            </div>
+
             <div className={`nav-row ${activeGroup==='portfolio'?'active':''} ${open==='portfolio'?'open':''}`}>
                 <div className="nav-label" onClick={()=>toggle('portfolio')}><span className="nav-icon">🖼</span>포트폴리오<span className="nav-arrow">▶</span></div>
             </div>
@@ -5356,24 +5372,10 @@ function Sidebar({user,page,setPage,matCats,prodCats,onAddMatCat,onDelMatCat,onE
                 <SI label="포트폴리오 관리" isActive={page==='portfolio'} onNav={()=>go('portfolio')}/>
             </div>
 
-            <div className={`nav-row ${activeGroup==='estimate'?'active':''} ${open==='estimate'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('estimate')}><span className="nav-icon">📋</span>견적관리<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='estimate'?'open':''}`}>
-                <SI label="새 견적서" isActive={page==='est-new'} onNav={()=>go('est-new')}/>
-                <SI label="견적 목록" isActive={page==='est-list'} onNav={()=>go('est-list')}/>
-            </div>
-
-            <div className={`nav-row ${activeGroup==='schedule'?'active':''} ${open==='schedule'?'open':''}`}>
-                <div className="nav-label" onClick={()=>toggle('schedule')}><span className="nav-icon">📅</span>일정표<span className="nav-arrow">▶</span></div>
-            </div>
-            <div className={`nav-sub ${open==='schedule'?'open':''}`}>
-                <SI label="2주간 일정" isActive={page==='sched-biweek'} onNav={()=>go('sched-biweek')}/>
-                <SI label="월간 일정" isActive={page==='sched-month'} onNav={()=>go('sched-month')}/>
-            </div>
             <div className={`nav-row ${page==='settings'?'active':''}`} style={{marginTop:8}}>
                 <div className="nav-label" onClick={()=>go('settings')}><span className="nav-icon">🔧</span>환경설정</div>
             </div>
+
             {/* 관리자 전용 메뉴 */}
             {user?.email===ADMIN_EMAIL&&(
                 <div className={`nav-row ${page==='user-approval'?'active':''}`} style={{marginTop:8}}>
@@ -5409,8 +5411,9 @@ function App(){
     const[pfParam]=useState(()=>{try{return new URLSearchParams(window.location.search).get('pf');}catch(e){return null;}});
     const[initRoute]=useState(()=>{try{
         const r=parseHash(window.location.hash,false);if(r)return r;
-        const saved=localStorage.getItem('after_login_hash');localStorage.removeItem('after_login_hash'); // 로그인 전에 열려던 화면
-        return saved?parseHash(saved,false):null;}catch(e){return null;}});
+        // 로그인하면 일정표가 첫 화면 — 단, 카톡 등으로 견적서 링크를 열다 로그인한 경우만 그 견적서로
+        const saved=localStorage.getItem('after_login_hash');localStorage.removeItem('after_login_hash');
+        return saved&&saved.indexOf('#/est-edit/')===0?parseHash(saved,false):null;}catch(e){return null;}});
     const[openMatId,setOpenMatId]=useState(()=>{
         try{const id=new URLSearchParams(window.location.search).get('mat');
             if(id)window.history.replaceState(null,'',window.location.pathname);
@@ -5598,7 +5601,7 @@ function App(){
         if(error){alert('수정 실패: '+error.message);return;}
         setToolCats(p=>p.map(c=>c.id===id?{...c,name}:c));setEditToolCat(null);toast('✅ 공구/부자재 분류명 수정됨');
     };
-    const handleLogout=async()=>{if(!okLeave())return;if(sb)await sb.auth.signOut();setUser(null);};
+    const handleLogout=async()=>{if(!okLeave())return;if(sb)await sb.auth.signOut();setUser(null);setPage('sched-biweek');}; // 다시 로그인하면 일정표부터
 
     const renderPage=()=>{
         switch(page){

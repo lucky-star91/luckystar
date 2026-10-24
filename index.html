@@ -2115,16 +2115,6 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
     const del=async id=>{if(!confirm('삭제?'))return;await sb.from('outsourcing_items').delete().eq('id',id);setItems(p=>p.filter(m=>m.id!==id));toast('🗑 삭제됨');};
     const catName=id=>outCats.find(c=>c.id===id)?.name||'미분류';
 
-    const exportExcel=()=>{
-        const headers=['품목명','분류','규격/작업내용','단가(원)','외주업체','기타구분','메모','참고링크'];
-        const rows=items.map(m=>[m.name||'',catName(m.category_id),m.specification||'',m.unit_price||0,m.supplier||'',m.category_extra||'',m.memo||'',m.purchase_link||'']);
-        const wb=XLSX.utils.book_new();
-        const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-        ws['!cols']=[{wch:22},{wch:12},{wch:24},{wch:10},{wch:14},{wch:12},{wch:18},{wch:30}];
-        XLSX.utils.book_append_sheet(wb,ws,'외주목록');
-        XLSX.writeFile(wb,'럭키스타_외주목록.xlsx');
-        toast('📊 엑셀 저장됨');
-    };
 
     const showSqlGuide=()=>alert(`📋 외주관리 Supabase 테이블 생성 안내\n\n`+
 `CREATE TABLE IF NOT EXISTS outsourcing_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT,\n  display_order INT DEFAULT 0\n);\n`+
@@ -2145,7 +2135,9 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
             <div className="page-title-wrap"><h1>🛠 외주 관리</h1><p>외주 품목 등록 · 분류별 단가 관리</p></div>
             <div className="btn-row">
                 <button className="btn btn-outline" onClick={onAddOutCat}>＋ 분류 추가</button>
-                <button className="btn btn-outline" onClick={exportExcel}>📊 엑셀 저장</button>
+                <ListExcel sb={sb} table="outsourcing_items" title="외주목록" items={items} cats={outCats}
+                    cols={[['품목명','name',22],['분류','category_id',12],['규격/작업내용','specification',24],['단가(원)','unit_price',10,'num'],['외주업체','supplier',14],['기타구분','category_extra',12],['메모','memo',18],['참고링크','purchase_link',30]]}
+                    onReload={async()=>{const{data}=await sb.from('outsourcing_items').select('*').order('name',{ascending:true});if(data)setItems(data);}}/>
                 <button className="btn btn-outline" style={{fontSize:11,padding:'6px 10px',color:'var(--muted)'}} onClick={showSqlGuide}>⚙️ DB 안내</button>
                 <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 외주 품목 등록</button>
             </div>
@@ -2402,6 +2394,49 @@ function ProductModal({sb,matCats,prodCats,toolCats,initial,onClose,onSave}){
     </div>);
 }
 
+// ★ 목록 엑셀 저장·가져오기 공용 (상품·외주·공구/부자재)
+//   맨 앞 'ID' 칸으로 같은 항목을 찾아 수정(이름을 바꿔도 같은 항목), ID가 비어 있으면 이름으로 찾고, 그래도 없으면 새로 추가
+//   cols: [칸 이름, 필드, 너비, 'num'(숫자)] — 첫 칸은 이름 · 필드 category_id 는 분류 이름으로 저장/읽기 · 파일에 없는 칸은 건드리지 않음
+function ListExcel({sb,table,title,cols,items,cats,onReload}){
+    const[busy,setBusy]=useState(false);
+    const catName=id=>((cats||[]).find(c=>c.id===id)||{}).name||'';
+    const exp=()=>{
+        const rows=items.map(it=>[it.id,...cols.map(([h,f,w,t])=>f==='category_id'?catName(it[f]):t==='num'?(Number(it[f])||0):(it[f]||''))]);
+        const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet([['ID',...cols.map(c=>c[0])],...rows]);
+        ws['!cols']=[{wch:38},...cols.map(c=>({wch:c[2]||14}))];
+        XLSX.utils.book_append_sheet(wb,ws,title);XLSX.writeFile(wb,'럭키스타_'+title+'.xlsx');toast('📊 엑셀 저장됨');
+    };
+    const imp=async e=>{
+        const file=e.target.files[0];if(!file)return;e.target.value='';setBusy(true);
+        try{
+            const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+            const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+            if(rows.length<2){alert('데이터가 없습니다.');return;}
+            const hdr=rows[0].map(h=>String(h).trim()),ci=h=>hdr.indexOf(h);
+            if(ci(cols[0][0])<0){alert("'"+cols[0][0]+"' 칸이 없습니다. 이 화면의 📊 엑셀 저장으로 받은 양식을 사용하세요.");return;}
+            let added=0,updated=0,errors=0;
+            for(const r of rows.slice(1)){
+                const name=String(r[ci(cols[0][0])]||'').trim();if(!name)continue;
+                const p={};
+                cols.forEach(([h,f,w,t])=>{const i=ci(h);if(i<0)return;const v=String(r[i]??'').trim();
+                    if(f==='category_id'){if(!v)p[f]=null;else{const c=(cats||[]).find(x=>x.name===v);if(c)p[f]=c.id;}} // 없는 분류 이름이면 분류는 그대로
+                    else p[f]=t==='num'?(Number(v.replace(/,/g,''))||0):v;});
+                const id=ci('ID')>=0?String(r[ci('ID')]||'').trim():'';
+                const ex=id?items.find(x=>x.id===id):items.find(x=>x.name===name);
+                const{error}=ex?await sb.from(table).update(p).eq('id',ex.id):await sb.from(table).insert([p]);
+                if(error)errors++;else if(ex)updated++;else added++;
+            }
+            await onReload();
+            alert('가져오기 완료\n추가: '+added+'건  수정: '+updated+'건'+(errors?'  오류: '+errors+'건':''));
+        }catch(err){alert('오류: '+err.message);}
+        finally{setBusy(false);}
+    };
+    return(<>
+        <button className="btn btn-outline" onClick={exp}>📊 엑셀 저장</button>
+        <label className="btn btn-outline" style={{cursor:'pointer'}}>{busy?'⏳ 가져오는 중...':'📥 엑셀 가져오기'}<input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={imp} disabled={busy}/></label>
+    </>);
+}
+
 function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
     const[products,setProducts]=useState([]);const[loading,setLoading]=useState(true);
     const[activeCat,setActiveCat]=useState(initialCatId||null);
@@ -2490,6 +2525,9 @@ function ProductList({sb,matCats,prodCats,toolCats,onAddProdCat,initialCatId}){
             <div className="page-title-wrap"><h1>🛍 상품 관리</h1><p>카테고리별 상품 등록 · 필요 자재 연동</p></div>
             <div className="btn-row">
                 <button className="btn btn-outline" onClick={onAddProdCat}>＋ 카테고리 추가</button>
+                <ListExcel sb={sb} table="products" title="상품목록" items={products} cats={prodCats}
+                    cols={[['상품명','name',26],['카테고리','category_id',14],['설명','description',30],['가격(원)','price',12,'num']]}
+                    onReload={async()=>{const{data}=await sb.from('products').select('*').order('name',{ascending:true});if(data)setProducts(data);}}/>
                 <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 상품 등록</button>
             </div>
         </div>
@@ -4393,6 +4431,9 @@ function ToolList({sb,toolCats,onAddToolCat,initialCatId}){
             <div className="page-title-wrap"><h1>🧰 공구/부자재 관리</h1><p>공구 · 부자재 등록 · 분류별 관리 · 이름순 정렬</p></div>
             <div className="btn-row">
                 <button className="btn btn-outline" onClick={onAddToolCat}>＋ 분류 추가</button>
+                <ListExcel sb={sb} table="tools" title="공구부자재목록" items={tools} cats={toolCats}
+                    cols={[['품명','name',22],['분류','category_id',12],['규격/재질','specification',16],['기타구분','category_extra',12],['메모','memo',20]]}
+                    onReload={async()=>{const{data}=await sb.from('tools').select('*').order('name',{ascending:true});if(data)setTools(data);}}/>
                 <button className="btn btn-primary" onClick={()=>{setEditing(null);setShowModal(true);}}>＋ 공구/부자재 등록</button>
             </div>
         </div>

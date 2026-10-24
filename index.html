@@ -4,6 +4,11 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>럭키스타 캠핑카라반 - 관리 시스템</title>
 <script>
+// 휴대폰 카드형 표(table.m-auto): 머리줄(th) 이름을 각 칸의 data-l 로 복사해 칸 이름으로 표시, 값이 "-"뿐인 칸은 숨김 표시(m-empty)
+(function(){var lab=function(){document.querySelectorAll("table.m-auto").forEach(function(t){var hs=[].map.call(t.querySelectorAll("thead th"),function(th){return th.textContent.trim();});t.querySelectorAll("tbody tr").forEach(function(tr){[].forEach.call(tr.children,function(td,i){if(hs[i]&&td.colSpan<2)td.setAttribute("data-l",hs[i]);td.classList.toggle("m-empty",td.textContent.trim()==="-");});});});};
+var tm;new MutationObserver(function(){clearTimeout(tm);tm=setTimeout(lab,60);}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});})();
+</script>
+<script>
 // 카톡 안에서 링크를 열면(카톡 내부 브라우저) 구글 로그인이 막힘 → 크롬·사파리 등 일반 브라우저로 다시 열기
 // 고객용 견적서(?q=)·포트폴리오(?pf=)는 로그인이 필요 없으므로 그대로 둠
 (function(){try{if(/KAKAOTALK/i.test(navigator.userAgent)&&!/[?&](q|pf)=/.test(location.search))location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(location.href);}catch(e){}})();
@@ -256,6 +261,11 @@ td{padding:9px 14px;vertical-align:middle;}
 .status-timeline-card{background:#fff;border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;margin-bottom:22px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
 .status-timeline-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .status-timeline-title::after{content:'';flex:1;height:1px;background:var(--border);}
+/* 접고 펼치는 구역 제목 줄 (Fold) */
+.fold-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;min-height:42px;padding:6px 0;margin:-6px 0 0;background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--navy);-webkit-tap-highlight-color:rgba(30,111,217,.12);}
+.fold-hd.open{margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:10px;}
+.fold-title{font-size:13px;font-weight:800;letter-spacing:.3px;}
+.fold-arrow{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;padding:4px 10px;border:1.5px solid var(--border);border-radius:14px;background:#f8fafc;}
 .status-row{display:grid;grid-template-columns:36px 1fr auto auto;row-gap:4px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f8faff;}
 /* 완료 체크박스 */
 .status-check{width:18px;height:18px;cursor:pointer;accent-color:var(--green);flex-shrink:0;}
@@ -508,8 +518,11 @@ td{padding:9px 14px;vertical-align:middle;}
 .est-port-del:hover{background:var(--red);}
 
 @media(max-width:767px){
-    .dash-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
-    .dash-card-num{font-size:24px;}
+    .dash-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px;}
+    .dash-card{padding:8px 4px;}
+    .dash-card-num{font-size:22px;}
+    .dash-card-label{font-size:10px;letter-spacing:0;word-break:keep-all;}
+    .dash-card-type{font-size:9px;letter-spacing:0;}
     .port-grid{grid-template-columns:1fr 1fr;}
     .port-pick-grid{grid-template-columns:1fr 1fr;}
     .est-port-grid{grid-template-columns:1fr 1fr;}
@@ -589,8 +602,50 @@ td{padding:9px 14px;vertical-align:middle;}
     .cal-title{font-size:14px;}
     .cal-nav{padding:5px 10px;font-size:12px;}
     .status-sticky{top:54px;}
-    .status-strip{display:flex;overflow-x:auto;gap:8px;padding-bottom:4px;}
-    .status-cell{min-width:172px;flex-shrink:0;}
+    /* 진행 상태 칸: 가로로 밀지 않고 2칸씩 줄바꿈 (설치·공사는 날짜 칸이 넓어 한 줄 전체) */
+    .status-strip{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px;}
+    .status-cell{min-width:0;}
+    .status-cell.wide{grid-column:1/-1;}
+    .status-dt-input{width:100%;min-width:0;}
+    .status-cell .status-dt-input{flex:none;}
+    .status-cell>div:first-child{flex-wrap:wrap;}
+    .status-cell .status-row-label{flex-basis:calc(100% - 40px)!important;} /* 방문함·설치함 체크는 제목 아래 줄로 */
+    /* 표 → 카드형 (머리줄 숨기고 한 줄을 여러 줄로) — 좌우 스크롤 없이 */
+    table.m-cards,table.est-items{min-width:0!important;width:100%;}
+    table.m-cards thead,table.est-items thead{display:none;}
+    table.m-cards tbody tr{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 14px;padding:10px 34px 10px 0;border-bottom:1px solid var(--border);position:relative;}
+    table.m-cards td,table.est-items td{display:block;border:none!important;padding:0!important;text-align:left!important;width:auto!important;}
+    table.m-cards td:first-child{flex:1 1 100%;}
+    table.m-cards td[data-l]::before,table.est-items td[data-l]::before{content:attr(data-l);display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px;}
+    table.m-cards td.m-del,table.est-items td.m-del{position:absolute;top:8px;right:0;}
+    table.m-cards tfoot tr,table.est-items .subtotal-row{display:flex;justify-content:flex-end;gap:10px;padding:8px 0;}
+    table.m-cards tfoot td,table.est-items .subtotal-row td:empty{border:none!important;white-space:nowrap;}
+    table.est-items .subtotal-row td:empty{display:none;}
+    /* 목록 표(견적·자재·외주·공구) → 카드형: 칸 이름은 머리줄에서 자동으로 붙음(m-auto) */
+    .table-wrap:has(table.m-auto),.est-list-wrap{overflow-x:visible!important;}
+    table.m-auto{min-width:0!important;width:100%;}
+    table.m-auto thead{display:none;}
+    table.m-auto tbody tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 14px;padding:12px 4px;border-bottom:1px solid var(--border);}
+    table.m-auto td{display:block;border:none!important;padding:0!important;text-align:left!important;width:auto!important;font-size:12px;}
+    table.m-auto td.m-empty{display:none;}
+    table.m-auto td[data-l]::before{content:attr(data-l);display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:1px;}
+    table.m-auto td:first-child::before,table.m-auto td:last-child::before,table.m-photo td:nth-child(2)::before,table.m-est td:nth-child(2)::before{display:none;}
+    table.m-auto td:first-child{flex:1 1 100%;}
+    table.m-auto td:last-child{flex:1 1 100%;}
+    table.m-auto td:last-child>*{justify-content:flex-start!important;}
+    table.m-photo td:first-child{flex:0 0 40px;}
+    table.m-photo td:nth-child(2){flex:1 1 calc(100% - 60px);font-size:14px;font-weight:800;align-self:center;}
+    table.m-est td:first-child{flex:0 0 auto;align-self:center;}
+    table.m-est td:nth-child(2){flex:1 1 55%;font-size:15px;}
+    /* 품목: [사진 | 품목명 / 규격] 아래에 [수량 | 단가 | 합계] */
+    table.est-items tbody tr:not(.subtotal-row){display:grid;grid-template-columns:48px 1fr 1fr 1fr;gap:6px 8px;padding:10px 34px 10px 0;border-bottom:1px solid var(--border);position:relative;}
+    table.est-items tbody tr:not(.subtotal-row) td:nth-child(1){grid-row:1/3;}
+    table.est-items tbody tr:not(.subtotal-row) td:nth-child(2),table.est-items tbody tr:not(.subtotal-row) td:nth-child(3){grid-column:2/5;}
+    table.est-items tbody tr:not(.subtotal-row) td:nth-child(4){grid-column:1/3;}
+    table.est-items tbody tr td[colspan]{grid-column:1/-1;text-align:center!important;}
+    table.est-items .cell-input{width:100%;border:1.5px solid var(--border);border-radius:6px;padding:7px 9px;text-align:left;background:#fff;font-size:14px;}
+    table.est-items td:nth-child(2) .cell-input{font-weight:700;}
+    table.est-items td.tr[data-l]{align-self:end;font-size:14px;}
     /* 상태 타임라인 */
     .status-row{grid-template-columns:32px 1fr;gap:8px;}
     .status-row>div:nth-child(3),.status-row>div:nth-child(4){grid-column:2;display:flex;gap:8px;align-items:center;}
@@ -711,8 +766,8 @@ const collectProds=(rows,items,cats)=>{
     return out;
 };
 const prodTds=prods=>[
-    <td key="pc" style={{fontSize:12,color:'var(--muted)'}}>{prods.length?prods.map((p,i)=><div key={i}>{p.cat||'-'}</div>):'-'}</td>,
-    <td key="pn" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
+    <td key="pc" data-l="상품분류" style={{fontSize:12,color:'var(--muted)'}}>{prods.length?prods.map((p,i)=><div key={i}>{p.cat||'-'}</div>):'-'}</td>,
+    <td key="pn" data-l="상품명" style={{fontSize:12,fontWeight:600}}>{prods.length?prods.map((p,i)=><div key={i}>{p.name}</div>):<span style={{color:'var(--muted)',fontWeight:400}}>직접 추가</span>}</td>
 ];
 const SQL_TOOLS = "CREATE TABLE IF NOT EXISTS tool_categories (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  name TEXT NOT NULL,\n  display_order INT DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS tools (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  category_id UUID REFERENCES tool_categories(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  specification TEXT,\n  category_extra TEXT,\n  memo TEXT,\n  image_url TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE tool_categories ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tool_categories;\nCREATE POLICY staff_all ON tool_categories FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());\nALTER TABLE tools ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS staff_all ON tools;\nCREATE POLICY staff_all ON tools FOR ALL TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());";
 const SQL_PREP = "ALTER TABLE products ADD COLUMN IF NOT EXISTS prep_items TEXT DEFAULT '[]';\nALTER TABLE products ADD COLUMN IF NOT EXISTS portfolio_ids TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS est_prep TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS extra_visits TEXT DEFAULT '[]';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS meta TEXT DEFAULT '{}';\nALTER TABLE estimates ADD COLUMN IF NOT EXISTS send_history TEXT DEFAULT '[]';\n\n(전체 SQL은 supabase/batch2_columns.sql 참고)";
@@ -855,6 +910,18 @@ const dtLocal = v => { if(!v) return ''; const d=new Date(v); if(isNaN(d)) retur
 const fmtDT = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
 const fmtD = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleDateString('ko-KR'); };
 
+// ★ 접고 펼치는 구역 — 제목 줄 전체가 버튼(휴대폰에서 누르기 쉽게). 처음엔 PC는 펼침·휴대폰은 접힘(mobileOpen이면 펼침), 이후엔 기기에 기억
+const foldInit = (id,mobileOpen) => { try{ const v=localStorage.getItem('fold:'+id); if(v!==null) return v==='1'; }catch(e){} return window.innerWidth>=768||!!mobileOpen; };
+function Fold({id,title,badge,mobileOpen,children,className='card',style}){
+    const[open,setOpen]=useState(()=>foldInit(id,mobileOpen));
+    const toggle=()=>setOpen(o=>{try{localStorage.setItem('fold:'+id,o?'0':'1');}catch(e){}return !o;});
+    return(<div className={className} style={style}>
+        <button type="button" className={`fold-hd ${open?'open':''}`} onClick={toggle} aria-expanded={open}>
+            <span className="fold-title">{title}</span>{badge}<span className="fold-arrow">{open?'접기 ▲':'펼치기 ▼'}</span></button>
+        {open&&children}
+    </div>);
+}
+
 // ★ 진행 상태 카드 (견적 수정: 편집 / 견적서 보기: 읽기 전용)
 // 칸 구성: [키, 제목, 날짜 이름, 날짜 형식, 체크 이름]
 const TRACK_STEPS = [
@@ -874,7 +941,7 @@ function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCh
         const done=clabel?chk:!!val||(key==='제작중'&&si>=ki);
         const skipped=!done&&!val&&si>ki;
         const cls=done?'done':isCur?'current':'pending';
-        return(<div key={key} className={`status-cell ${cls}`}>
+        return(<div key={key} className={`status-cell ${cls}${dkind==='range'?' wide':''}`}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <div className={`status-row-icon ${cls}`} style={{width:28,height:28,fontSize:13}}>{STATUS_ICON[key]}</div>
                 <div className={`status-row-label ${cls}`} style={{flex:1,fontSize:12,minWidth:0}}>{title}
@@ -894,9 +961,9 @@ function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCh
                 if(!editable)return<div style={{fontSize:12,fontWeight:600,color:s?'var(--navy)':'var(--muted)'}}>{s?(n>1?`${fmtD(s)} ~ ${fmtD(e)} (${n}일)`:fmtD(s)):'-'}</div>;
                 return(<div style={{display:'flex',flexDirection:'column',gap:4}}>
                     <div style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:10,width:30,flexShrink:0}}>시작</span>
-                        <input type="date" className={`status-dt-input ${s?'has-value':''}`} value={s} onChange={ev=>{onDate('제작시작',ev.target.value);if(ev.target.value&&(!e||e<ev.target.value))onDate('제작완료',ev.target.value);}}/></div>
+                        <input type="date" className={`status-dt-input ${s?'has-value':''}`} style={{flex:1,minWidth:0,width:'auto'}} value={s} onChange={ev=>{onDate('제작시작',ev.target.value);if(ev.target.value&&(!e||e<ev.target.value))onDate('제작완료',ev.target.value);}}/></div>
                     <div style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:10,width:30,flexShrink:0}}>완료</span>
-                        <input type="date" className={`status-dt-input ${e?'has-value':''}`} value={e} min={s||undefined} onChange={ev=>onDate('제작완료',ev.target.value)}/></div>
+                        <input type="date" className={`status-dt-input ${e?'has-value':''}`} style={{flex:1,minWidth:0,width:'auto'}} value={e} min={s||undefined} onChange={ev=>onDate('제작완료',ev.target.value)}/></div>
                     <div style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:'var(--muted)'}}>
                         <button className="btn btn-outline btn-xs" onClick={()=>{const d=s||ymd(new Date());onDate('제작시작',d);onDate('제작완료',d);}}>📅 당일</button>
                         {s&&e&&<span>{n>1?`기간 ${n}일`:'당일 작업'}</span>}</div>
@@ -1926,7 +1993,7 @@ function MaterialList({sb,matCats,suppliers,onAddMatCat,onAddSubCat,onRenameMatC
         </div>)}
 
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">{search?'검색 결과가 없습니다.':'자재가 없습니다.'}</div></div>
-        :<div className="table-wrap"><table style={{minWidth:900}}>
+        :<div className="table-wrap"><table className="m-auto m-photo" style={{minWidth:900}}>
             <thead><tr>
                 <th style={{width:50}}>사진</th>
                 <th style={{textAlign:'left'}}>품명</th>
@@ -2087,7 +2154,7 @@ function OutsourcingList({sb,outCats,suppliers,onAddOutCat,initialCatId}){
         </div>
         <div className="list-body">
         {filtered.length===0?<div className="empty-state"><div className="empty-icon">🛠</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 외주 품목이 없습니다.'}</div></div>
-        :<div className="table-wrap"><table style={{minWidth:820}}>
+        :<div className="table-wrap"><table className="m-auto m-photo" style={{minWidth:820}}>
             <thead><tr>
                 <th style={{width:50}}>사진</th>
                 <th style={{textAlign:'left'}}>품목명</th>
@@ -2568,10 +2635,8 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
     };
 
     return(
-        <div className="card">
-            <div className="card-title">🔧 소요 자재
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(고객 인쇄 미포함 · 설치완료 시 재고 차감 · 단가는 상품을 담은 시점 기준으로 고정)</span>
-            </div>
+        <Fold id="soyo" title="🔧 소요 자재" badge={sumList.length>0&&<span style={{fontSize:11,color:'var(--muted)'}}>{sumList.length}종 · {fmt(matGrandTotal)}원</span>}>
+            <div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>고객 인쇄 미포함 · 설치완료 시 재고 차감 · 단가는 상품을 담은 시점 기준으로 고정</div>
 
             {/* ① 상품별 필요자재 - itemName 있을 때만 표시 */}
             {itemGroups.length > 0 && (
@@ -2596,7 +2661,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
             {sumList.length === 0
                 ? <p style={{fontSize:12,color:'var(--muted)',marginBottom:10}}>상품 추가 시 자재가 자동으로 포함됩니다.</p>
                 : <div className="table-wrap" style={{marginBottom:10}}>
-                    <table style={{minWidth:820}}>
+                    <table className="m-cards" style={{minWidth:820}}>
                         <thead>
                             <tr>
                                 <th style={{textAlign:'left'}}>자재명</th>
@@ -2619,12 +2684,12 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
                                             : (m.name || '(자재명 없음)')}
                                     </td>
                                     {prodTds(m.prods)}
-                                    <td className="tr" style={{padding:'4px 8px'}}>
+                                    <td className="tr" data-l="합산수량" style={{padding:'4px 8px'}}>
                                         <DecimalInput value={m.qty}
                                             style={{width:70,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:15,fontWeight:900,fontFamily:'Bebas Neue,sans-serif',textAlign:'right',color:'var(--navy)',letterSpacing:1}}
                                             onCommit={v=>updateSumQty(m.material_id||m.name, v)}/>
                                     </td>
-                                    <td className="tr" style={{padding:'4px 8px'}}>
+                                    <td className="tr" data-l="단가(원)" style={{padding:'4px 8px'}}>
                                         <input type="number" min="0" value={m.qty>0?Math.round(m.amount/m.qty):0}
                                             style={{width:80,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:13,fontWeight:700,textAlign:'right'}}
                                             onChange={e=>updateSumPrice(m.material_id||m.name, Number(e.target.value)||0)}/>
@@ -2634,8 +2699,8 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
                                             ? <button className="btn btn-outline btn-xs" title="이 단가를 자재관리의 자재 단가로 반영" onClick={() => pushPrice(m)}>💾 단가수정</button>
                                             : <span style={{fontSize:11,color:'var(--muted)'}}>-</span>}
                                     </td>
-                                    <td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(m.amount)}</td>
-                                    <td style={{textAlign:'center'}}>
+                                    <td className="tr" data-l="금액(원)" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(m.amount)}</td>
+                                    <td className="m-del" style={{textAlign:'center'}}>
                                         <button className="btn-icon" onClick={() => removeByKey(m.material_id || m.name)}>✕</button>
                                     </td>
                                 </tr>
@@ -2661,7 +2726,7 @@ function SoyoJaeCard({sb, estMaterials, setEstMaterials, uid, items, cats}){
                         <button className="btn btn-primary btn-sm" onClick={addManual}>추가</button>
                     </div>
                 </div>}
-        </div>
+        </Fold>
     );
 }
 
@@ -2994,7 +3059,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     // ★ 수정 모드: 화면 변경은 저장 버튼을 누를 때만 DB에 반영 (불러온 시점의 ID를 기억해 두었다가 저장 시 비교)
     const origCatIds=useRef(new Set());const origItemIds=useRef(new Set());const origChecked=useRef({});
     const catsRef=useRef([]);catsRef.current=cats;
-    const[statusOpen,setStatusOpen]=useState(()=>typeof window==='undefined'||window.innerWidth>=768);
+    const[statusOpen,setStatusOpen]=useState(()=>foldInit('status',false));
     const[showPortPick,setShowPortPick]=useState(false);
     const[lostForm,setLostForm]=useState(null); // 실주 처리 입력 중 {reason, memo}
 
@@ -3603,9 +3668,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
         {/* ★ 진행 상태 관리 */}
         <div className="status-timeline-card">
-            <div className="status-timeline-title" style={{color:'var(--navy)',cursor:'pointer',marginBottom:statusOpen?12:0}} onClick={()=>setStatusOpen(o=>!o)}>
-                📊 진행 상태 관리 <StatusBadge status={currentStatus}/> <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none'}}>{statusOpen?'▲ 접기':'▼ 펼치기'}</span>
-            </div>
+            {/* 제목 줄 전체가 접기/펼치기 버튼 (휴대폰에서 누르기 쉽게) */}
+            <button type="button" className={`fold-hd ${statusOpen?'open':''}`} onClick={()=>setStatusOpen(o=>{try{localStorage.setItem('fold:status',o?'0':'1');}catch(e){}return !o;})} aria-expanded={statusOpen}>
+                <span className="fold-title">📊 진행 상태 관리</span><StatusBadge status={currentStatus}/><span className="fold-arrow">{statusOpen?'접기 ▲':'펼치기 ▼'}</span>
+            </button>
             {/* 실주(진행 안 함) · 본견적 지연 */}
             {isLost?<div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',background:'#fee2e2',border:'1.5px solid #fca5a5',borderRadius:10,padding:'8px 12px',marginBottom:10,fontSize:13}}>
                 <b style={{color:'#b91c1c'}}>❌ 실주 처리된 견적</b>
@@ -3621,7 +3687,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     updMeta('lost',{reason:lostForm.reason,memo:lostForm.memo,at:new Date().toISOString()});setLostForm(null);toast('❌ 실주 처리됨 — 💾 저장을 눌러야 반영됩니다');}}>실주 처리</button>
                 <button className="btn btn-outline btn-sm" onClick={()=>setLostForm(null)}>취소</button>
             </div>
-            :<div style={{display:'flex',justifyContent:'flex-end',gap:8,alignItems:'center',marginBottom:statusOpen?6:0}}>
+            :(statusOpen||isLate)&&<div style={{display:'flex',justifyContent:'flex-end',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:statusOpen?6:0}}>
                 {isLate&&<span style={{fontSize:12,fontWeight:700,color:'#b45309',background:'#fef3c7',borderRadius:8,padding:'3px 10px'}}>⚠ 방문 후 {st.delayDays}일이 지났는데 본견적을 아직 보내지 않았습니다</span>}
                 <button className="btn btn-outline btn-xs" style={{color:'#b91c1c'}} onClick={()=>setLostForm({reason:LOST_REASONS[0],memo:''})}>❌ 실주 처리</button>
             </div>}
@@ -3641,8 +3707,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div>
 
         {/* ★ 추가 방문 (AS · 추가 설치) — 진행 상태와 별개, 💾 저장 시 반영 */}
-        <div className="card">
-            <div className="card-title">🔧 추가 방문 (AS · 추가 설치)</div>
+        <Fold id="extra" title="🔧 추가 방문 (AS · 추가 설치)" badge={extraVisits.some(v=>!v.done)&&<span className="status-badge" style={{background:'#ede9fe',color:'#6d28d9'}}>예정 {extraVisits.filter(v=>!v.done).length}건</span>}>
             {extraVisits.length===0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:8}}>견적이 완료된 뒤에도 AS나 추가 설치로 방문할 일정을 등록합니다. 일정표와 방문 추천에 함께 반영됩니다.</div>}
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 {extraVisits.map(v=>{
@@ -3652,7 +3717,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                         <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                             <select className="status-dt-input" value={v.type} onChange={e=>upd('type',e.target.value)} style={{fontWeight:700,color:tp.color,background:tp.bg,width:'auto'}}>
                                 {Object.keys(EXTRA_TYPES).map(t=><option key={t} value={t}>{EXTRA_TYPES[t].icon} {t}</option>)}</select>
-                            <input type="datetime-local" className={`status-dt-input ${v.at?'has-value':''}`} style={{width:'auto'}} value={dtLocal(v.at)} onChange={e=>upd('at',e.target.value)} title="방문 예정 일시"/>
+                            <input type="datetime-local" className={`status-dt-input ${v.at?'has-value':''}`} style={{width:'auto',minWidth:200,flex:'1 1 200px'}} value={dtLocal(v.at)} onChange={e=>upd('at',e.target.value)} title="방문 예정 일시"/>
                             <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:600,whiteSpace:'nowrap'}} title="예상 소요 시간 (방문 추천 계산에 사용, 0.5 = 30분)">⏱
                                 <input type="number" min="0.5" step="0.5" className="status-dt-input" style={{width:68}} value={v.dur?Number(v.dur)/60:''} placeholder="1" onChange={e=>upd('dur',e.target.value?Math.round(Number(e.target.value)*60):'')}/>시간</label>
                             <input className="status-dt-input" style={{flex:1,minWidth:180}} value={v.reason||''} onChange={e=>upd('reason',e.target.value)} placeholder="방문 사유 (예: 문짝 휨 교체, 선반 2개 추가)"/>
@@ -3673,7 +3738,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 }}>📋 이 고객으로 새 견적 만들기</button>}
                 {mode==='edit'&&<span style={{fontSize:11,color:'var(--muted)'}}>비용이 드는 추가 설치는 새 견적으로 만들면 금액·진행 상태를 따로 관리할 수 있습니다.</span>}
             </div>
-        </div>
+        </Fold>
 
 
         {/* 카테고리 버튼 */}
@@ -3688,11 +3753,11 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             <div key={cat.id} className="cat-section">
                 <div className="cat-header"><div className="cat-header-left"><div className="cat-bar"/><input className="cat-name-input" value={cat.name} onChange={e=>updCat(cat.id,e.target.value)}/><span className="cat-subtotal">소계 {fmt(sub)}원</span></div>
                 <div style={{display:'flex',gap:8,alignItems:'center'}} className="no-print"><button className="btn btn-outline btn-sm" onClick={()=>addItem(cat.id)}>＋ 품목</button><button className="del-btn" onClick={()=>delCat(cat.id)}>🗑</button></div></div>
-                <div className="table-wrap"><table>
+                <div className="table-wrap"><table className="est-items">
                     <thead><tr><th className="tc" style={{width:52}}>사진</th><th style={{textAlign:'left',minWidth:130}}>품목/부품명</th><th style={{textAlign:'left',minWidth:100}}>규격/재질</th><th className="tr" style={{width:65}}>수량</th><th className="tr" style={{width:110}}>단가(원)</th><th className="tr" style={{width:115}}>합계(원)</th><th className="no-print" style={{width:34}}></th></tr></thead>
                     <tbody>
                         {ci.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:12}}>품목이 없습니다.</td></tr>}
-                        {ci.map(item=><tr key={item.id}><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td className="tr" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>)}
+                        {ci.map(item=><tr key={item.id}><td className="tc"><label className="img-lbl">{item.imgUrl?<img src={item.imgUrl} className="img-prev" alt=""/>:<div className="img-ph">+</div>}<input type="file" style={{display:'none'}} accept="image/*" onChange={e=>handleImg(e,item.id)}/></label></td><td><input className="cell-input" value={item.name} placeholder="품목명" onChange={e=>updItem(item.id,'name',e.target.value)}/></td><td><input className="cell-input m" value={item.spec} onChange={e=>updItem(item.id,'spec',e.target.value)} placeholder="규격"/></td><td data-l="수량"><input type="number" className="cell-input r" value={item.qty} onChange={e=>updItem(item.id,'qty',e.target.value)} min="0"/></td><td data-l="단가(원)"><input type="number" className="cell-input r" value={item.unitPrice} onChange={e=>updItem(item.id,'unitPrice',e.target.value)} min="0"/></td><td className="tr" data-l="합계" style={{fontWeight:700,color:'var(--navy)'}}>{fmt(item.total)}</td><td className="tc no-print m-del"><button className="del-btn" onClick={()=>delItem(item.id)}>✕</button></td></tr>)}
                         {ci.length>0&&<tr className="subtotal-row"><td colSpan={4}/><td className="tr subtotal-lbl">소 계</td><td className="tr subtotal-val">{fmt(sub)}원</td><td/></tr>}
                     </tbody>
                 </table></div>
@@ -3700,8 +3765,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         );})}
 
         {/* ★ 시공비 · 결제 조건 (견적서 인쇄에 표시, 시공비 0원은 인쇄 제외) */}
-        <div className="card" style={{marginTop:16}}>
-            <div className="card-title">🧾 시공비 · 결제 조건 <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,textTransform:'none',letterSpacing:0}}>(견적서 인쇄에 표시 · 시공비는 공급가액에 포함, 0원이면 인쇄에서 빠짐)</span></div>
+        <Fold id="costs" title="🧾 시공비 · 결제 조건" style={{marginTop:16}}>
+            <div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>견적서 인쇄에 표시 · 시공비는 공급가액에 포함, 0원이면 인쇄에서 빠짐</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'8px 14px',marginBottom:10}}>
                 {COST_KEYS.map(([k,l])=><div className="info-field" key={k}><label>{l} (원)</label><input type="number" min="0" value={costs[k]??''} placeholder="0" onChange={e=>updMeta('costs',c=>({...(c||{}),[k]:e.target.value}))}/></div>)}
             </div>
@@ -3717,7 +3782,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                 <span style={{fontSize:11,color:'var(--muted)'}}>카톡·문자로 보내면 고객이 휴대폰에서 견적서를 열고 품목별 <b>시공 사례(포트폴리오)</b>를 바로 볼 수 있습니다. 링크를 만든 뒤 인쇄하면 견적서에도 주소가 표시됩니다.</span>
                 {meta.shareToken&&<a href={shareUrlOf(meta.shareToken)} target="_blank" rel="noreferrer" style={{fontSize:12,color:'var(--blue)'}}>미리 보기 ↗</a>}
             </div>
-        </div>
+        </Fold>
 
         {/* ★ 원가 분석 — 직원용 (인쇄·엑셀·고객용 링크에는 나가지 않음) */}
         {grand>0&&(()=>{const cost=estMaterials.reduce((s,m)=>s+(Number(m.unit_price)||0)*(Number(m.qty)||0),0);
@@ -3736,8 +3801,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         </div>}
   
         {/* ★ 결제 정보 — 입금 내역 한 곳에서 관리, 결제 상태는 자동 (계약금 있음 = 계약, 잔금 입금 확인 = 완료) */}
-        <div className="card" style={{marginTop:16}}>
-            <div className="card-title">💳 결제 정보 <span className="status-badge" style={{marginLeft:6,background:paymentStatus==='완료'?'#dcfce7':paymentStatus==='계약'?'#fef9c3':'#fee2e2',color:paymentStatus==='완료'?'#15803d':paymentStatus==='계약'?'#854d0e':'#b91c1c',textTransform:'none',letterSpacing:0}}>{paymentStatus==='완료'?'✅ 완료':paymentStatus==='계약'?'📝 계약':'⏳ 입금전'}</span></div>
+        <Fold id="pay" title="💳 결제 정보" style={{marginTop:16}} badge={<span className="status-badge" style={{background:paymentStatus==='완료'?'#dcfce7':paymentStatus==='계약'?'#fef9c3':'#fee2e2',color:paymentStatus==='완료'?'#15803d':paymentStatus==='계약'?'#854d0e':'#b91c1c',textTransform:'none',letterSpacing:0}}>{paymentStatus==='완료'?'✅ 완료':paymentStatus==='계약'?'📝 계약':'⏳ 입금전'}</span>}>
             <div className="pay-grid">
                 {[['deposit','계약금',depositAmount,setDepositAmount],['mid','중도금',midAmount,setMidAmount]].map(([k,l,val,setVal])=>(
                 <div className="pay-field" key={k}>
@@ -3762,11 +3826,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     </div>
                 </div>
             </div>
-        </div>
+        </Fold>
 
         {/* ★ 견적 이력 — 가견적·본견적을 보낸 순간의 품목·금액 (다시 보기·재인쇄) */}
-        {sendHistory.length>0&&<div className="card">
-            <div className="card-title">📜 견적 이력</div>
+        {sendHistory.length>0&&<Fold id="history" title={'📜 견적 이력 ('+sendHistory.length+')'}>
             {sendHistory.slice().reverse().map((h,i,arr)=>{const prev=arr[i+1];return(
                 <div key={h.id||i} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
                     <StatusBadge status={h.step}/>
@@ -3776,11 +3839,10 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     <span style={{fontSize:12,color:'var(--muted)'}}>품목 {(h.items||[]).length}개</span>
                     <button className="btn btn-outline btn-xs" style={{marginLeft:'auto'}} onClick={()=>reprintHistory(h)}>🖨 그때 견적서 보기</button>
                 </div>);})}
-        </div>}
+        </Fold>}
 
         {/* ★ 현장정보 — 고객 요청 내용, 실측 메모, 현장 사진(촬영·앨범), 첨부 파일(스캔·도면 등) */}
-        <div className="card">
-            <div className="card-title">📍 현장정보</div>
+        <Fold id="site" title="📍 현장정보" badge={(sitePhotos.length>0||((meta.site||{}).files||[]).length>0)&&<span style={{fontSize:11,color:'var(--muted)'}}>사진 {sitePhotos.length} · 파일 {((meta.site||{}).files||[]).length}</span>}>
             {(()=>{const si=meta.site||{};const upd=(k,v)=>updMeta('site',s=>({...(s||{}),[k]:v}));
                 const ta={width:'100%',border:'1.5px solid var(--border)',borderRadius:7,padding:'8px 12px',fontSize:13,fontFamily:"'Noto Sans KR',sans-serif",resize:'vertical'};
                 return(<div style={{marginBottom:12}}>
@@ -3839,7 +3901,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                     <button className="btn btn-outline btn-sm" onClick={()=>setPhotoView(null)}>✕ 닫기</button>
                 </div>
             </div>}
-        </div>
+        </Fold>
 
         {/* ★ 소요 자재 */}
         <SoyoJaeCard sb={sb} estMaterials={estMaterials} setEstMaterials={setEstMaterials} uid={uid} items={items} cats={cats}/>
@@ -3849,8 +3911,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
 
         {/* ★ 포트폴리오 첨부 */}
-        <div className="card">
-            <div className="card-title">🖼 포트폴리오 첨부</div>
+        <Fold id="portfolio" title="🖼 포트폴리오 첨부" badge={portItems.length>0&&<span style={{fontSize:11,color:'var(--muted)'}}>{portItems.length}개</span>}>
             <div style={{marginBottom:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <button className="btn btn-outline btn-sm" onClick={()=>setShowPortPick(true)}>＋ 포트폴리오 선택</button>
                 <span style={{fontSize:11,color:'var(--muted)'}}>※ 인쇄 시 이미지와 링크가 포함됩니다</span>
@@ -3873,7 +3934,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                         </div>
                     ))}
                 </div>}
-        </div>
+        </Fold>
 
         {/* 포트폴리오 선택 팝업 */}
         {showPortPick&&<PortPickModal sb={sb} portItems={portItems} setPortItems={setPortItems} onClose={()=>setShowPortPick(false)}/>}
@@ -4091,27 +4152,25 @@ function PrepCard({estPrep,setEstPrep,uid,items,cats}){
         setNf(p=>({...p,name:'',qty:1}));
     };
     return(
-        <div className="card">
-            <div className="card-title">🧰 공구 · 부자재
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(상품 담을 때 자동 포함 · 시공 체크리스트에 출력)</span>
-            </div>
+        <Fold id="prep" title="🧰 공구 · 부자재">
+            <div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>상품 담을 때 자동 포함 · 시공 체크리스트에 출력</div>
             {PREP_TYPES.map(t=>{
                 const list=groupsOf(t.key);
                 return(<div key={t.key} style={{marginBottom:14}}>
                     <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>{t.icon} {t.label} ({list.length})</div>
                     {list.length===0
                         ?<p style={{fontSize:12,color:'var(--muted)'}}>항목이 없습니다.</p>
-                        :<div className="table-wrap"><table style={{minWidth:520}}>
+                        :<div className="table-wrap"><table className="m-cards" style={{minWidth:520}}>
                             <thead><tr><th style={{textAlign:'left'}}>{t.label}명</th><th style={{textAlign:'left'}}>상품분류</th><th style={{textAlign:'left'}}>상품명</th><th className="tr" style={{width:100}}>수량</th><th style={{width:36}}></th></tr></thead>
                             <tbody>{list.map(g=>(
                                 <tr key={g.key}>
                                     <td style={{fontWeight:700}}>{g.name}</td>
                                     {prodTds(g.prods)}
-                                    <td className="tr" style={{padding:'4px 8px'}}>
+                                    <td className="tr" data-l="수량" style={{padding:'4px 8px'}}>
                                         <input type="number" min="0" value={g.qty} onChange={e=>setQty(g,Number(e.target.value)||0)}
                                             style={{width:70,padding:'5px 8px',border:'1.5px solid var(--border)',borderRadius:6,fontSize:14,fontWeight:800,textAlign:'right'}}/>
                                     </td>
-                                    <td style={{textAlign:'center'}}><button className="btn-icon" onClick={()=>del(g)}>✕</button></td>
+                                    <td className="m-del" style={{textAlign:'center'}}><button className="btn-icon" onClick={()=>del(g)}>✕</button></td>
                                 </tr>
                             ))}</tbody>
                         </table></div>}
@@ -4133,7 +4192,7 @@ function PrepCard({estPrep,setEstPrep,uid,items,cats}){
                         <button className="btn btn-primary btn-sm" onClick={add}>추가</button>
                     </div>
                 </div>}
-        </div>
+        </Fold>
     );
 }
 
@@ -4341,7 +4400,7 @@ function ToolList({sb,toolCats,onAddToolCat,initialCatId}){
         </div>
         {filtered.length===0
             ?<div className="empty-state"><div className="empty-icon">🧰</div><div className="empty-text">{search?'검색 결과가 없습니다.':'등록된 공구/부자재가 없습니다.'}</div></div>
-            :<div className="table-wrap"><table style={{minWidth:700}}>
+            :<div className="table-wrap"><table className="m-auto m-photo" style={{minWidth:700}}>
                 <thead><tr>
                     <th style={{width:50}}>사진</th>
                     <th style={{textAlign:'left'}}>품명</th>
@@ -4743,7 +4802,7 @@ function EstimateList({sb,onEdit,onNew,onChecklist,isAdmin}){
             ?<div className="empty-state"><div className="empty-icon">📂</div><div className="empty-text">저장된 견적서가 없습니다.</div></div>
             :filtered.length===0
             ?<div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">해당 조건의 견적서가 없습니다.<br/><button className="btn btn-outline btn-sm" style={{marginTop:8}} onClick={resetAll}>필터 초기화</button></div></div>
-            :<div className="est-list-wrap" style={{overflowX:'auto'}}><table style={{minWidth:600}}>
+            :<div className="est-list-wrap" style={{overflowX:'auto'}}><table className="m-auto m-est" style={{minWidth:600}}>
                 <thead><tr>
                     <th style={{textAlign:'left'}}>견적번호</th>
                     <th style={{textAlign:'left'}}>고객명</th>

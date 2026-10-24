@@ -974,20 +974,10 @@ function StatusTrack({sd,sc,stage,hold,balancePaid,holdDays,editable,onDate,onCh
                 :<div style={{fontSize:12,fontWeight:600,color:val?'var(--navy)':'var(--muted)'}}>{val?(dkind==='date'?fmtD(val):fmtDT(val)):'-'}</div>}
         </div>);
     };
-    return(<><div className="status-strip" style={{gridTemplateColumns:'repeat(6,minmax(0,1fr))'}}>
+    return(<><div className="status-strip" style={{gridTemplateColumns:'repeat(5,minmax(0,1fr))'}}>
         {TRACK_STEPS.map(s=>cell(...s))}
-        <div className={`status-cell ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <div className={`status-row-icon ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`} style={{width:28,height:28,fontSize:13}}>💰</div>
-                <div className={`status-row-label ${balancePaid?'done':stage==='설치완료'?'current':'pending'}`} style={{flex:1,fontSize:12}}>잔금</div>
-            </div>
-            {editable
-                ?<label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:12,fontWeight:600}}>
-                    <input type="checkbox" className="status-check" checked={!!balancePaid} onChange={e=>onBalance(e.target.checked)}/>잔금 입금 확인</label>
-                :<div style={{fontSize:12,fontWeight:700,color:balancePaid?'var(--green)':'var(--muted)'}}>{balancePaid?'✅ 입금 확인':'미입금'}</div>}
-            {stage==='완료'&&<div style={{fontSize:11,fontWeight:800,color:'var(--green)'}}>✔ 모든 진행 완료</div>}
-        </div>
     </div>
+    {stage==='완료'&&<div style={{marginTop:8,fontSize:12,fontWeight:800,color:'var(--green)'}}>✔ 잔금 입금까지 모든 진행 완료</div>} {/* 잔금 입금은 결제 정보에서 체크 */}
     {hold&&<div style={{marginTop:8,fontSize:12,color:'#334155',background:'#f1f5f9',borderRadius:8,padding:'6px 10px'}}>⏸ 마지막 발송 후 {holdDays}일 동안 진행이 없어 <b>보류</b> 상태입니다. 방문 예정일 입력 · 견적 재발송 · 계약금 입력 시 자동으로 해제됩니다.</div>}
     </>);
 }

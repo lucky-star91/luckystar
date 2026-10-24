@@ -4840,7 +4840,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
                 for(let k=0;k<days;k++){
                     const d=new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+k,8,0);
                     evts.push({date:d,label:days>1?`🔨 설치·공사 ${k+1}/${days}일`:'🎉 설치',color:(days>1?PROD_STYLE:INSTALL_STYLE).color,bg:(days>1?PROD_STYLE:INSTALL_STYLE).bg,span:days>1?(k===0?'start':k===days-1?'end':'mid'):null,
-                        clientName:est.client_name||'고객',time:days>1?(k===0?'시작':k===days-1?'완료':''):'당일',est});
+                        clientName:est.client_name||'고객',time:'종일',allDay:true,est}); // 설치·공사는 시간이 없는 하루 종일 일정
                 }
             }
             // 예정일이 입력되면 바로 표시 · 방문함/설치함 체크된(끝난) 일정은 표시하지 않음
@@ -4859,7 +4859,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
     };
 
     const events=getEvents();
-    const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>a.date-b.date);
+    const forDay=d=>events.filter(e=>e.date.getFullYear()===d.getFullYear()&&e.date.getMonth()===d.getMonth()&&e.date.getDate()===d.getDate()).sort((a,b)=>(b.allDay?1:0)-(a.allDay?1:0)||a.date-b.date); // 종일(설치·공사) 먼저, 나머지는 예약 시간순
 
     // 달력 칸에는 최소 정보만: 아이콘 + 고객명 한 줄 (자세한 내용은 날짜를 누르면 달력 아래 목록에)
     const MAX_CHIPS=3;
@@ -4878,7 +4878,7 @@ function Schedule({sb,view,onSetView,onEditEst}){
             {evts.length===0?<div style={{fontSize:13,color:'var(--muted)'}}>이날 일정이 없습니다. 달력에서 다른 날짜를 눌러 보세요.</div>
             :<div style={{display:'flex',flexDirection:'column'}}>{evts.map((ev,i)=>{const e=ev.est;const tel=(e.client_phone||'').replace(/[^0-9+]/g,'');return(
                 <div key={i} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-                    <span style={{fontWeight:800,minWidth:64,fontSize:13}}>{ev.time||''}</span>
+                    <span style={{fontWeight:800,minWidth:64,fontSize:13,color:ev.allDay?'var(--muted)':'var(--navy)'}}>{ev.time||''}</span>
                     <span className="status-badge" style={{background:ev.bg,color:ev.color}}>{ev.label}</span>
                     <div style={{flex:1,minWidth:200}}>
                         <div style={{fontWeight:800,color:'var(--navy)'}}>{ev.clientName}{e.est_no&&<span style={{fontWeight:400,fontSize:11,color:'var(--muted)',marginLeft:6}}>{e.est_no}</span>}</div>

@@ -602,6 +602,50 @@ td{padding:9px 14px;vertical-align:middle;}
     .cal-title{font-size:14px;}
     .cal-nav{padding:5px 10px;font-size:12px;}
     .status-sticky{top:54px;}
+    /* 상태 타임라인 */
+    .status-row{grid-template-columns:32px 1fr;gap:8px;}
+    .status-row>div:nth-child(3),.status-row>div:nth-child(4){grid-column:2;display:flex;gap:8px;align-items:center;}
+    .status-dt-input{font-size:11px;padding:5px 8px;flex:1;}
+    /* 모달 */
+    .modal-overlay{align-items:flex-end;padding:0;}
+    .modal-box{width:100%!important;max-height:88vh;border-radius:16px 16px 0 0;padding:22px 18px;}
+    .modal-box.sm{width:100%!important;}
+    .modal-box.lg{width:100%!important;}
+    .modal-grid{grid-template-columns:1fr!important;}
+    .mf.full{grid-column:1!important;}
+    .mf.col2{grid-column:1!important;}
+    /* 자재등록 추가 행 */
+    .mat-add-row{grid-template-columns:1fr 1fr!important;}
+    .mat-add-row>div:last-child{grid-column:1/-1;}
+    /* 픽 모달 */
+    .pick-modal{flex-direction:column;height:auto;}
+    .pick-left{width:100%;border-radius:10px 10px 0 0;display:flex;overflow-x:auto;padding:8px 0;}
+    .pick-left-item{padding:8px 14px;white-space:nowrap;border-left:none;border-bottom:3px solid transparent;}
+    .pick-left-item.active{border-left:none;border-bottom-color:var(--gold);}
+    .pick-right{border-radius:0 0 10px 10px;border-left:1.5px solid var(--border);}
+    .pick-prod-grid{grid-template-columns:1fr 1fr!important;}
+    /* 필터 탭 */
+    .cat-filter{overflow-x:auto;flex-wrap:nowrap;padding-bottom:6px;}
+    .cat-tab{white-space:nowrap;flex-shrink:0;}
+    /* 로그인 화면 */
+    .login-wrap{flex-direction:column;}
+    .login-left{display:none;}
+    .login-right{width:100%;padding:40px 24px;min-height:100vh;}
+    .login-title{font-size:20px;}
+    .login-right::before{content:'LUCKY STAR';font-family:'Bebas Neue',sans-serif;display:block;font-size:36px;color:var(--gold);letter-spacing:3px;margin-bottom:4px;text-align:center;}
+    /* 상품 선택 카드 */
+    .prod-cat-count{display:none;}
+    /* 사이드바 내 사용자명 */
+    .sb-username{max-width:120px;}
+    /* 3단계 메뉴 */
+    .nav-sub.open{max-height:600px;}
+    .nav-sub-sub.open{max-height:400px;}
+}
+
+/* 휴대폰·태블릿 (1023px 이하): 태블릿은 왼쪽 메뉴가 보여 내용 폭이 휴대폰과 비슷 → 같은 카드형·줄바꿈 */
+@media(max-width:1023px){
+    .view-sticky{position:static!important;margin:0 0 18px!important;padding:0!important;background:none!important;box-shadow:none!important;}
+    .view-info{flex-direction:column!important;}.view-info-mgr{width:auto!important;}
     /* 진행 상태 칸: 가로로 밀지 않고 2칸씩 줄바꿈 (설치·공사는 날짜 칸이 넓어 한 줄 전체) */
     .status-strip{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px;}
     .status-cell{min-width:0;}
@@ -655,55 +699,19 @@ td{padding:9px 14px;vertical-align:middle;}
     table.est-items .subtotal-row{display:flex!important;justify-content:space-between;align-items:center;padding:10px 14px!important;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;}
     .cat-header-left{flex-wrap:wrap;width:100%;}
     .cat-subtotal{white-space:nowrap;}
-    /* 상태 타임라인 */
-    .status-row{grid-template-columns:32px 1fr;gap:8px;}
-    .status-row>div:nth-child(3),.status-row>div:nth-child(4){grid-column:2;display:flex;gap:8px;align-items:center;}
-    .status-dt-input{font-size:11px;padding:5px 8px;flex:1;}
-    /* 모달 */
-    .modal-overlay{align-items:flex-end;padding:0;}
-    .modal-box{width:100%!important;max-height:88vh;border-radius:16px 16px 0 0;padding:22px 18px;}
-    .modal-box.sm{width:100%!important;}
-    .modal-box.lg{width:100%!important;}
-    .modal-grid{grid-template-columns:1fr!important;}
-    .mf.full{grid-column:1!important;}
-    .mf.col2{grid-column:1!important;}
-    /* 자재등록 추가 행 */
-    .mat-add-row{grid-template-columns:1fr 1fr!important;}
-    .mat-add-row>div:last-child{grid-column:1/-1;}
-    /* 픽 모달 */
-    .pick-modal{flex-direction:column;height:auto;}
-    .pick-left{width:100%;border-radius:10px 10px 0 0;display:flex;overflow-x:auto;padding:8px 0;}
-    .pick-left-item{padding:8px 14px;white-space:nowrap;border-left:none;border-bottom:3px solid transparent;}
-    .pick-left-item.active{border-left:none;border-bottom-color:var(--gold);}
-    .pick-right{border-radius:0 0 10px 10px;border-left:1.5px solid var(--border);}
-    .pick-prod-grid{grid-template-columns:1fr 1fr!important;}
-    /* 필터 탭 */
-    .cat-filter{overflow-x:auto;flex-wrap:nowrap;padding-bottom:6px;}
-    .cat-tab{white-space:nowrap;flex-shrink:0;}
-    /* 로그인 화면 */
-    .login-wrap{flex-direction:column;}
-    .login-left{display:none;}
-    .login-right{width:100%;padding:40px 24px;min-height:100vh;}
-    .login-title{font-size:20px;}
-    .login-right::before{content:'LUCKY STAR';font-family:'Bebas Neue',sans-serif;display:block;font-size:36px;color:var(--gold);letter-spacing:3px;margin-bottom:4px;text-align:center;}
-    /* 상품 선택 카드 */
-    .prod-cat-count{display:none;}
-    /* 사이드바 내 사용자명 */
-    .sb-username{max-width:120px;}
-    /* 3단계 메뉴 */
-    .nav-sub.open{max-height:600px;}
-    .nav-sub-sub.open{max-height:400px;}
 }
-
 /* 태블릿 (768px ~ 1023px) */
-@media(min-width:768px)and(max-width:1023px){
+@media (min-width:768px) and (max-width:1023px){
     .main{padding:24px 20px;}
     .info-grid{grid-template-columns:1fr 1fr!important;}
     .pay-grid{grid-template-columns:1fr 1fr!important;}
     .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
     .modal-box.lg{width:96vw!important;}
+    /* 견적서 고객 정보: 2칸씩, 주소는 지도 버튼 때문에 한 줄 전체 */
+    .view-info .info-grid{grid-template-columns:1fr 1fr!important;}
+    .view-info-client .info-field:nth-child(3){grid-column:1/-1;}
 }
-@media(min-width:768px)and(max-width:1023px){.view-sticky{margin:-24px -20px 22px;padding:18px 20px 2px;}.view-info{flex-direction:column;}.view-info-mgr{width:auto;}}
+@media (min-width:768px) and (max-width:1023px){.view-sticky{margin:-24px -20px 22px;padding:18px 20px 2px;}.view-info{flex-direction:column;}.view-info-mgr{width:auto;}}
 @media(max-width:767px){.view-sticky{position:static;margin:0 0 18px;padding:0;background:none;box-shadow:none;}.view-info{flex-direction:column;}.view-info-mgr{width:auto;}}
 @media print{.view-sticky{position:static;margin:0;padding:0;box-shadow:none;}
 .print-only{display:block!important;}.sidebar,.mobile-header,.sb-overlay,.btn-row,.del-btn,.no-print{display:none!important;}.status-sticky{position:static;box-shadow:none;}.main{margin-left:0;padding:20px;}}
@@ -920,7 +928,7 @@ const fmtDT = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?Stri
 const fmtD = v => { if(!v) return ''; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleDateString('ko-KR'); };
 
 // ★ 접고 펼치는 구역 — 제목 줄 전체가 버튼(휴대폰에서 누르기 쉽게). 처음엔 PC는 펼침·휴대폰은 접힘(mobileOpen이면 펼침), 이후엔 기기에 기억
-const foldInit = (id,mobileOpen) => { try{ const v=localStorage.getItem('fold:'+id); if(v!==null) return v==='1'; }catch(e){} return window.innerWidth>=768||!!mobileOpen; };
+const foldInit = (id,mobileOpen) => { try{ const v=localStorage.getItem('fold:'+id); if(v!==null) return v==='1'; }catch(e){} return window.innerWidth>=1024||!!mobileOpen; };
 function Fold({id,title,badge,mobileOpen,children,className='card',style}){
     const[open,setOpen]=useState(()=>foldInit(id,mobileOpen));
     const toggle=()=>setOpen(o=>{try{localStorage.setItem('fold:'+id,o?'0':'1');}catch(e){}return !o;});

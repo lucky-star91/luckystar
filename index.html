@@ -383,9 +383,9 @@ td{padding:9px 14px;vertical-align:middle;}
 .subtotal-row td{background:#f8faff;border-top:2px solid var(--border);}
 .subtotal-lbl{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
 .subtotal-val{font-weight:800;color:var(--blue);font-size:14px;}
-.grand-card{background:linear-gradient(135deg,var(--navy),#1a3a5c);border-radius:14px;padding:24px 28px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:16px;}
-.grand-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;}
-.grand-val{font-family:'Bebas Neue',sans-serif;font-size:38px;color:var(--gold);letter-spacing:2px;}
+.grand-card{background:linear-gradient(135deg,var(--navy),#1a3a5c);border-radius:12px;padding:10px 22px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:16px;}
+.grand-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px;}
+.grand-val{font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1.1;color:var(--gold);letter-spacing:2px;}
 .grand-vat{font-size:12px;color:rgba(255,255,255,.35);margin-top:4px;}
 .grand-breakdown{display:flex;gap:22px;flex-wrap:wrap;}
 .bd-item{text-align:right;}.bd-label{font-size:10px;color:rgba(255,255,255,.35);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}.bd-val{font-size:15px;font-weight:700;color:rgba(255,255,255,.8);}
@@ -582,9 +582,9 @@ td{padding:9px 14px;vertical-align:middle;}
     .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
     table{min-width:560px;}
     /* 합계 카드 */
-    .grand-card{flex-direction:column;gap:14px;padding:18px 16px;}
-    .grand-val{font-size:28px;}
-    .grand-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .grand-card{flex-direction:row;align-items:center;gap:8px 14px;padding:10px 14px;}
+    .grand-val{font-size:26px;}
+    .grand-breakdown{display:flex;gap:14px;}
     /* 결제 그리드 1열 */
     .pay-grid{grid-template-columns:1fr!important;}
     /* 현장사진 그리드 */
@@ -3786,7 +3786,7 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
             </div>);})()}
 
         {grand>0&&<div className="grand-card">
-            <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div><div className="grand-vat">공급가액 {fmt(grand)}원 + VAT {fmt(vat)}원</div></div>
+            <div><div className="grand-label">최종 견적금액 (VAT 포함)</div><div className="grand-val">{fmt(grandVat)}원</div></div>
             <div className="grand-breakdown">{[['공급가액',grand,false],['VAT 10%',vat,true]].map(([l,v,g])=><div className="bd-item" key={l}><div className="bd-label">{l}</div><div className="bd-val" style={g?{color:'var(--gold)'}:{}}>{fmt(v)}원</div></div>)}</div>
         </div>}
   

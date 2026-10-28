@@ -3106,6 +3106,24 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
     const catsRef=useRef([]);catsRef.current=cats;
     const[statusOpen,setStatusOpen]=useState(()=>foldInit('status',false));
     const[showPortPick,setShowPortPick]=useState(false);
+    // ★ 포트폴리오 이미지 직접 추가: 견적서에만 붙은 이미지(_local) → '포트폴리오 저장'으로 카테고리를 골라 포트폴리오에 등록
+    const[pfUp,setPfUp]=useState(false);
+    const[pfSave,setPfSave]=useState(null); // 포트폴리오로 저장할 항목 {id,title,image_url}
+    const addPortImgs=async e=>{
+        const files=Array.from(e.target.files||[]);e.target.value='';if(!files.length)return;
+        setPfUp(true);
+        try{for(const f of files){const url=await uploadImg(sb,f,'portfolio');setPortItems(p=>[...p,{id:'tmp_'+uid(),title:'',image_url:url,_local:true}]);}}
+        finally{setPfUp(false);}
+        toast('📷 이미지 추가됨 — 💾 포트폴리오 저장을 누르면 포트폴리오에도 등록됩니다');
+    };
+    const savePortToPf=async form=>{
+        const tgt=pfSave;setPfSave(null);if(!tgt)return;
+        const{data,error}=await sb.from('portfolios').insert([{title:form.title,description:form.description||'',image_url:form.image_url,categories:form.categories}]).select();
+        if(error||!data||!data[0]){alert('포트폴리오 저장 실패: '+(error?error.message:'데이터 없음'));return;}
+        const r=data[0];
+        setPortItems(p=>p.map(x=>x.id===tgt.id?{id:r.id,title:r.title,image_url:r.image_url}:x));
+        toast('✅ 포트폴리오에 저장됨 (견적서 💾 저장을 눌러야 첨부 상태가 반영됩니다)');
+    };
     const[lostForm,setLostForm]=useState(null); // 실주 처리 입력 중 {reason, memo}
 
     useEffect(()=>{if(sb)loadSettings(sb).then(s=>setSt(s));},[sb]);
@@ -3959,7 +3977,9 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
         <Fold id="portfolio" title="🖼 포트폴리오 첨부" badge={portItems.length>0&&<span style={{fontSize:11,color:'var(--muted)'}}>{portItems.length}개</span>}>
             <div style={{marginBottom:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                 <button className="btn btn-outline btn-sm" onClick={()=>setShowPortPick(true)}>＋ 포트폴리오 선택</button>
-                <span style={{fontSize:11,color:'var(--muted)'}}>※ 인쇄 시 이미지와 링크가 포함됩니다</span>
+                <label className="btn btn-outline btn-sm" style={{cursor:pfUp?'wait':'pointer',opacity:pfUp?.6:1}}>{pfUp?'⏳ 업로드 중...':'📷 이미지 직접 추가'}
+                    <input type="file" accept="image/*" multiple style={{display:'none'}} disabled={pfUp} onChange={addPortImgs}/></label>
+                <span style={{fontSize:11,color:'var(--muted)'}}>※ 인쇄 시 이미지와 링크가 포함됩니다 · 직접 추가한 이미지는 💾 포트폴리오 저장으로 카테고리를 골라 등록</span>
             </div>
             {portItems.length===0
                 ?<p style={{fontSize:12,color:'var(--muted)'}}>첨부된 포트폴리오가 없습니다.</p>
@@ -3969,8 +3989,12 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
                             {p.image_url?<img src={p.image_url} className="est-port-img" alt=""/>
                                 :<div className="est-port-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#94a3b8'}}>🖼</div>}
                             <div className="est-port-info">
-                                {p.title}
+                                {p._local
+                                    ?<><input className="mi" style={{fontSize:11,padding:'4px 6px'}} value={p.title||''} placeholder="제목 (예: 주방 상부장)" onChange={e=>{const v=e.target.value;setPortItems(prev=>prev.map((x,j)=>j===i?{...x,title:v}:x));}}/>
+                                        <div style={{fontSize:10,color:'#b45309',marginTop:3}}>포트폴리오 미등록</div></>
+                                    :p.title}
                                 <div style={{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}}>
+                                    {p._local&&<button className="btn btn-primary btn-xs" style={{fontSize:10}} onClick={()=>setPfSave(p)}>💾 포트폴리오 저장</button>}
                                     {p.image_url&&<a href={p.image_url} target="_blank" rel="noreferrer"><button className="btn btn-outline btn-xs" style={{fontSize:10}}>🔗 열기</button></a>}
                                     {p.image_url&&<button className="btn btn-outline btn-xs" style={{fontSize:10}} onClick={()=>{navigator.clipboard?.writeText(p.image_url).then(()=>toast('📋 복사됨')).catch(()=>alert(p.image_url));}}>📋 복사</button>}
                                 </div>
@@ -3983,6 +4007,8 @@ function EstimateForm({sb,prodCats,mode,estimateId,onNavigate,onTotalChange,user
 
         {/* 포트폴리오 선택 팝업 */}
         {showPortPick&&<PortPickModal sb={sb} portItems={portItems} setPortItems={setPortItems} onClose={()=>setShowPortPick(false)}/>}
+        {/* 직접 추가한 이미지 → 포트폴리오 저장 (카테고리 선택) */}
+        {pfSave&&<PortfolioModal sb={sb} prodCats={prodCats||[]} heading="포트폴리오로 저장 (카테고리 선택)" initial={{title:pfSave.title||'',description:'',image_url:pfSave.image_url,categories:'[]'}} onClose={()=>setPfSave(null)} onSave={savePortToPf}/>}
 
         <div style={{textAlign:'center',marginTop:18,fontSize:11,color:'#94a3b8',paddingBottom:40}}>★ 럭키스타 캠핑카라반 | 경기도 파주시 광탄면 | {new Date().toLocaleDateString('ko-KR')} 기준</div>
     </div>);
@@ -4004,7 +4030,8 @@ function PortPickModal({sb, portItems, setPortItems, onClose}){
     const toggle=item=>setSel(p=>p.includes(item.id)?p.filter(id=>id!==item.id):[...p,item.id]);
 
     const confirm=()=>{
-        setPortItems(all.filter(a=>sel.includes(a.id)).map(a=>({id:a.id,title:a.title,image_url:a.image_url})));
+        // 직접 추가한 이미지(아직 포트폴리오에 없는 것)는 그대로 유지
+        setPortItems([...portItems.filter(p=>p._local),...all.filter(a=>sel.includes(a.id)).map(a=>({id:a.id,title:a.title,image_url:a.image_url}))]);
         onClose();
     };
 
@@ -4040,7 +4067,7 @@ function PortPickModal({sb, portItems, setPortItems, onClose}){
 /* ═══════════════════════════════════════
    ★ 포트폴리오 관리
 ═══════════════════════════════════════ */
-function PortfolioModal({sb, prodCats, initial, onClose, onSave}){
+function PortfolioModal({sb, prodCats, initial, onClose, onSave, heading}){
     const blank={title:'',description:'',image_url:'',categories:'[]'};
     const[form,setForm]=useState(()=>{
         if(!initial)return{...blank,_cats:[]};
@@ -4065,7 +4092,7 @@ function PortfolioModal({sb, prodCats, initial, onClose, onSave}){
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-box" onClick={e=>e.stopPropagation()}>
                 <div className="modal-header">
-                    <div className="modal-title">{initial?'포트폴리오 수정':'포트폴리오 추가'}</div>
+                    <div className="modal-title">{heading||(initial?'포트폴리오 수정':'포트폴리오 추가')}</div>
                     <button className="modal-close" onClick={onClose}>✕</button>
                 </div>
                 <div className="mf">
